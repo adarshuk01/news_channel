@@ -16,16 +16,16 @@ const { TMP, safeDelete, cleanImageUrl } = require("../utils/fileUtils");
 const { uploadShort } = require("../services/youtubeShorts");
 
 
-// ✅ Keep only Malayalam (SAFE – does NOT break letters)
+// ✅ Keep Malayalam + Numbers
 function keepMalayalamAndSpaces(text) {
   if (!text) return "";
   return text
-    .replace(/[^\u0D00-\u0D7F0-9\s]/g, "") // ✅ allow numbers
+    .replace(/[^\u0D00-\u0D7F0-9\s]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-// ✅ Safe YouTube title (NO unicode breaking)
+// ✅ Safe YouTube title
 function getSafeYouTubeTitle(text) {
   if (!text || !text.trim()) {
     return "Latest News #Shorts";
@@ -35,7 +35,7 @@ function getSafeYouTubeTitle(text) {
     .toString()
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 90); // YouTube safe length
+    .slice(0, 90);
 }
 
 const SOURCE_CONFIG = {
@@ -71,27 +71,20 @@ async function runNewsPipeline(config, res) {
 
     const item = news[itemIndex] ?? news[0];
 
-    // ✅ Clean Malayalam title (SAFE)
     const cleanTitle = keepMalayalamAndSpaces(item.title);
-
     const imageUrl = cleanImageUrl(item.image);
 
     console.log("📰 Original Title:", item.title);
     console.log("🧹 Clean Title:", cleanTitle);
 
-    // ✅ FINAL SAFE TITLE
     const safeTitle = getSafeYouTubeTitle(cleanTitle);
 
-    console.log("🎯 FINAL TITLE:", safeTitle);
+    const finalTitle =
+      safeTitle && safeTitle.length >= 3
+        ? `${safeTitle} 🔥 #Shorts`
+        : "Latest Malayalam News 🔥 #Shorts";
 
-    // ❗ HARD SAFETY (avoid empty title error)
-    if (!safeTitle || safeTitle.length < 3) {
-      console.log("⚠️ Title too short, using fallback");
-    }
-
-    const finalTitle = safeTitle && safeTitle.length >= 3
-      ? `${safeTitle} 🔥 #Shorts`
-      : "Latest Malayalam News 🔥 #Shorts";
+    console.log("🎯 FINAL TITLE:", finalTitle);
 
     // 2 — Duplicate check
     const lastTitle = await redis.get(redisKey);
@@ -125,39 +118,65 @@ async function runNewsPipeline(config, res) {
     const finalUrl = upload.secure_url;
     console.log("🔗 Cloudinary URL:", finalUrl);
 
-    // 7 — Post to platforms
-    await Promise.all([
-      // Instagram (optional)
-      postReelToInstagram(
-        finalUrl,
-        `${item.summary}\n\n${hashtags} #kerala #malayalam #news`
-      ),
+    // ✅ 7 — SAFE MULTI-PLATFORM POSTING (IMPORTANT FIX)
+    const platforms = [
+      {
+        name: "Instagram",
+        fn: () =>
+          postReelToInstagram(
+            finalUrl,
+            `${item.summary}\n\n${hashtags} #kerala #malayalam #news`
+          ),
+      },
+      {
+        name: "Facebook",
+        fn: () =>
+          postReelToFacebook(
+            finalUrl,
+            `${item.summary}\n\n${hashtags}`
+          ),
+      },
+      {
+        name: "YouTube",
+        fn: () =>
+          uploadShort(
+            vidFilePath,
+            finalTitle,
+            `${item.summary}\n\n${hashtags} #Shorts`
+          ),
+      },
+    ];
 
-      // Facebook (optional)
-      postReelToFacebook(
-        finalUrl,
-        `${item.summary}\n\n${hashtags}`
-      ),
+    const results = await Promise.allSettled(
+      platforms.map((p) => p.fn())
+    );
 
-      // ✅ YouTube Shorts (FIXED TITLE)
-      uploadShort(
-        vidFilePath,
-        finalTitle, // ✅ FIXED
-        `${item.summary}\n\n${hashtags} #Shorts`
-      ),
-    ]);
+    results.forEach((result, i) => {
+      if (result.status === "fulfilled") {
+        console.log(`✅ ${platforms[i].name} posted`);
+      } else {
+        console.error(
+          `❌ ${platforms[i].name} failed:`,
+          result.reason?.message
+        );
+      }
+    });
 
     // 8 — Cleanup
     safeDelete(imgFilePath);
     safeDelete(vidFilePath);
 
-    // 9 — Save to Redis
+    // ✅ IMPORTANT: Save to Redis EVEN IF YouTube fails
     await redis.set(redisKey, item.title);
 
     return res.json({
-      message: `✅ ${label} posted`,
+      message: `✅ ${label} processed`,
       videoUrl: finalUrl,
       title: finalTitle,
+      results: results.map((r, i) => ({
+        platform: platforms[i].name,
+        status: r.status,
+      })),
     });
 
   } catch (err) {
@@ -173,5 +192,8 @@ async function runNewsPipeline(config, res) {
   }
 }
 
-exports.postLatestNews  = (req, res) => runNewsPipeline(SOURCE_CONFIG.manorama, res);
-exports.postAsianetNews = (req, res) => runNewsPipeline(SOURCE_CONFIG.asianet, res);
+exports.postLatestNews  = (req, res) =>
+  runNewsPipeline(SOURCE_CONFIG.manorama, res);
+
+exports.postAsianetNews = (req, res) =>
+  runNewsPipeline(SOURCE_CONFIG.asianet, res);
