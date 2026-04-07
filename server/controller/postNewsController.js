@@ -107,7 +107,7 @@ async function runNewsPipeline(config, res) {
 
     // 4 — Create poster
     const pngBuffer = await canvasService.createNewsPoster({
-      title: cleanTitle || item.title,
+      title:  item.title || item.title,
       image: imageUrl,
     });
 
