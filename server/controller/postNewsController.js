@@ -20,7 +20,7 @@ const { uploadShort } = require("../services/youtubeShorts");
 function keepMalayalamAndSpaces(text) {
   if (!text) return "";
   return text
-    .replace(/[^\u0D00-\u0D7F\s]/g, "") // Malayalam Unicode block
+    .replace(/[^\u0D00-\u0D7F0-9\s]/g, "") // ✅ allow numbers
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -107,7 +107,7 @@ async function runNewsPipeline(config, res) {
 
     // 4 — Create poster
     const pngBuffer = await canvasService.createNewsPoster({
-      title:  item.title || item.title,
+      title: cleanTitle || item.title,
       image: imageUrl,
     });
 
