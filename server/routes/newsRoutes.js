@@ -5,6 +5,8 @@ const {
 } = require("../controller/postNewsController");
 const { manualPostNews, streamPostLogs } = require("../controller/manualPostController");
 const multer = require("multer");
+const { protect } = require("../middleware/authMiddleware");
+const { login, logout } = require("../controller/authController");
 
 const router = express.Router();
 
@@ -19,14 +21,17 @@ router.get("/post-manorama-latest-news", postLatestNews);
 router.get("/post-asianet-latest-news",  postAsianetNews);
 
 // POST with image upload
-router.post("/manual-post", upload.single("image"), manualPostNews);
+router.post("/manual-post",protect, upload.single("image"), manualPostNews);
 
 // OR JSON (imageUrl)
-router.post("/manual-post-json", manualPostNews);
+router.post("/manual-post-json",protect, manualPostNews);
 
  
 // ✅ SSE endpoint for log streaming
-router.get("/manual-post/stream", streamPostLogs);
+router.get("/manual-post/stream",protect, streamPostLogs);
+
+router.post("/auth/login", login);
+router.post("/auth/logout", logout);
 
 // ── Health check ──────────────────────────────────────────────────────────
 router.get("/test", (req, res) => res.send("✅ Route working"));

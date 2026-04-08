@@ -413,9 +413,253 @@
     .log.error    { background: #fef2f2; color: #b91c1c; }
     .log.complete { background: #f0fdf4; color: #15803d; font-weight: 600; }
     .log.connected{ background: #f0f9ff; color: #0369a1; }
+
+    /* ── LOGIN MODAL ── */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 15, 20, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      padding: 1rem;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s ease;
+    }
+
+    .modal-backdrop.show {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 24px 64px rgba(0,0,0,.14), 0 4px 16px rgba(0,0,0,.08);
+      width: 100%;
+      max-width: 400px;
+      transform: translateY(12px) scale(.98);
+      transition: transform .25s ease;
+      overflow: hidden;
+    }
+
+    .modal-backdrop.show .modal {
+      transform: translateY(0) scale(1);
+    }
+
+    .modal-top {
+      padding: 2rem 2rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-icon {
+      width: 40px; height: 40px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+    }
+
+    .modal-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -.02em;
+      margin-bottom: .25rem;
+    }
+
+    .modal-sub {
+      font-size: .8rem;
+      color: var(--muted);
+    }
+
+    .modal-body { padding: 1.5rem 2rem 2rem; }
+
+    .modal-field { margin-bottom: 1rem; }
+
+    .modal-field label {
+      font-size: .7rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: .4rem;
+    }
+
+    .modal-field .input-wrap {
+      position: relative;
+    }
+
+    .modal-field input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .7rem .9rem;
+      font-family: 'Sora', sans-serif;
+      font-size: .875rem;
+      color: var(--text);
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .modal-field input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(29,78,216,.1);
+      background: #fff;
+    }
+
+    .modal-field input.input-error {
+      border-color: var(--error);
+      box-shadow: 0 0 0 3px rgba(220,38,38,.1);
+    }
+
+    .toggle-pw {
+      position: absolute;
+      right: .75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: .85rem;
+      padding: .2rem;
+      line-height: 1;
+      transition: color .15s;
+    }
+
+    .toggle-pw:hover { color: var(--text); }
+
+    .modal-error {
+      display: none;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 7px;
+      padding: .6rem .85rem;
+      font-size: .78rem;
+      color: #b91c1c;
+      margin-bottom: 1rem;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    .modal-error.show { display: flex; }
+
+    .btn-login {
+      width: 100%;
+      padding: .85rem 1rem;
+      background: var(--accent);
+      color: #fff;
+      font-family: 'Sora', sans-serif;
+      font-size: .875rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background .2s, transform .15s, box-shadow .2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+      letter-spacing: .01em;
+    }
+
+    .btn-login:hover:not(:disabled) {
+      background: var(--accent-h);
+      box-shadow: 0 4px 14px rgba(29,78,216,.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-login:disabled { opacity: .6; cursor: not-allowed; }
+
+    .btn-login .spinner {
+      width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+
+    .btn-login.loading .spinner { display: block; }
+    .btn-login.loading .btn-login-text { opacity: .8; }
+
+    /* topbar auth indicator */
+    .auth-chip {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      font-size: .75rem;
+      font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      padding: .3rem .75rem;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      transition: all .15s;
+    }
+
+    .auth-chip:hover { border-color: var(--border-md); color: var(--text); }
+
+    .auth-chip .auth-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--border-md);
+      transition: background .2s;
+    }
+
+    .auth-chip.authed .auth-dot { background: var(--success); }
+    .auth-chip.authed { color: var(--success); border-color: #bbf7d0; }
   </style>
 </head>
 <body>
+
+  <!-- LOGIN MODAL -->
+  <div class="modal-backdrop" id="loginBackdrop" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <div class="modal-top">
+        <div class="modal-icon">🔐</div>
+        <div class="modal-title" id="modalTitle">Admin Login</div>
+        <div class="modal-sub" id="modalSub">Sign in to access the publish dashboard</div>
+      </div>
+      <div class="modal-body">
+
+        <div class="modal-error" id="loginError">
+          <span>⚠️</span>
+          <span id="loginErrorMsg">Invalid credentials. Please try again.</span>
+        </div>
+
+        <div class="modal-field">
+          <label for="loginUser">Username</label>
+          <input type="text" id="loginUser" placeholder="admin" autocomplete="username"/>
+        </div>
+
+        <div class="modal-field">
+          <label for="loginPass">Password</label>
+          <div class="input-wrap">
+            <input type="password" id="loginPass" placeholder="••••••••" autocomplete="current-password" style="padding-right:2.5rem;"/>
+            <button type="button" class="toggle-pw" id="togglePw" aria-label="Toggle password">👁️</button>
+          </div>
+        </div>
+
+        <button class="btn-login" id="loginBtn">
+          <div class="spinner"></div>
+          <span class="btn-login-text">Sign In</span>
+        </button>
+
+      </div>
+    </div>
+  </div>
 
   <!-- TOPBAR -->
   <header class="topbar">
@@ -423,7 +667,13 @@
       <div class="brand-dot"></div>
       MediaPost
     </div>
-    <span class="badge">Publish Dashboard</span>
+    <div style="display:flex;align-items:center;gap:.75rem;">
+      <span class="badge">Publish Dashboard</span>
+      <div class="auth-chip" id="authChip" title="Click to sign out">
+        <div class="auth-dot"></div>
+        <span id="authChipLabel">Not signed in</span>
+      </div>
+    </div>
   </header>
 
   <!-- MAIN -->
@@ -501,21 +751,156 @@
   </main>
 
 <script>
-  const form       = document.getElementById('postForm');
-  const submitBtn  = document.getElementById('submitBtn');
-  const logsScroll = document.getElementById('logsScroll');
-  const statusDot  = document.getElementById('statusDot');
-  const statusLabel= document.getElementById('statusLabel');
-  const sessionPill= document.getElementById('sessionPill');
-  const previewWrap= document.getElementById('previewWrap');
-  const previewImg = document.getElementById('previewImg');
-  const imageFile  = document.getElementById('imageFile');
-  const imageUrl   = document.getElementById('imageUrl');
-  const dropZone   = document.getElementById('dropZone');
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const form         = document.getElementById('postForm');
+  const submitBtn    = document.getElementById('submitBtn');
+  const logsScroll   = document.getElementById('logsScroll');
+  const statusDot    = document.getElementById('statusDot');
+  const statusLabel  = document.getElementById('statusLabel');
+  const sessionPill  = document.getElementById('sessionPill');
+  const previewWrap  = document.getElementById('previewWrap');
+  const previewImg   = document.getElementById('previewImg');
+  const imageFile    = document.getElementById('imageFile');
+  const imageUrl     = document.getElementById('imageUrl');
+  const dropZone     = document.getElementById('dropZone');
+
+  // Modal
+  const loginBackdrop = document.getElementById('loginBackdrop');
+  const loginBtn      = document.getElementById('loginBtn');
+  const loginUser     = document.getElementById('loginUser');
+  const loginPass     = document.getElementById('loginPass');
+  const loginError    = document.getElementById('loginError');
+  const loginErrorMsg = document.getElementById('loginErrorMsg');
+  const modalSub      = document.getElementById('modalSub');
+  const togglePw      = document.getElementById('togglePw');
+  const authChip      = document.getElementById('authChip');
+  const authChipLabel = document.getElementById('authChipLabel');
 
   let eventSource = null;
 
-  // ── Preview helpers ──
+  // ── Auth helpers ──────────────────────────────────────────────────────────
+  const TOKEN_KEY = 'mp_admin_token';
+
+  function getToken()          { return sessionStorage.getItem(TOKEN_KEY); }
+  function setToken(t)         { sessionStorage.setItem(TOKEN_KEY, t); }
+  function clearToken()        { sessionStorage.removeItem(TOKEN_KEY); }
+
+  function updateAuthChip() {
+    const token = getToken();
+    if (token) {
+      authChip.classList.add('authed');
+      authChipLabel.textContent = 'Signed in';
+    } else {
+      authChip.classList.remove('authed');
+      authChipLabel.textContent = 'Not signed in';
+    }
+  }
+
+  // Sign-out on chip click (only when already authed)
+  authChip.addEventListener('click', () => {
+    if (!getToken()) return;
+    clearToken();
+    updateAuthChip();
+    openLoginModal('Session ended. Please sign in again.');
+  });
+
+  // ── Modal open / close ────────────────────────────────────────────────────
+  function openLoginModal(subtitle) {
+    loginError.classList.remove('show');
+    loginUser.value = '';
+    loginPass.value = '';
+    loginUser.classList.remove('input-error');
+    loginPass.classList.remove('input-error');
+    if (subtitle) modalSub.textContent = subtitle;
+    loginBackdrop.classList.add('show');
+    setTimeout(() => loginUser.focus(), 250);
+  }
+
+  function closeLoginModal() {
+    loginBackdrop.classList.remove('show');
+    modalSub.textContent = 'Sign in to access the publish dashboard';
+  }
+
+  // ── Login submit ──────────────────────────────────────────────────────────
+  async function handleLogin() {
+    const username = loginUser.value.trim();
+    const password = loginPass.value;
+
+    loginUser.classList.remove('input-error');
+    loginPass.classList.remove('input-error');
+    loginError.classList.remove('show');
+
+    if (!username) { loginUser.classList.add('input-error'); loginUser.focus(); return; }
+    if (!password) { loginPass.classList.add('input-error'); loginPass.focus(); return; }
+
+    loginBtn.disabled = true;
+    loginBtn.classList.add('loading');
+
+    try {
+      const res = await fetch('http://localhost:5000/api/auth/login', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ username, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Invalid credentials');
+      }
+
+      const token = data.token || data.accessToken;
+      if (!token) throw new Error('No token returned from server');
+
+      setToken(token);
+      updateAuthChip();
+      closeLoginModal();
+
+    } catch (err) {
+      loginErrorMsg.textContent = err.message;
+      loginError.classList.add('show');
+      loginPass.value = '';
+      loginPass.classList.add('input-error');
+      loginPass.focus();
+    } finally {
+      loginBtn.disabled = false;
+      loginBtn.classList.remove('loading');
+    }
+  }
+
+  loginBtn.addEventListener('click', handleLogin);
+
+  // Enter key inside modal
+  [loginUser, loginPass].forEach(el =>
+    el.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); })
+  );
+
+  // Toggle password visibility
+  togglePw.addEventListener('click', () => {
+    const isText = loginPass.type === 'text';
+    loginPass.type = isText ? 'password' : 'text';
+    togglePw.textContent = isText ? '👁️' : '🙈';
+  });
+
+  // ── Auth-aware fetch wrapper ──────────────────────────────────────────────
+  async function authFetch(url, options = {}) {
+    const token = getToken();
+    const headers = { ...(options.headers || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(url, { ...options, headers });
+
+    if (res.status === 401) {
+      clearToken();
+      updateAuthChip();
+      openLoginModal('Your session expired. Please sign in again.');
+      throw new Error('401 Unauthorized — login required');
+    }
+
+    return res;
+  }
+
+  // ── Preview helpers ───────────────────────────────────────────────────────
   function showPreview(src) {
     previewImg.src = src;
     previewWrap.classList.add('show');
@@ -531,18 +916,17 @@
     if (u) showPreview(u);
   });
 
-  // Drag & drop highlights
   dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
   dropZone.addEventListener('dragleave', ()=> dropZone.classList.remove('drag-over'));
   dropZone.addEventListener('drop',      ()=> dropZone.classList.remove('drag-over'));
 
-  // ── Status ──
+  // ── Status ────────────────────────────────────────────────────────────────
   function setStatus(state, text) {
     statusDot.className = 'dot ' + state;
     statusLabel.textContent = text;
   }
 
-  // ── Logs ──
+  // ── Logs ──────────────────────────────────────────────────────────────────
   const ICONS = { info:'ℹ️', success:'✅', warning:'⚠️', error:'❌', connected:'🔗', complete:'🎉' };
 
   function addLog(type, message, timestamp) {
@@ -561,12 +945,15 @@
     logsScroll.scrollTop = logsScroll.scrollHeight;
   }
 
-  // ── SSE Stream ──
+  // ── SSE Stream ────────────────────────────────────────────────────────────
   function startStream(sessionId) {
     sessionPill.textContent = `Session: ${sessionId}`;
     sessionPill.style.display = 'block';
 
-    eventSource = new EventSource(`https://news-channel-drab.vercel.app/api/manual-post/stream?sessionId=${sessionId}`);
+    // Pass token as query param since EventSource doesn't support custom headers
+    const token  = getToken();
+    const url    = `http://localhost:5000/api/manual-post/stream?sessionId=${sessionId}${token ? `&token=${token}` : ''}`;
+    eventSource  = new EventSource(url);
 
     eventSource.onopen = () => {
       setStatus('live', 'Connected');
@@ -575,6 +962,17 @@
 
     eventSource.onmessage = (e) => {
       const { type, data: d, timestamp } = JSON.parse(e.data);
+
+      // SSE 401 signal from server
+      if (type === 'auth_error' || (d && d.status === 401)) {
+        clearToken();
+        updateAuthChip();
+        eventSource.close();
+        setPosting(false);
+        openLoginModal('Your session expired. Please sign in again.');
+        return;
+      }
+
       if (!d.message) return;
       addLog(type, d.message, timestamp);
 
@@ -602,7 +1000,7 @@
     submitBtn.classList.toggle('loading', on);
   }
 
-  // ── Submit ──
+  // ── Submit ────────────────────────────────────────────────────────────────
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -611,7 +1009,6 @@
     const file  = imageFile.files[0];
     const url   = imageUrl.value.trim();
 
-    // Clear logs
     logsScroll.innerHTML = '<div class="empty" id="emptyState"><div class="empty-icon">⏳</div><div class="empty-text">Starting…</div></div>';
     setPosting(true);
     setStatus('posting', 'Connecting…');
@@ -624,12 +1021,12 @@
         fd.append('title', title);
         fd.append('description', desc);
         fd.append('image', file);
-        res = await fetch('https://news-channel-drab.vercel.app/api/manual-post', { method: 'POST', body: fd });
+        res = await authFetch('http://localhost:5000/api/manual-post', { method: 'POST', body: fd });
       } else {
-        res = await fetch('https://news-channel-drab.vercel.app/api/manual-post-json', {
-          method: 'POST',
+        res = await authFetch('http://localhost:5000/api/manual-post-json', {
+          method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title, description: desc, imageUrl: url }),
+          body:    JSON.stringify({ title, description: desc, imageUrl: url }),
         });
       }
 
@@ -638,14 +1035,23 @@
       startStream(data.sessionId);
 
     } catch (err) {
-      setStatus('err', 'Error');
-      logsScroll.innerHTML = '';
-      addLog('error', err.message, new Date().toLocaleTimeString());
+      // 401 is already handled inside authFetch — skip double-logging
+      if (!err.message.startsWith('401')) {
+        setStatus('err', 'Error');
+        logsScroll.innerHTML = '';
+        addLog('error', err.message, new Date().toLocaleTimeString());
+      }
       setPosting(false);
     }
   });
 
   window.addEventListener('beforeunload', () => eventSource?.close());
+
+  // ── Boot: check token on page load ────────────────────────────────────────
+  updateAuthChip();
+  if (!getToken()) {
+    openLoginModal('Sign in to access the publish dashboard');
+  }
 </script>
 </body>
 </html>
