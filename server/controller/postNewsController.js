@@ -87,11 +87,11 @@ async function runNewsPipeline(config, res) {
     console.log("🎯 FINAL TITLE:", finalTitle);
 
     // 2 — Duplicate check
-    // const lastTitle = await redis.get(redisKey);
-    // if (lastTitle && lastTitle === item.title) {
-    //   console.log(`⏭️ Skipped duplicate`);
-    //   return res.status(200).json({ message: "Skipped duplicate" });
-    // }
+    const lastTitle = await redis.get(redisKey);
+    if (lastTitle && lastTitle === item.title) {
+      console.log(`⏭️ Skipped duplicate`);
+      return res.status(200).json({ message: "Skipped duplicate" });
+    }
 
     // 3 — Generate hashtags
     const hashtags = await aiService.generateHashtags(
