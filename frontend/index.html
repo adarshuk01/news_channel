@@ -1,183 +1,651 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Manual News Post</title>
+  <title>MediaPost — Publish Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  <!-- Tailwind CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
+    :root {
+      --bg:        #f5f4f0;
+      --surface:   #ffffff;
+      --border:    #e2e0db;
+      --border-md: #ccc9c1;
+      --text:      #1a1917;
+      --muted:     #7a7770;
+      --accent:    #1d4ed8;
+      --accent-h:  #1e40af;
+      --success:   #16a34a;
+      --error:     #dc2626;
+      --warning:   #d97706;
+      --info:      #0284c7;
+      --radius:    10px;
+      --shadow:    0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.04);
+    }
+
+    body {
+      font-family: 'Sora', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* ── TOPBAR ── */
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -.02em;
+      color: var(--text);
+    }
+
+    .brand-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .badge {
+      font-size: .65rem;
+      font-weight: 600;
+      background: #eff6ff;
+      color: var(--accent);
+      border: 1px solid #bfdbfe;
+      border-radius: 20px;
+      padding: .2rem .6rem;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    /* ── LAYOUT ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+      min-height: calc(100vh - 56px);
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; padding: 1rem; gap: 1rem; }
+    }
+
+    /* ── PANEL ── */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .panel-title {
+      font-size: .8rem;
+      font-weight: 600;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .panel-body { padding: 1.5rem; }
+
+    /* ── FORM ── */
+    .field { margin-bottom: 1.25rem; }
+
+    .field:last-child { margin-bottom: 0; }
+
+    label {
+      display: block;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: .5rem;
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .7rem .9rem;
+      font-family: 'Sora', sans-serif;
+      font-size: .875rem;
+      color: var(--text);
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    input[type="text"]:focus,
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(29,78,216,.1);
+      background: #fff;
+    }
+
+    textarea { resize: vertical; min-height: 100px; }
+
+    /* File drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border-md);
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: #eff6ff;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon { font-size: 1.5rem; margin-bottom: .4rem; }
+
+    .drop-text {
+      font-size: .8rem;
+      color: var(--muted);
+    }
+
+    .drop-text strong { color: var(--accent); }
+
+    /* Divider */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin: 1rem 0;
+      color: var(--muted);
+      font-size: .75rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* Preview */
+    .preview-wrap {
+      margin-top: 1rem;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      display: none;
+      position: relative;
+    }
+
+    .preview-wrap.show { display: block; }
+
+    .preview-wrap img {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .preview-label {
+      position: absolute;
+      top: .5rem;
+      left: .5rem;
+      background: rgba(0,0,0,.55);
+      color: #fff;
+      font-size: .65rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: .2rem .6rem;
+      border-radius: 4px;
+    }
+
+    /* Button */
+    .btn-primary {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+      width: 100%;
+      padding: .85rem 1rem;
+      background: var(--accent);
+      color: #fff;
+      font-family: 'Sora', sans-serif;
+      font-size: .875rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background .2s, transform .15s, box-shadow .2s;
+      margin-top: 1.5rem;
+      letter-spacing: .01em;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--accent-h);
+      box-shadow: 0 4px 14px rgba(29,78,216,.3);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+
+    .btn-primary.loading {
+      background: var(--accent-h);
+    }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: none;
+    }
+
+    .btn-primary.loading .spinner { display: block; }
+    .btn-primary.loading .btn-text { opacity: .8; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Session pill */
+    .session-pill {
+      display: none;
+      margin-top: 1rem;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: .5rem .75rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .7rem;
+      color: var(--accent);
+      word-break: break-all;
+    }
+
+    /* ── LOGS ── */
+    .logs-sticky {
+      position: sticky;
+      top: calc(56px + 2rem);
+    }
+
+    @media (max-width: 900px) {
+      .logs-sticky { position: static; }
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--border-md);
+      flex-shrink: 0;
+    }
+
+    .dot.idle    { background: var(--border-md); }
+    .dot.live    { background: var(--success); animation: blink 1.5s ease infinite; }
+    .dot.posting { background: var(--accent);  animation: blink .8s ease infinite; }
+    .dot.err     { background: var(--error);   animation: blink .8s ease infinite; }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .4; }
+    }
+
+    .status-label {
+      font-size: .75rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .logs-scroll {
+      height: 420px;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+    }
+
+    @media (max-width: 900px) {
+      .logs-scroll { height: 300px; }
+    }
+
+    .logs-scroll::-webkit-scrollbar { width: 4px; }
+    .logs-scroll::-webkit-scrollbar-track { background: transparent; }
+    .logs-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+    /* Empty */
+    .empty {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .empty-icon { font-size: 2rem; opacity: .4; }
+    .empty-text { font-size: .8rem; opacity: .7; }
+
+    /* Log entry */
+    .log {
+      display: flex;
+      gap: .75rem;
+      align-items: flex-start;
+      padding: .65rem .75rem;
+      border-radius: 7px;
+      animation: fadeSlide .25s ease;
+      font-size: .8rem;
+    }
+
+    @keyframes fadeSlide {
+      from { opacity: 0; transform: translateY(4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .log-ico { flex-shrink: 0; font-size: .9rem; margin-top: 1px; }
+
+    .log-body { flex: 1; }
+
+    .log-msg { line-height: 1.45; }
+
+    .log-ts {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .65rem;
+      opacity: .55;
+      margin-top: .2rem;
+    }
+
+    .log.info     { background: #f0f9ff; color: #0369a1; }
+    .log.success  { background: #f0fdf4; color: #15803d; }
+    .log.warning  { background: #fffbeb; color: #b45309; }
+    .log.error    { background: #fef2f2; color: #b91c1c; }
+    .log.complete { background: #f0fdf4; color: #15803d; font-weight: 600; }
+    .log.connected{ background: #f0f9ff; color: #0369a1; }
+  </style>
 </head>
+<body>
 
-<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      MediaPost
+    </div>
+    <span class="badge">Publish Dashboard</span>
+  </header>
 
-  <div class="w-full max-w-2xl bg-white shadow-xl rounded-2xl p-6">
+  <!-- MAIN -->
+  <main class="layout">
 
-    <h2 class="text-2xl font-bold text-center mb-6">📢 Manual News Posting</h2>
-
-    <!-- FORM -->
-    <form id="postForm" class="space-y-4">
-
-      <!-- Title -->
-      <div>
-        <label class="block text-sm font-medium mb-1">Title</label>
-        <input
-          type="text"
-          id="title"
-          required
-          class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="Enter news title"
-        />
+    <!-- FORM PANEL -->
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">New Post</span>
       </div>
+      <div class="panel-body">
+        <form id="postForm">
 
-      <!-- Description -->
-      <div>
-        <label class="block text-sm font-medium mb-1">Description</label>
-        <textarea
-          id="description"
-          required
-          rows="4"
-          class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="Enter description"
-        ></textarea>
+          <div class="field">
+            <label for="title">Headline</label>
+            <input type="text" id="title" placeholder="Enter your news headline" required/>
+          </div>
+
+          <div class="field">
+            <label for="description">Description</label>
+            <textarea id="description" placeholder="Write a compelling description..." required></textarea>
+          </div>
+
+          <div class="field">
+            <label>Image</label>
+            <div class="drop-zone" id="dropZone">
+              <input type="file" id="imageFile" accept="image/*"/>
+              <div class="drop-icon">🖼️</div>
+              <div class="drop-text"><strong>Click to upload</strong> or drag & drop</div>
+            </div>
+          </div>
+
+          <div class="divider">or</div>
+
+          <div class="field">
+            <label for="imageUrl">Image URL</label>
+            <input type="text" id="imageUrl" placeholder="https://example.com/image.jpg"/>
+          </div>
+
+          <div class="preview-wrap" id="previewWrap">
+            <span class="preview-label">Preview</span>
+            <img id="previewImg" alt="preview"/>
+          </div>
+
+          <button type="submit" class="btn-primary" id="submitBtn">
+            <div class="spinner"></div>
+            <span class="btn-text">Publish Now</span>
+          </button>
+
+          <div class="session-pill" id="sessionPill"></div>
+
+        </form>
       </div>
-
-      <!-- Image Upload -->
-      <div>
-        <label class="block text-sm font-medium mb-1">Upload Image</label>
-        <input
-          type="file"
-          id="image"
-          accept="image/*"
-          class="w-full border rounded-lg p-2"
-        />
-      </div>
-
-      <!-- OR Image URL -->
-      <div>
-        <label class="block text-sm font-medium mb-1">OR Image URL</label>
-        <input
-          type="text"
-          id="imageUrl"
-          class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
-          placeholder="https://example.com/image.jpg"
-        />
-      </div>
-
-      <!-- Preview -->
-      <div id="previewContainer" class="hidden">
-        <p class="text-sm mb-2">Preview:</p>
-        <img id="previewImage" class="w-full rounded-lg border"/>
-      </div>
-
-      <!-- Button -->
-      <button
-        type="submit"
-        id="submitBtn"
-        class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
-      >
-        🚀 Post Now
-      </button>
-
-    </form>
-
-    <!-- STATUS -->
-    <div id="status" class="mt-4 text-center text-sm"></div>
-
-    <!-- RESULT -->
-    <div id="result" class="mt-4 hidden">
-      <p class="font-semibold mb-2">Result:</p>
-      <pre class="bg-gray-100 p-3 rounded-lg text-xs overflow-auto"></pre>
     </div>
 
-  </div>
+    <!-- LOGS PANEL -->
+    <div class="logs-sticky">
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Activity Log</span>
+          <div class="status-row">
+            <div class="dot idle" id="statusDot"></div>
+            <span class="status-label" id="statusLabel">Idle</span>
+          </div>
+        </div>
+        <div class="logs-scroll" id="logsScroll">
+          <div class="empty" id="emptyState">
+            <div class="empty-icon">📡</div>
+            <div class="empty-text">Logs will appear here once you publish</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
 
 <script>
-const form = document.getElementById("postForm");
-const statusDiv = document.getElementById("status");
-const resultDiv = document.getElementById("result");
-const resultPre = resultDiv.querySelector("pre");
+  const form       = document.getElementById('postForm');
+  const submitBtn  = document.getElementById('submitBtn');
+  const logsScroll = document.getElementById('logsScroll');
+  const statusDot  = document.getElementById('statusDot');
+  const statusLabel= document.getElementById('statusLabel');
+  const sessionPill= document.getElementById('sessionPill');
+  const previewWrap= document.getElementById('previewWrap');
+  const previewImg = document.getElementById('previewImg');
+  const imageFile  = document.getElementById('imageFile');
+  const imageUrl   = document.getElementById('imageUrl');
+  const dropZone   = document.getElementById('dropZone');
 
-const imageInput = document.getElementById("image");
-const imageUrlInput = document.getElementById("imageUrl");
-const previewContainer = document.getElementById("previewContainer");
-const previewImage = document.getElementById("previewImage");
+  let eventSource = null;
 
-// ✅ Preview for file
-imageInput.addEventListener("change", () => {
-  const file = imageInput.files[0];
-  if (file) {
-    previewImage.src = URL.createObjectURL(file);
-    previewContainer.classList.remove("hidden");
+  // ── Preview helpers ──
+  function showPreview(src) {
+    previewImg.src = src;
+    previewWrap.classList.add('show');
   }
-});
 
-// ✅ Preview for URL
-imageUrlInput.addEventListener("input", () => {
-  const url = imageUrlInput.value.trim();
-  if (url) {
-    previewImage.src = url;
-    previewContainer.classList.remove("hidden");
+  imageFile.addEventListener('change', () => {
+    const f = imageFile.files[0];
+    if (f) showPreview(URL.createObjectURL(f));
+  });
+
+  imageUrl.addEventListener('input', () => {
+    const u = imageUrl.value.trim();
+    if (u) showPreview(u);
+  });
+
+  // Drag & drop highlights
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', ()=> dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop',      ()=> dropZone.classList.remove('drag-over'));
+
+  // ── Status ──
+  function setStatus(state, text) {
+    statusDot.className = 'dot ' + state;
+    statusLabel.textContent = text;
   }
-});
 
-// ✅ Submit
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
+  // ── Logs ──
+  const ICONS = { info:'ℹ️', success:'✅', warning:'⚠️', error:'❌', connected:'🔗', complete:'🎉' };
 
-  const title = document.getElementById("title").value;
-  const description = document.getElementById("description").value;
-  const file = imageInput.files[0];
-  const imageUrl = imageUrlInput.value;
+  function addLog(type, message, timestamp) {
+    const empty = document.getElementById('emptyState');
+    if (empty) empty.remove();
 
-  statusDiv.innerHTML = "⏳ Posting...";
-  resultDiv.classList.add("hidden");
+    const el = document.createElement('div');
+    el.className = `log ${type}`;
+    el.innerHTML = `
+      <div class="log-ico">${ICONS[type] || '•'}</div>
+      <div class="log-body">
+        <div class="log-msg">${message}</div>
+        <div class="log-ts">${timestamp}</div>
+      </div>`;
+    logsScroll.appendChild(el);
+    logsScroll.scrollTop = logsScroll.scrollHeight;
+  }
 
-  try {
-    let response;
+  // ── SSE Stream ──
+  function startStream(sessionId) {
+    sessionPill.textContent = `Session: ${sessionId}`;
+    sessionPill.style.display = 'block';
 
-    if (file) {
-      // 🔹 FormData (file upload)
-      const formData = new FormData();
-      formData.append("title", title);
-      formData.append("description", description);
-      formData.append("image", file);
+    eventSource = new EventSource(`https://news-channel-drab.vercel.app/api/manual-post/stream?sessionId=${sessionId}`);
 
-      response = await fetch("http://localhost:5000/api/manual-post", {
-        method: "POST",
-        body: formData,
-      });
+    eventSource.onopen = () => {
+      setStatus('live', 'Connected');
+      addLog('connected', 'Stream connected', new Date().toLocaleTimeString());
+    };
 
-    } else {
-      // 🔹 JSON (image URL)
-      response = await fetch("http://localhost:5000/api/manual-post-json", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          title,
-          description,
-          imageUrl,
-        }),
-      });
+    eventSource.onmessage = (e) => {
+      const { type, data: d, timestamp } = JSON.parse(e.data);
+      if (!d.message) return;
+      addLog(type, d.message, timestamp);
+
+      if (type === 'complete') {
+        setStatus('live', 'Done');
+        setPosting(false);
+        eventSource.close();
+      } else if (type === 'error') {
+        setStatus('err', 'Error');
+        setPosting(false);
+        eventSource.close();
+      } else {
+        setStatus('posting', 'Posting…');
+      }
+    };
+
+    eventSource.onerror = () => {
+      setStatus('err', 'Disconnected');
+      eventSource.close();
+    };
+  }
+
+  function setPosting(on) {
+    submitBtn.disabled = on;
+    submitBtn.classList.toggle('loading', on);
+  }
+
+  // ── Submit ──
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const title = document.getElementById('title').value;
+    const desc  = document.getElementById('description').value;
+    const file  = imageFile.files[0];
+    const url   = imageUrl.value.trim();
+
+    // Clear logs
+    logsScroll.innerHTML = '<div class="empty" id="emptyState"><div class="empty-icon">⏳</div><div class="empty-text">Starting…</div></div>';
+    setPosting(true);
+    setStatus('posting', 'Connecting…');
+
+    try {
+      let res;
+
+      if (file) {
+        const fd = new FormData();
+        fd.append('title', title);
+        fd.append('description', desc);
+        fd.append('image', file);
+        res = await fetch('https://news-channel-drab.vercel.app/api/manual-post', { method: 'POST', body: fd });
+      } else {
+        res = await fetch('https://news-channel-drab.vercel.app/api/manual-post-json', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, description: desc, imageUrl: url }),
+        });
+      }
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to start posting');
+      startStream(data.sessionId);
+
+    } catch (err) {
+      setStatus('err', 'Error');
+      logsScroll.innerHTML = '';
+      addLog('error', err.message, new Date().toLocaleTimeString());
+      setPosting(false);
     }
+  });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || "Failed");
-    }
-
-    statusDiv.innerHTML = "✅ Posted Successfully!";
-    resultDiv.classList.remove("hidden");
-    resultPre.textContent = JSON.stringify(data, null, 2);
-
-  } catch (err) {
-    statusDiv.innerHTML = "❌ " + err.message;
-  }
-});
+  window.addEventListener('beforeunload', () => eventSource?.close());
 </script>
-
 </body>
 </html>

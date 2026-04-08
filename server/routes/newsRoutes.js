@@ -3,7 +3,7 @@ const {
   postLatestNews,
   postAsianetNews,
 } = require("../controller/postNewsController");
-const { manualPostNews } = require("../controller/manualPostController");
+const { manualPostNews, streamPostLogs } = require("../controller/manualPostController");
 const multer = require("multer");
 
 const router = express.Router();
@@ -23,6 +23,10 @@ router.post("/manual-post", upload.single("image"), manualPostNews);
 
 // OR JSON (imageUrl)
 router.post("/manual-post-json", manualPostNews);
+
+ 
+// ✅ SSE endpoint for log streaming
+router.get("/manual-post/stream", streamPostLogs);
 
 // ── Health check ──────────────────────────────────────────────────────────
 router.get("/test", (req, res) => res.send("✅ Route working"));

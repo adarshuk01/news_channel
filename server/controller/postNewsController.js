@@ -125,7 +125,7 @@ async function runNewsPipeline(config, res) {
         fn: () =>
           postReelToInstagram(
             finalUrl,
-            `${item.summary}കൂടുതൽ അറിയാൻ ബയോ ലിങ്ക് 👆\n\n${hashtags} #kerala #malayalam #news`
+            `${item.summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags} #kerala #malayalam #news`
           ),
       },
       {
@@ -133,7 +133,7 @@ async function runNewsPipeline(config, res) {
         fn: () =>
           postReelToFacebook(
             finalUrl,
-            `${item.summary}കൂടുതൽ അറിയാൻ ബയോ ലിങ്ക് 👆\n\n${hashtags}`
+            `${item.summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags}`
           ),
       },
       {
