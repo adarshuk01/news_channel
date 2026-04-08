@@ -2,7 +2,7 @@ const { createCanvas, GlobalFonts, loadImage } = require("@napi-rs/canvas");
 const path = require("path");
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/Rachana-Regular.ttf"),
+  path.join(__dirname, "../fonts/MANDARAM.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(

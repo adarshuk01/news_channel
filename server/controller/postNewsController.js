@@ -87,11 +87,11 @@ async function runNewsPipeline(config, res) {
     console.log("🎯 FINAL TITLE:", finalTitle);
 
     // 2 — Duplicate check
-    const lastTitle = await redis.get(redisKey);
-    if (lastTitle && lastTitle === item.title) {
-      console.log(`⏭️ Skipped duplicate`);
-      return res.status(200).json({ message: "Skipped duplicate" });
-    }
+    // const lastTitle = await redis.get(redisKey);
+    // if (lastTitle && lastTitle === item.title) {
+    //   console.log(`⏭️ Skipped duplicate`);
+    //   return res.status(200).json({ message: "Skipped duplicate" });
+    // }
 
     // 3 — Generate hashtags
     const hashtags = await aiService.generateHashtags(
@@ -128,23 +128,23 @@ async function runNewsPipeline(config, res) {
             `${item.summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags} #kerala #malayalam #news`
           ),
       },
-      {
-        name: "Facebook",
-        fn: () =>
-          postReelToFacebook(
-            finalUrl,
-            `${item.summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags}`
-          ),
-      },
-      {
-        name: "YouTube",
-        fn: () =>
-          uploadShort(
-            vidFilePath,
-            finalTitle,
-            `${item.summary}\n\n${hashtags} #Shorts`
-          ),
-      },
+      // {
+      //   name: "Facebook",
+      //   fn: () =>
+      //     postReelToFacebook(
+      //       finalUrl,
+      //       `${item.summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags}`
+      //     ),
+      // },
+      // {
+      //   name: "YouTube",
+      //   fn: () =>
+      //     uploadShort(
+      //       vidFilePath,
+      //       finalTitle,
+      //       `${item.summary}\n\n${hashtags} #Shorts`
+      //     ),
+      // },
     ];
 
     const results = await Promise.allSettled(
