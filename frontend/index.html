@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manual News Post</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-2xl bg-white shadow-xl rounded-2xl p-6">
+
+    <h2 class="text-2xl font-bold text-center mb-6">📢 Manual News Posting</h2>
+
+    <!-- FORM -->
+    <form id="postForm" class="space-y-4">
+
+      <!-- Title -->
+      <div>
+        <label class="block text-sm font-medium mb-1">Title</label>
+        <input
+          type="text"
+          id="title"
+          required
+          class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          placeholder="Enter news title"
+        />
+      </div>
+
+      <!-- Description -->
+      <div>
+        <label class="block text-sm font-medium mb-1">Description</label>
+        <textarea
+          id="description"
+          required
+          rows="4"
+          class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          placeholder="Enter description"
+        ></textarea>
+      </div>
+
+      <!-- Image Upload -->
+      <div>
+        <label class="block text-sm font-medium mb-1">Upload Image</label>
+        <input
+          type="file"
+          id="image"
+          accept="image/*"
+          class="w-full border rounded-lg p-2"
+        />
+      </div>
+
+      <!-- OR Image URL -->
+      <div>
+        <label class="block text-sm font-medium mb-1">OR Image URL</label>
+        <input
+          type="text"
+          id="imageUrl"
+          class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+          placeholder="https://example.com/image.jpg"
+        />
+      </div>
+
+      <!-- Preview -->
+      <div id="previewContainer" class="hidden">
+        <p class="text-sm mb-2">Preview:</p>
+        <img id="previewImage" class="w-full rounded-lg border"/>
+      </div>
+
+      <!-- Button -->
+      <button
+        type="submit"
+        id="submitBtn"
+        class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+      >
+        🚀 Post Now
+      </button>
+
+    </form>
+
+    <!-- STATUS -->
+    <div id="status" class="mt-4 text-center text-sm"></div>
+
+    <!-- RESULT -->
+    <div id="result" class="mt-4 hidden">
+      <p class="font-semibold mb-2">Result:</p>
+      <pre class="bg-gray-100 p-3 rounded-lg text-xs overflow-auto"></pre>
+    </div>
+
+  </div>
+
+<script>
+const form = document.getElementById("postForm");
+const statusDiv = document.getElementById("status");
+const resultDiv = document.getElementById("result");
+const resultPre = resultDiv.querySelector("pre");
+
+const imageInput = document.getElementById("image");
+const imageUrlInput = document.getElementById("imageUrl");
+const previewContainer = document.getElementById("previewContainer");
+const previewImage = document.getElementById("previewImage");
+
+// ✅ Preview for file
+imageInput.addEventListener("change", () => {
+  const file = imageInput.files[0];
+  if (file) {
+    previewImage.src = URL.createObjectURL(file);
+    previewContainer.classList.remove("hidden");
+  }
+});
+
+// ✅ Preview for URL
+imageUrlInput.addEventListener("input", () => {
+  const url = imageUrlInput.value.trim();
+  if (url) {
+    previewImage.src = url;
+    previewContainer.classList.remove("hidden");
+  }
+});
+
+// ✅ Submit
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const title = document.getElementById("title").value;
+  const description = document.getElementById("description").value;
+  const file = imageInput.files[0];
+  const imageUrl = imageUrlInput.value;
+
+  statusDiv.innerHTML = "⏳ Posting...";
+  resultDiv.classList.add("hidden");
+
+  try {
+    let response;
+
+    if (file) {
+      // 🔹 FormData (file upload)
+      const formData = new FormData();
+      formData.append("title", title);
+      formData.append("description", description);
+      formData.append("image", file);
+
+      response = await fetch("http://localhost:5000/api/manual-post", {
+        method: "POST",
+        body: formData,
+      });
+
+    } else {
+      // 🔹 JSON (image URL)
+      response = await fetch("http://localhost:5000/api/manual-post-json", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title,
+          description,
+          imageUrl,
+        }),
+      });
+    }
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed");
+    }
+
+    statusDiv.innerHTML = "✅ Posted Successfully!";
+    resultDiv.classList.remove("hidden");
+    resultPre.textContent = JSON.stringify(data, null, 2);
+
+  } catch (err) {
+    statusDiv.innerHTML = "❌ " + err.message;
+  }
+});
+</script>
+
+</body>
+</html>
