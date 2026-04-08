@@ -837,7 +837,7 @@
     loginBtn.classList.add('loading');
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
+      const res = await fetch('https://news-channel-drab.vercel.app/api/auth/login', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ username, password }),
@@ -952,7 +952,7 @@
 
     // Pass token as query param since EventSource doesn't support custom headers
     const token  = getToken();
-    const url    = `http://localhost:5000/api/manual-post/stream?sessionId=${sessionId}${token ? `&token=${token}` : ''}`;
+    const url    = `https://news-channel-drab.vercel.app/api/manual-post/stream?sessionId=${sessionId}${token ? `&token=${token}` : ''}`;
     eventSource  = new EventSource(url);
 
     eventSource.onopen = () => {
@@ -1021,9 +1021,9 @@
         fd.append('title', title);
         fd.append('description', desc);
         fd.append('image', file);
-        res = await authFetch('http://localhost:5000/api/manual-post', { method: 'POST', body: fd });
+        res = await authFetch('https://news-channel-drab.vercel.app/api/manual-post', { method: 'POST', body: fd });
       } else {
-        res = await authFetch('http://localhost:5000/api/manual-post-json', {
+        res = await authFetch('https://news-channel-drab.vercel.app/api/manual-post-json', {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify({ title, description: desc, imageUrl: url }),
