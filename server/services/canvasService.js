@@ -14,12 +14,6 @@ GlobalFonts.registerFromPath(
 const W = 1080;
 const H = 1920;
 
-// ── Ad Banner constants ───────────────────────────────────────
-const AD_H      = 250;   // banner height in pixels
-const AD_PAD_X  = 24;   // horizontal inset from poster edge
-const AD_PAD_Y  = 20;   // gap between bottom of text zone and banner top
-const AD_RADIUS = 16;   // rounded corner radius
-
 // Split text into lines respecting maxWidth
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(" ");
@@ -36,17 +30,6 @@ function wrapText(ctx, text, maxWidth) {
   }
   if (cur) lines.push(cur);
   return lines;
-}
-
-// Clip/stroke a rounded rectangle
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y,     x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x,     y + h, r);
-  ctx.arcTo(x,     y + h, x,     y,     r);
-  ctx.arcTo(x,     y,     x + w, y,     r);
-  ctx.closePath();
 }
 
 async function createNewsPoster(newsItem) {
@@ -141,14 +124,10 @@ async function createNewsPoster(newsItem) {
   // ── 4. Malayalam title text ───────────────────────────────
   const PAD      = 54;
   const TEXT_TOP = IMG_H + 58;
-
-  // Shrink the text zone when a banner is present
-  const hasAdBanner = newsItem.adBannerPath && fs.existsSync(newsItem.adBannerPath);
-  const AD_TOTAL    = hasAdBanner ? (AD_H + AD_PAD_Y + AD_PAD_X) : 0;
-  const TEXT_BOT    = H - 30 - AD_TOTAL;
-  const TEXT_H      = TEXT_BOT - TEXT_TOP;
-  const TEXT_W      = W - PAD * 2;
-  const CX          = W / 2;
+  const TEXT_BOT = H - 30;
+  const TEXT_H   = TEXT_BOT - TEXT_TOP;
+  const TEXT_W   = W - PAD * 2;
+  const CX       = W / 2;
 
   // ── Step A: resolve body lines and last line ──────────────
   let bodyInput = [];
@@ -250,60 +229,7 @@ async function createNewsPoster(newsItem) {
     drawY += LINE_H_LAST;
   }
 
-  // ── 5. Ad Banner ─────────────────────────────────────────
-  if (hasAdBanner) {
-    const BAN_X = AD_PAD_X;
-    const BAN_Y = H - AD_H - AD_PAD_X;          // flush to the bottom with padding
-    const BAN_W = W - AD_PAD_X * 2;
-    const BAN_H = AD_H;
-
-    try {
-      // Load from local file path — no network, always fast
-      const adImg = await loadImage(fs.readFileSync(newsItem.adBannerPath));
-
-      ctx.save();
-
-      // Clip to rounded corners
-      roundRect(ctx, BAN_X, BAN_Y, BAN_W, BAN_H, AD_RADIUS);
-      ctx.clip();
-
-      // Cover-fit: fill banner box without distortion
-      const scale = Math.max(BAN_W / adImg.width, BAN_H / adImg.height);
-      const dw    = adImg.width  * scale;
-      const dh    = adImg.height * scale;
-      const dx    = BAN_X + (BAN_W - dw) / 2;
-      const dy    = BAN_Y + (BAN_H - dh) / 2;
-
-      ctx.drawImage(adImg, dx, dy, dw, dh);
-      ctx.restore();
-
-      // Subtle border
-      ctx.save();
-      roundRect(ctx, BAN_X, BAN_Y, BAN_W, BAN_H, AD_RADIUS);
-      ctx.strokeStyle = "rgba(255,255,255,0.18)";
-      ctx.lineWidth   = 2;
-      ctx.stroke();
-      ctx.restore();
-
-    } catch (err) {
-      // Fallback placeholder if image is corrupted / unreadable
-      console.warn("⚠️  Ad banner render failed:", err.message);
-
-      ctx.save();
-      roundRect(ctx, BAN_X, BAN_Y, BAN_W, BAN_H, AD_RADIUS);
-      ctx.fillStyle = "#2a2a2a";
-      ctx.fill();
-
-      ctx.font         = "bold 28px English";
-      ctx.fillStyle    = "#555555";
-      ctx.textAlign    = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("Advertisement", W / 2, BAN_Y + BAN_H / 2);
-      ctx.restore();
-    }
-  }
-
-  // ── 6. Reset ─────────────────────────────────────────────
+  // ── 5. Reset ─────────────────────────────────────────────
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
 
