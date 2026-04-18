@@ -67,7 +67,7 @@ async function getNextAdBannerPath() {
 function keepMalayalamAndSpaces(text) {
   if (!text) return "";
   return text
-    .replace(/[^\u0D00-\u0D7F0-9\s]/g, "")
+    .replace(/[^\u0D00-\u0D7F0-9\s,.]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -138,6 +138,13 @@ async function runNewsPipeline(config, res) {
       `${item.title} ${item.summary}`
     );
 
+
+    // 3b — Generate viral hook (pick first of the 3 returned lines)
+const rawHook = await aiService.generateViralHook(
+  `${item.title} ${item.summary}`
+);
+const hook = rawHook.split("\n")[0].replace(/^\d+[\.\)]\s*/, "").trim();
+
     // 3 — Pick ad banner from local folder (auto round-robin)
     const adBannerPath = await getNextAdBannerPath();
 
@@ -146,6 +153,7 @@ async function runNewsPipeline(config, res) {
       title:        cleanTitle || item.title,
       image:        imageUrl,
       adBannerPath,           // ← absolute local path, or null if folder empty
+      hook
     });
 
     fs.writeFileSync(imgFilePath, pngBuffer);

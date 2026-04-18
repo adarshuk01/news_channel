@@ -12,7 +12,7 @@ GlobalFonts.registerFromPath(
 );
 
 const W = 1080;
-const H = 1920;
+const H = 1080; // Square Instagram post (was 1920 for Stories)
 
 // Split text into lines respecting maxWidth
 function wrapText(ctx, text, maxWidth) {
@@ -40,8 +40,10 @@ async function createNewsPoster(newsItem) {
   ctx.fillStyle = "#181818";
   ctx.fillRect(0, 0, W, H);
 
-  // ── 2. Photo — top 58% of poster ─────────────────────────
-  const IMG_H = Math.round(H * 0.58);
+  // ── 2. Photo — top 45% of poster ─────────────────────────
+  // Reduced from 58% to 45% so the square format has enough
+  // room for the text block below.
+  const IMG_H = Math.round(H * 0.45);
 
   try {
     const img = await loadImage(newsItem.image);
@@ -123,8 +125,8 @@ async function createNewsPoster(newsItem) {
 
   // ── 4. Malayalam title text ───────────────────────────────
   const PAD      = 54;
-  const TEXT_TOP = IMG_H + 58;
-  const TEXT_BOT = H - 30;
+  const TEXT_TOP = IMG_H + 40;  // tighter top gap for square format
+  const TEXT_BOT = H - 24;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const TEXT_W   = W - PAD * 2;
   const CX       = W / 2;
@@ -154,27 +156,29 @@ async function createNewsPoster(newsItem) {
   }
 
   // ── Step B: body font size ────────────────────────────────
-  let BODY_SIZE = 76;
+  // Reduced starting size (64 vs 76) to fit the shorter text zone
+  let BODY_SIZE = 64;
   let wrappedBodyLines = [];
 
-  while (BODY_SIZE >= 40) {
+  while (BODY_SIZE >= 36) {
     ctx.font = `bold ${BODY_SIZE}px Malayalam`;
     wrappedBodyLines = [];
     for (const segment of bodyInput) {
       wrappedBodyLines.push(...wrapText(ctx, segment, TEXT_W));
     }
-    if (wrappedBodyLines.length * BODY_SIZE * 1.38 <= TEXT_H * 0.65) break;
+    if (wrappedBodyLines.length * BODY_SIZE * 1.38 <= TEXT_H * 0.60) break;
     BODY_SIZE -= 3;
   }
 
   // ── Step C: last-line font size ───────────────────────────
-  let LAST_SIZE = 120;
+  // Reduced starting size (96 vs 120) for the square canvas
+  let LAST_SIZE = 96;
   let wrappedLastLines = [];
 
-  while (LAST_SIZE >= 50) {
+  while (LAST_SIZE >= 44) {
     ctx.font = `bold ${LAST_SIZE}px Malayalam`;
     wrappedLastLines = wrapText(ctx, lastInput, TEXT_W);
-    if (wrappedLastLines.length * LAST_SIZE * 1.25 <= TEXT_H * 0.5) break;
+    if (wrappedLastLines.length * LAST_SIZE * 1.25 <= TEXT_H * 0.50) break;
     LAST_SIZE -= 4;
   }
 

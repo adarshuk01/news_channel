@@ -52,24 +52,38 @@ exports.generateViralHook = async (text) => {
   try {
     const res = await openai.chat.completions.create({
       model: MODEL,
-      temperature: 0.7,
+      temperature: 0.9, // more creative & viral
       messages: [
         {
           role: "system",
-          content: "You create viral Instagram reel hooks.",
+          content: `
+You are an expert viral Malayalam content creator.
+You write hooks that stop scrolling instantly.
+Hooks must trigger curiosity, shock, or emotion.
+          `.trim(),
         },
         {
           role: "user",
           content: `
-Create 3 viral hook lines in Malayalam.
+Generate EXACTLY 3 viral Malayalam hook lines.
 
-Rules:
-- 5–12 words
-- Emotional / curiosity tone
-- No emojis, no hashtags
-- Return only 3 lines
+STRICT RULES:
+- Each line must be 5–12 words
+- Use simple Malayalam (no complex words)
+- Highly emotional OR curiosity-driven
+- Use power words like:
+  "ഞെട്ടി", "വിശ്വസിക്കാനാകില്ല", "സത്യം", "ഇത് കണ്ടോ", "ഇങ്ങനെ സംഭവിച്ചു"
+- No emojis
+- No hashtags
+- No numbering
+- No quotes
+- Each hook on a new line
+- Avoid repeating same pattern
 
-News:
+GOAL:
+Make people feel "I must watch this now"
+
+NEWS:
 ${text.slice(0, 1000)}
           `.trim(),
         },
@@ -79,7 +93,7 @@ ${text.slice(0, 1000)}
     return res.choices[0].message.content.trim();
 
   } catch (err) {
-    console.error("❌ Groq hook error:", err.message);
-    return "വാർത്ത കാണാതെ പോകരുത്";
+    console.error("❌ Hook error:", err.message);
+    return "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും";
   }
 };
