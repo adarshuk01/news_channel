@@ -4,7 +4,7 @@ const ffmpeg          = require("fluent-ffmpeg");
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 const W = 1080;
-const H = 1080;
+const H = 1280;
 
 /**
  * Convert a PNG file to a 5-second MP4.
