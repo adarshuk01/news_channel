@@ -3,7 +3,7 @@ const path = require("path");
 const fs   = require("fs");
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/MANDARAM.ttf"),
+  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(

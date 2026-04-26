@@ -140,10 +140,10 @@ async function runNewsPipeline(config, res) {
 
 
     // 3b — Generate viral hook (pick first of the 3 returned lines)
-const rawHook = await aiService.generateViralHook(
-  `${item.title} ${item.summary}`
-);
-const hook = rawHook.split("\n")[0].replace(/^\d+[\.\)]\s*/, "").trim();
+// const rawHook = await aiService.generateViralHook(
+//   `${item.title} ${item.summary}`
+// );
+// const hook = rawHook.split("\n")[0].replace(/^\d+[\.\)]\s*/, "").trim();
 
     // 3 — Pick ad banner from local folder (auto round-robin)
     const adBannerPath = await getNextAdBannerPath();
@@ -153,7 +153,6 @@ const hook = rawHook.split("\n")[0].replace(/^\d+[\.\)]\s*/, "").trim();
       title:        cleanTitle || item.title,
       image:        imageUrl,
       adBannerPath,           // ← absolute local path, or null if folder empty
-      hook
     });
 
     fs.writeFileSync(imgFilePath, pngBuffer);
