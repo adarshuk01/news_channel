@@ -1,9 +1,10 @@
 const express = require("express");
 const {
-  postLatestNews,
-  postAsianetNews,
+  postToInstagram,
+  postToFacebook,
+  postToYoutube,
 } = require("../controller/postNewsController");
-const { manualPostNews, streamPostLogs } = require("../controller/manualPostController");
+const { manualPostNews, manualPostNewsJson, streamPostLogs } = require("../controller/manualPostController");
 const multer = require("multer");
 const { protect } = require("../middleware/authMiddleware");
 const { login, logout } = require("../controller/authController");
@@ -16,24 +17,34 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
-// ── News routes ───────────────────────────────────────────────────────────
-router.get("/post-manorama-latest-news", postLatestNews);
-router.get("/post-asianet-latest-news",  postAsianetNews);
+// ── Platform-based news posting routes ───────────────────────────────────────
+// Each route fetches BOTH Manorama + Asianet and posts them simultaneously
+// to the specified platform.
 
-// POST with image upload
-router.post("/manual-post",protect, upload.single("image"), manualPostNews);
+// POST /api/post-instagram  → posts Manorama + Asianet to Instagram
+router.get("/post-instagram", postToInstagram);
 
-// OR JSON (imageUrl)
-router.post("/manual-post-json",protect, manualPostNews);
+// POST /api/post-facebook   → posts Manorama + Asianet to Facebook
+router.get("/post-facebook", postToFacebook);
 
- 
-// ✅ SSE endpoint for log streaming
-router.get("/manual-post/stream",protect, streamPostLogs);
+// POST /api/post-youtube    → posts Manorama + Asianet to YouTube Shorts
+router.get("/post-youtube", postToYoutube);
 
+// ── Manual post routes ────────────────────────────────────────────────────────
+// POST with image file upload
+router.post("/manual-post", protect, upload.single("image"), manualPostNews);
+
+// POST with JSON body (imageUrl)
+router.post("/manual-post-json", protect, manualPostNewsJson);
+
+// SSE endpoint for log streaming
+router.get("/manual-post/stream", protect, streamPostLogs);
+
+// ── Auth routes ───────────────────────────────────────────────────────────────
 router.post("/auth/login", login);
 router.post("/auth/logout", logout);
 
-// ── Health check ──────────────────────────────────────────────────────────
+// ── Health check ──────────────────────────────────────────────────────────────
 router.get("/test", (req, res) => res.send("✅ Route working"));
 
 module.exports = router;

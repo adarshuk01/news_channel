@@ -84,8 +84,10 @@ async function scrapeManorama(url, selector) {
     const link     = resolve(baseUrl, anchor.attr("href"));
     const summary  = $(el).find(".cmp-story-list__dispn").text().trim();
 
-    const imgEl = $(el).find(".cmp-story-list__image-block > a > img");
-    const image = imgEl.attr("data-src") || imgEl.attr("data-websrc") || "";
+    const imgEl   = $(el).find(".cmp-story-list__image-block > a > img");
+    const rawImage = imgEl.attr("data-src") || imgEl.attr("data-websrc") || "";
+    const image   = rawImage ? rawImage.split("?")[0] : "";
+    console.log('my image', image);
 
     const timeEl      = $(el).find(".cmp-story-list__date.en-font.text-sub-color");
     const timeText    = timeEl.text().trim();
