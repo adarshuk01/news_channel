@@ -5,7 +5,7 @@ const path = require("path");
 const fs   = require("fs");
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/MANDARAM.ttf"),
+  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
@@ -184,7 +184,7 @@ async function createNewsPoster(newsItem) {
 
   // ── Binary-search for the largest font that fits ─────────────────────────
   // (faster than stepping 2 px at a time across a wide range)
-const MAX_FONT = 80;
+const MAX_FONT = 55;
 const MIN_FONT = 28;
 
   let lo = MIN_FONT, hi = MAX_FONT, bestSize = MIN_FONT, bestLines = [];
@@ -214,7 +214,7 @@ const MIN_FONT = 28;
   }
 
   const FONT_SIZE = bestSize;
-  const LINE_H    = Math.round(FONT_SIZE * 1.00);
+  const LINE_H    = Math.round(FONT_SIZE * 1.15);
   const totalH    = bestLines.length * LINE_H;
 
   // Bottom-anchor the block so text "grows upward" from TITLE_BOT
