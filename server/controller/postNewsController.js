@@ -231,14 +231,14 @@ exports.postToInstagram = async (req, res) => {
     console.log(`✅ ${fresh.length} fresh payload(s). Posting to Instagram simultaneously…`);
 
     // Step 3 — Post all fresh payloads simultaneously
-    // const freshResults = await Promise.allSettled(
-    //   fresh.map((p) =>
-    //     postReelToInstagram(
-    //       p.finalUrl,
-    //       buildCaptions(p.summary, p.hashtags).instagram
-    //     )
-    //   )
-    // );
+    const freshResults = await Promise.allSettled(
+      fresh.map((p) =>
+        postReelToInstagram(
+          p.finalUrl,
+          buildCaptions(p.summary, p.hashtags).instagram
+        )
+      )
+    );
 
     freshResults.forEach((result, i) => {
       if (result.status === "fulfilled") {
