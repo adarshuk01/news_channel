@@ -11,14 +11,17 @@ GlobalFonts.registerFromPath(
 );
 
 const W = 1080;
-const H = 1280;
+const H = 1580; // ← updated
 
-// ── Inner area of the rounded rect box (where news photo goes) ──
-const BOX_X = 50;
-const BOX_Y = 292;
-const BOX_W = 980;
-const BOX_H = 762;
-const BOX_R = 28;
+// ── Layout constants — all derived so changing H ripples everywhere ──
+const BOX_X    = 50;
+const BOX_Y    = 295;
+const BOX_W    = 980;
+const FOOTER_H = 210;                       // footer strip height
+const BOX_GAP  = 22;                        // gap between box and footer
+const BOX_H    = H - BOX_Y - FOOTER_H - BOX_GAP; // fills all remaining space
+const BOX_R    = 28;
+const TEXT_ZONE_H = Math.round(BOX_H * 0.30); // bottom 30% of box for text
 
 // ── Utility: wrap text ────────────────────────────────────────
 function wrapText(ctx, text, maxWidth) {
@@ -49,22 +52,20 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// ── Draw siren/police light ───────────────────────────────────
+// ── Draw siren ────────────────────────────────────────────────
 function drawSiren(ctx, cx, cy, size) {
   ctx.save();
   ctx.translate(cx, cy);
 
-  // Outer red glow
   const glow = ctx.createRadialGradient(0, 0, size * 0.2, 0, 0, size * 1.8);
-  glow.addColorStop(0,   "rgba(255,40,0,0.55)");
-  glow.addColorStop(0.45,"rgba(200,10,0,0.2)");
-  glow.addColorStop(1,   "rgba(0,0,0,0)");
+  glow.addColorStop(0,    "rgba(255,40,0,0.55)");
+  glow.addColorStop(0.45, "rgba(200,10,0,0.2)");
+  glow.addColorStop(1,    "rgba(0,0,0,0)");
   ctx.fillStyle = glow;
   ctx.beginPath();
   ctx.arc(0, 0, size * 1.8, 0, Math.PI * 2);
   ctx.fill();
 
-  // Light rays
   const numRays = 14;
   for (let i = 0; i < numRays; i++) {
     const angle  = (i / numRays) * Math.PI * 2;
@@ -85,7 +86,6 @@ function drawSiren(ctx, cx, cy, size) {
     ctx.restore();
   }
 
-  // Dome body
   const domeGrad = ctx.createRadialGradient(
     -size * 0.22, -size * 0.28, 0,
      0, -size * 0.05, size * 0.72
@@ -100,7 +100,6 @@ function drawSiren(ctx, cx, cy, size) {
   ctx.closePath();
   ctx.fill();
 
-  // Bright lens flare spot
   const spot = ctx.createRadialGradient(
     -size * 0.18, -size * 0.28, 0,
      0, -size * 0.1, size * 0.42
@@ -114,8 +113,7 @@ function drawSiren(ctx, cx, cy, size) {
   ctx.closePath();
   ctx.fill();
 
-  // Black base housing
-  ctx.fillStyle = "#111111";
+  ctx.fillStyle   = "#111111";
   ctx.beginPath();
   ctx.roundRect(-size * 0.52, size * 0.16, size * 1.04, size * 0.28, 5);
   ctx.fill();
@@ -123,7 +121,6 @@ function drawSiren(ctx, cx, cy, size) {
   ctx.lineWidth   = 2;
   ctx.stroke();
 
-  // Mount pole
   ctx.fillStyle = "#1a1a1a";
   ctx.beginPath();
   ctx.rect(-size * 0.16, size * 0.44, size * 0.32, size * 0.38);
@@ -132,7 +129,7 @@ function drawSiren(ctx, cx, cy, size) {
   ctx.restore();
 }
 
-// ── Draw world-map-style dot pattern ─────────────────────────
+// ── Draw world-map dot pattern ────────────────────────────────
 function drawWorldMap(ctx, startX, startY, endX, endY) {
   ctx.save();
   ctx.globalAlpha = 0.22;
@@ -140,19 +137,17 @@ function drawWorldMap(ctx, startX, startY, endX, endY) {
   const sp = 22;
   const mW = endX - startX;
   const mH = endY - startY;
-
   for (let x = startX; x < endX; x += sp) {
     for (let y = startY; y < endY; y += sp) {
       const nx = (x - startX) / mW;
       const ny = (y - startY) / mH;
       let show = false;
-      // Rough continent shapes
-      if (nx < 0.28 && ny > 0.06 && ny < 0.58) show = true;              // N. America
-      if (nx > 0.14 && nx < 0.30 && ny > 0.58 && ny < 0.96) show = true; // S. America
-      if (nx > 0.36 && nx < 0.56 && ny > 0.04 && ny < 0.52) show = true; // Europe
-      if (nx > 0.38 && nx < 0.58 && ny > 0.46 && ny < 0.98) show = true; // Africa
-      if (nx > 0.50 && ny > 0.03 && ny < 0.70) show = true;              // Asia
-      if (nx > 0.74 && nx < 0.94 && ny > 0.64 && ny < 0.96) show = true; // Australia
+      if (nx < 0.28 && ny > 0.06 && ny < 0.58) show = true;
+      if (nx > 0.14 && nx < 0.30 && ny > 0.58 && ny < 0.96) show = true;
+      if (nx > 0.36 && nx < 0.56 && ny > 0.04 && ny < 0.52) show = true;
+      if (nx > 0.38 && nx < 0.58 && ny > 0.46 && ny < 0.98) show = true;
+      if (nx > 0.50 && ny > 0.03 && ny < 0.70) show = true;
+      if (nx > 0.74 && nx < 0.94 && ny > 0.64 && ny < 0.96) show = true;
       if (show) {
         ctx.beginPath();
         ctx.arc(x, y, 2.8, 0, Math.PI * 2);
@@ -197,28 +192,26 @@ async function createNewsPoster(newsItem) {
   const ctx    = canvas.getContext("2d");
 
   // ═══════════════════════════════════════════════════════
-  // 1. BACKGROUND — near-black with deep red glow
+  // 1. BACKGROUND
   // ═══════════════════════════════════════════════════════
   ctx.fillStyle = "#060000";
   ctx.fillRect(0, 0, W, H);
 
-  // Primary red radial glow (upper-right, where the siren is)
-  const g1 = ctx.createRadialGradient(W * 0.88, 0, 0, W * 0.88, 0, W * 1.05);
-  g1.addColorStop(0,   "rgba(200,0,0,0.60)");
-  g1.addColorStop(0.35,"rgba(140,0,0,0.30)");
-  g1.addColorStop(0.7, "rgba(60,0,0,0.10)");
-  g1.addColorStop(1,   "rgba(0,0,0,0)");
+  const g1 = ctx.createRadialGradient(W * 0.88, 0, 0, W * 0.88, 0, W * 1.1);
+  g1.addColorStop(0,    "rgba(200,0,0,0.60)");
+  g1.addColorStop(0.35, "rgba(140,0,0,0.30)");
+  g1.addColorStop(0.7,  "rgba(60,0,0,0.10)");
+  g1.addColorStop(1,    "rgba(0,0,0,0)");
   ctx.fillStyle = g1;
   ctx.fillRect(0, 0, W, H);
 
-  // Secondary softer glow (mid-left)
-  const g2 = ctx.createRadialGradient(0, H * 0.35, 0, 0, H * 0.35, W * 0.65);
-  g2.addColorStop(0,   "rgba(100,0,0,0.30)");
-  g2.addColorStop(1,   "rgba(0,0,0,0)");
+  const g2 = ctx.createRadialGradient(0, H * 0.3, 0, 0, H * 0.3, W * 0.65);
+  g2.addColorStop(0, "rgba(100,0,0,0.30)");
+  g2.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g2;
   ctx.fillRect(0, 0, W, H);
 
-  // Diagonal streaks (subtle energy lines)
+  // Diagonal streaks (only in header zone)
   ctx.save();
   ctx.globalAlpha = 0.055;
   ctx.strokeStyle = "#ff2200";
@@ -232,16 +225,15 @@ async function createNewsPoster(newsItem) {
   ctx.restore();
 
   // ═══════════════════════════════════════════════════════
-  // 2. WORLD MAP DOTS — upper-right quadrant
+  // 2. WORLD MAP — upper-right quadrant only
   // ═══════════════════════════════════════════════════════
   drawWorldMap(ctx, W * 0.26, 8, W - 8, BOX_Y - 8);
 
   // ═══════════════════════════════════════════════════════
-  // 3. BREAKING NEWS BANNER — top left
+  // 3. BREAKING NEWS BANNER
   // ═══════════════════════════════════════════════════════
   const SKEW = 26;
 
-  // Two white accent lines (far left)
   ctx.save();
   ctx.fillStyle   = "#ffffff";
   ctx.globalAlpha = 0.92;
@@ -249,7 +241,7 @@ async function createNewsPoster(newsItem) {
   ctx.fillRect(22, 112, 56, 9);
   ctx.restore();
 
-  // "BREAKING" — red parallelogram
+  // "BREAKING" red parallelogram
   const BK_X = 84, BK_Y = 48, BK_W = 526, BK_H = 92;
   const redG  = ctx.createLinearGradient(BK_X, BK_Y, BK_X + BK_W, BK_Y + BK_H);
   redG.addColorStop(0, "#e20000");
@@ -273,7 +265,7 @@ async function createNewsPoster(newsItem) {
   ctx.fillText("BREAKING", BK_X + SKEW + 18, BK_Y + BK_H / 2 + 2);
   ctx.restore();
 
-  // "NEWS" — gold/yellow parallelogram
+  // "NEWS" gold parallelogram
   const NW_X = 84, NW_Y = BK_Y + BK_H - 8, NW_W = 386, NW_H = 78;
   const goldG = ctx.createLinearGradient(NW_X, NW_Y, NW_X, NW_Y + NW_H);
   goldG.addColorStop(0, "#ffcc00");
@@ -299,13 +291,11 @@ async function createNewsPoster(newsItem) {
   // ═══════════════════════════════════════════════════════
   // 4. SIREN — top right
   // ═══════════════════════════════════════════════════════
-  drawSiren(ctx, W - 178, 158, 112);
+  drawSiren(ctx, W - 178, 162, 112);
 
   // ═══════════════════════════════════════════════════════
-  // 5. MAIN BOX — glowing red-bordered rounded rectangle
+  // 5. MAIN BOX — glow + dark fill
   // ═══════════════════════════════════════════════════════
-
-  // Layered outer glow
   for (let i = 16; i > 0; i--) {
     ctx.save();
     ctx.strokeStyle = `rgba(220,10,0,${0.055 * (i / 16)})`;
@@ -315,7 +305,6 @@ async function createNewsPoster(newsItem) {
     ctx.restore();
   }
 
-  // Box dark fill
   ctx.save();
   roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
   ctx.fillStyle = "#120000";
@@ -323,10 +312,8 @@ async function createNewsPoster(newsItem) {
   ctx.restore();
 
   // ═══════════════════════════════════════════════════════
-  // 6. NEWS IMAGE — clipped into the box
+  // 6. NEWS IMAGE — clipped into box
   // ═══════════════════════════════════════════════════════
-  const TEXT_ZONE_H = 285;
-
   ctx.save();
   roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
   ctx.clip();
@@ -340,25 +327,24 @@ async function createNewsPoster(newsItem) {
     const dy    = BOX_Y + (BOX_H - dh) / 2;
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    // Bottom dark gradient for text legibility
+    // Bottom gradient for text legibility
     const fade = ctx.createLinearGradient(
-      0, BOX_Y + BOX_H - TEXT_ZONE_H - 70,
+      0, BOX_Y + BOX_H - TEXT_ZONE_H - 90,
       0, BOX_Y + BOX_H
     );
-    fade.addColorStop(0,    "rgba(0,0,0,0)");
-    fade.addColorStop(0.3,  "rgba(0,0,0,0.72)");
-    fade.addColorStop(1,    "rgba(0,0,0,0.97)");
+    fade.addColorStop(0,   "rgba(0,0,0,0)");
+    fade.addColorStop(0.3, "rgba(0,0,0,0.75)");
+    fade.addColorStop(1,   "rgba(0,0,0,0.97)");
     ctx.fillStyle = fade;
     ctx.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H);
 
-    // Left vignette
+    // Side vignettes
     const lv = ctx.createLinearGradient(BOX_X, 0, BOX_X + 90, 0);
     lv.addColorStop(0, "rgba(0,0,0,0.52)");
     lv.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = lv;
     ctx.fillRect(BOX_X, BOX_Y, 90, BOX_H);
 
-    // Right vignette
     const rv = ctx.createLinearGradient(BOX_X + BOX_W - 90, 0, BOX_X + BOX_W, 0);
     rv.addColorStop(0, "rgba(0,0,0,0)");
     rv.addColorStop(1, "rgba(0,0,0,0.52)");
@@ -368,9 +354,9 @@ async function createNewsPoster(newsItem) {
     ctx.fillStyle = "#180000";
     ctx.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H);
   }
-  ctx.restore(); // end clip
+  ctx.restore();
 
-  // Red border drawn ON TOP of the image so it stays crisp
+  // Red border on top of image
   ctx.save();
   roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
   ctx.strokeStyle = "#dd0e00";
@@ -381,10 +367,10 @@ async function createNewsPoster(newsItem) {
   // ═══════════════════════════════════════════════════════
   // 7. MALAYALAM TITLE TEXT — bottom of box
   // ═══════════════════════════════════════════════════════
-  const PAD      = 50;
+  const PAD      = 52;
   const TEXT_W   = BOX_W - PAD * 2;
-  const TEXT_TOP = BOX_Y + BOX_H - TEXT_ZONE_H + 12;
-  const TEXT_BOT = BOX_Y + BOX_H - 24;
+  const TEXT_TOP = BOX_Y + BOX_H - TEXT_ZONE_H + 14;
+  const TEXT_BOT = BOX_Y + BOX_H - 26;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const CX       = W / 2;
 
@@ -401,7 +387,7 @@ async function createNewsPoster(newsItem) {
     ];
   }
 
-  let FONT_SIZE = 72;
+  let FONT_SIZE = 82; // slightly bigger max since box is taller
   let allLines  = [];
   while (FONT_SIZE >= 34) {
     ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
@@ -454,22 +440,19 @@ async function createNewsPoster(newsItem) {
   }
 
   // ═══════════════════════════════════════════════════════
-  // 8. FOOTER BAR
+  // 8. FOOTER BAR — anchored to bottom of canvas
   // ═══════════════════════════════════════════════════════
-  const FOOT_Y = BOX_Y + BOX_H + 20;
-  const FOOT_H = H - FOOT_Y;
-  const FOOT_CY = FOOT_Y + FOOT_H / 2;
+  const FOOT_Y  = H - FOOTER_H;
+  const FOOT_CY = FOOT_Y + FOOTER_H / 2;
 
-  // Dark footer background with rounded top
   const footGrad = ctx.createLinearGradient(0, FOOT_Y, 0, H);
   footGrad.addColorStop(0, "#1c1c1c");
   footGrad.addColorStop(1, "#080808");
   ctx.save();
   ctx.fillStyle = footGrad;
   ctx.beginPath();
-  ctx.roundRect(0, FOOT_Y, W, FOOT_H, [18, 18, 0, 0]);
+  ctx.roundRect(0, FOOT_Y, W, FOOTER_H, [18, 18, 0, 0]);
   ctx.fill();
-  // Subtle top highlight line
   ctx.strokeStyle = "rgba(255,60,0,0.35)";
   ctx.lineWidth   = 2;
   ctx.beginPath();
@@ -478,51 +461,49 @@ async function createNewsPoster(newsItem) {
   ctx.stroke();
   ctx.restore();
 
-  // Bell icon (circle + emoji)
-  const bellCX = 72;
+  // Bell icon
+  const bellCX = 80;
   ctx.save();
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth   = 3;
   ctx.beginPath();
-  ctx.arc(bellCX, FOOT_CY, 36, 0, Math.PI * 2);
+  ctx.arc(bellCX, FOOT_CY, 40, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.font         = "32px English";
+  ctx.font         = "36px English";
   ctx.textAlign    = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("🔔", bellCX, FOOT_CY + 1);
   ctx.restore();
 
-  // "FOLLOW FOR" & "MORE UPDATES >>"
+  // "FOLLOW FOR / MORE UPDATES >>"
   ctx.save();
   ctx.textAlign    = "left";
   ctx.textBaseline = "middle";
-  ctx.font         = "bold 27px English";
+  ctx.font         = "bold 30px English";
   ctx.fillStyle    = "#ffffff";
-  ctx.fillText("FOLLOW FOR", 126, FOOT_CY - 17);
-  ctx.font      = "bold 27px English";
+  ctx.fillText("FOLLOW FOR", 138, FOOT_CY - 19);
   ctx.fillStyle = "#ffcc00";
-  ctx.fillText("MORE UPDATES >>", 126, FOOT_CY + 17);
+  ctx.fillText("MORE UPDATES >>", 138, FOOT_CY + 19);
   ctx.restore();
 
   // Divider
   ctx.save();
   ctx.fillStyle = "rgba(255,255,255,0.28)";
-  ctx.fillRect(W / 2 - 8, FOOT_Y + 18, 2, FOOT_H - 36);
+  ctx.fillRect(W / 2 - 1, FOOT_Y + 20, 2, FOOTER_H - 40);
   ctx.restore();
 
   // Instagram icon + handle
-  const igCX = W / 2 + 48;
-  drawInstagramIcon(ctx, igCX, FOOT_CY, 30);
-
+  const igCX = W / 2 + 52;
+  drawInstagramIcon(ctx, igCX, FOOT_CY, 33);
   ctx.save();
-  ctx.font         = "bold 29px English";
+  ctx.font         = "bold 31px English";
   ctx.fillStyle    = "#ffffff";
   ctx.textAlign    = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText("flash_keralam", igCX + 46, FOOT_CY);
+  ctx.fillText("flash_keralam", igCX + 50, FOOT_CY);
   ctx.restore();
 
-  // ── Reset canvas state ──────────────────────────────────
+  // Reset
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
   ctx.letterSpacing= "0px";
