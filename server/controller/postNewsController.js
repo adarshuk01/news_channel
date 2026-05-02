@@ -115,11 +115,11 @@ async function preparePlatformPayload(sourceKey) {
     console.log(`📰 [${label}] Title:`, item.title);
 
     // 2 — Duplicate check
-    const lastTitle = await redis.get(redisKey);
-    if (lastTitle && lastTitle === item.title) {
-      console.log(`⏭️  [${label}] Skipped duplicate: "${item.title}"`);
-      return { label, isDuplicate: true };
-    }
+    // const lastTitle = await redis.get(redisKey);
+    // if (lastTitle && lastTitle === item.title) {
+    //   console.log(`⏭️  [${label}] Skipped duplicate: "${item.title}"`);
+    //   return { label, isDuplicate: true };
+    // }
 
     const safeTitle  = getSafeYouTubeTitle(cleanTitle);
     const finalTitle =
@@ -231,14 +231,14 @@ exports.postToInstagram = async (req, res) => {
     console.log(`✅ ${fresh.length} fresh payload(s). Posting to Instagram simultaneously…`);
 
     // Step 3 — Post all fresh payloads simultaneously
-    const freshResults = await Promise.allSettled(
-      fresh.map((p) =>
-        postReelToInstagram(
-          p.finalUrl,
-          buildCaptions(p.summary, p.hashtags).instagram
-        )
-      )
-    );
+    // const freshResults = await Promise.allSettled(
+    //   fresh.map((p) =>
+    //     postReelToInstagram(
+    //       p.finalUrl,
+    //       buildCaptions(p.summary, p.hashtags).instagram
+    //     )
+    //   )
+    // );
 
     freshResults.forEach((result, i) => {
       if (result.status === "fulfilled") {

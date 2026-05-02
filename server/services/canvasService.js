@@ -14,7 +14,7 @@ GlobalFonts.registerFromPath(
 );
 
 const W = 1080;
-const H = 1580;
+const H = 1280;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SHARED UTILITIES
