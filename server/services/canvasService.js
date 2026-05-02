@@ -1,8 +1,5 @@
-"use strict";
-
 const { createCanvas, GlobalFonts, loadImage } = require("@napi-rs/canvas");
 const path = require("path");
-const fs   = require("fs");
 
 GlobalFonts.registerFromPath(
   path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
@@ -16,11 +13,15 @@ GlobalFonts.registerFromPath(
 const W = 1080;
 const H = 1280;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SHARED UTILITIES
-// ═══════════════════════════════════════════════════════════════════════════
+// ── Inner area of the rounded rect box (where news photo goes) ──
+const BOX_X = 50;
+const BOX_Y = 292;
+const BOX_W = 980;
+const BOX_H = 762;
+const BOX_R = 28;
 
-function wrapTextSimple(ctx, text, maxWidth) {
+// ── Utility: wrap text ────────────────────────────────────────
+function wrapText(ctx, text, maxWidth) {
   const words = text.split(" ");
   const lines = [];
   let cur = "";
@@ -37,52 +38,7 @@ function wrapTextSimple(ctx, text, maxWidth) {
   return lines;
 }
 
-function hardBreak(ctx, word, maxWidth) {
-  const chars = [...word];
-  const lines = [];
-  let cur = "";
-  for (const ch of chars) {
-    const test = cur + ch;
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = ch;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-function wrapTextFull(ctx, text, maxWidth) {
-  const words = text.split(" ");
-  const lines = [];
-  let cur = "";
-  for (const word of words) {
-    const test = cur ? cur + " " + word : word;
-    if (ctx.measureText(test).width <= maxWidth) {
-      cur = test;
-    } else if (cur) {
-      if (ctx.measureText(word).width > maxWidth) {
-        lines.push(cur);
-        cur = "";
-        const broken = hardBreak(ctx, word, maxWidth);
-        for (let j = 0; j < broken.length - 1; j++) lines.push(broken[j]);
-        cur = broken[broken.length - 1];
-      } else {
-        lines.push(cur);
-        cur = word;
-      }
-    } else {
-      const broken = hardBreak(ctx, word, maxWidth);
-      for (let j = 0; j < broken.length - 1; j++) lines.push(broken[j]);
-      cur = broken[broken.length - 1];
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
+// ── Utility: rounded rect path ────────────────────────────────
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -93,214 +49,400 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function resolveSegments(newsItem) {
-  let segs = [];
-  if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
-    segs = newsItem.titleLines;
-  } else if (newsItem.title) {
-    segs = [newsItem.title];
+// ── Draw siren/police light ───────────────────────────────────
+function drawSiren(ctx, cx, cy, size) {
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Outer red glow
+  const glow = ctx.createRadialGradient(0, 0, size * 0.2, 0, 0, size * 1.8);
+  glow.addColorStop(0,   "rgba(255,40,0,0.55)");
+  glow.addColorStop(0.45,"rgba(200,10,0,0.2)");
+  glow.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 1.8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Light rays
+  const numRays = 14;
+  for (let i = 0; i < numRays; i++) {
+    const angle  = (i / numRays) * Math.PI * 2;
+    const rayLen = size * (i % 2 === 0 ? 1.55 : 1.15);
+    ctx.save();
+    ctx.rotate(angle);
+    const rg = ctx.createLinearGradient(0, 0, rayLen, 0);
+    rg.addColorStop(0,   "rgba(255,100,0,0.65)");
+    rg.addColorStop(0.5, "rgba(255,30,0,0.25)");
+    rg.addColorStop(1,   "rgba(200,0,0,0)");
+    ctx.fillStyle = rg;
+    ctx.beginPath();
+    ctx.moveTo(size * 0.35, -4);
+    ctx.lineTo(rayLen, -1.5);
+    ctx.lineTo(rayLen, 1.5);
+    ctx.lineTo(size * 0.35, 4);
+    ctx.fill();
+    ctx.restore();
   }
-  if (newsItem.lastLine) {
-    segs = [
-      ...(Array.isArray(newsItem.titleLines) ? newsItem.titleLines : [newsItem.title || ""]),
-      newsItem.lastLine,
-    ];
-  }
-  return segs;
+
+  // Dome body
+  const domeGrad = ctx.createRadialGradient(
+    -size * 0.22, -size * 0.28, 0,
+     0, -size * 0.05, size * 0.72
+  );
+  domeGrad.addColorStop(0,    "#ff7777");
+  domeGrad.addColorStop(0.28, "#ff1800");
+  domeGrad.addColorStop(0.7,  "#cc0000");
+  domeGrad.addColorStop(1,    "#800000");
+  ctx.fillStyle = domeGrad;
+  ctx.beginPath();
+  ctx.arc(0, -size * 0.05, size * 0.7, Math.PI, 0, false);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bright lens flare spot
+  const spot = ctx.createRadialGradient(
+    -size * 0.18, -size * 0.28, 0,
+     0, -size * 0.1, size * 0.42
+  );
+  spot.addColorStop(0,   "rgba(255,255,210,0.98)");
+  spot.addColorStop(0.3, "rgba(255,210,80,0.5)");
+  spot.addColorStop(1,   "rgba(255,0,0,0)");
+  ctx.fillStyle = spot;
+  ctx.beginPath();
+  ctx.arc(0, -size * 0.05, size * 0.7, Math.PI, 0, false);
+  ctx.closePath();
+  ctx.fill();
+
+  // Black base housing
+  ctx.fillStyle = "#111111";
+  ctx.beginPath();
+  ctx.roundRect(-size * 0.52, size * 0.16, size * 1.04, size * 0.28, 5);
+  ctx.fill();
+  ctx.strokeStyle = "#2a2a2a";
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+
+  // Mount pole
+  ctx.fillStyle = "#1a1a1a";
+  ctx.beginPath();
+  ctx.rect(-size * 0.16, size * 0.44, size * 0.32, size * 0.38);
+  ctx.fill();
+
+  ctx.restore();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DESIGN A — Split layout: top 58% image + dark text panel below
-// ═══════════════════════════════════════════════════════════════════════════
-async function designA(newsItem) {
+// ── Draw world-map-style dot pattern ─────────────────────────
+function drawWorldMap(ctx, startX, startY, endX, endY) {
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle   = "#cc1100";
+  const sp = 22;
+  const mW = endX - startX;
+  const mH = endY - startY;
+
+  for (let x = startX; x < endX; x += sp) {
+    for (let y = startY; y < endY; y += sp) {
+      const nx = (x - startX) / mW;
+      const ny = (y - startY) / mH;
+      let show = false;
+      // Rough continent shapes
+      if (nx < 0.28 && ny > 0.06 && ny < 0.58) show = true;              // N. America
+      if (nx > 0.14 && nx < 0.30 && ny > 0.58 && ny < 0.96) show = true; // S. America
+      if (nx > 0.36 && nx < 0.56 && ny > 0.04 && ny < 0.52) show = true; // Europe
+      if (nx > 0.38 && nx < 0.58 && ny > 0.46 && ny < 0.98) show = true; // Africa
+      if (nx > 0.50 && ny > 0.03 && ny < 0.70) show = true;              // Asia
+      if (nx > 0.74 && nx < 0.94 && ny > 0.64 && ny < 0.96) show = true; // Australia
+      if (show) {
+        ctx.beginPath();
+        ctx.arc(x, y, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  ctx.restore();
+}
+
+// ── Draw Instagram icon ───────────────────────────────────────
+function drawInstagramIcon(ctx, cx, cy, size) {
+  ctx.save();
+  const ig = ctx.createLinearGradient(cx - size, cy + size, cx + size, cy - size);
+  ig.addColorStop(0,    "#f09433");
+  ig.addColorStop(0.25, "#e6683c");
+  ig.addColorStop(0.5,  "#dc2743");
+  ig.addColorStop(0.75, "#cc2366");
+  ig.addColorStop(1,    "#bc1888");
+  ctx.fillStyle = ig;
+  ctx.beginPath();
+  ctx.roundRect(cx - size, cy - size, size * 2, size * 2, size * 0.3);
+  ctx.fill();
+
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth   = size * 0.13;
+  ctx.beginPath();
+  ctx.roundRect(cx - size * 0.6, cy - size * 0.6, size * 1.2, size * 1.2, size * 0.25);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, size * 0.35, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(cx + size * 0.38, cy - size * 0.42, size * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
-  // 1. BACKGROUND
-  ctx.fillStyle = "#0d0f14";
+  // ═══════════════════════════════════════════════════════
+  // 1. BACKGROUND — near-black with deep red glow
+  // ═══════════════════════════════════════════════════════
+  ctx.fillStyle = "#060000";
   ctx.fillRect(0, 0, W, H);
 
+  // Primary red radial glow (upper-right, where the siren is)
+  const g1 = ctx.createRadialGradient(W * 0.88, 0, 0, W * 0.88, 0, W * 1.05);
+  g1.addColorStop(0,   "rgba(200,0,0,0.60)");
+  g1.addColorStop(0.35,"rgba(140,0,0,0.30)");
+  g1.addColorStop(0.7, "rgba(60,0,0,0.10)");
+  g1.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.fillStyle = g1;
+  ctx.fillRect(0, 0, W, H);
+
+  // Secondary softer glow (mid-left)
+  const g2 = ctx.createRadialGradient(0, H * 0.35, 0, 0, H * 0.35, W * 0.65);
+  g2.addColorStop(0,   "rgba(100,0,0,0.30)");
+  g2.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.fillStyle = g2;
+  ctx.fillRect(0, 0, W, H);
+
+  // Diagonal streaks (subtle energy lines)
   ctx.save();
-  ctx.globalAlpha = 0.03;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth   = 1;
-  for (let i = -H; i < W + H; i += 18) {
+  ctx.globalAlpha = 0.055;
+  ctx.strokeStyle = "#ff2200";
+  ctx.lineWidth   = 1.5;
+  for (let i = -200; i < W + 300; i += 34) {
     ctx.beginPath();
     ctx.moveTo(i, 0);
-    ctx.lineTo(i + H, H);
+    ctx.lineTo(i + 320, BOX_Y);
     ctx.stroke();
   }
   ctx.restore();
 
-  // 2. IMAGE — top 58%
-  const IMG_H = Math.round(H * 0.58);
+  // ═══════════════════════════════════════════════════════
+  // 2. WORLD MAP DOTS — upper-right quadrant
+  // ═══════════════════════════════════════════════════════
+  drawWorldMap(ctx, W * 0.26, 8, W - 8, BOX_Y - 8);
+
+  // ═══════════════════════════════════════════════════════
+  // 3. BREAKING NEWS BANNER — top left
+  // ═══════════════════════════════════════════════════════
+  const SKEW = 26;
+
+  // Two white accent lines (far left)
+  ctx.save();
+  ctx.fillStyle   = "#ffffff";
+  ctx.globalAlpha = 0.92;
+  ctx.fillRect(22, 90, 56, 9);
+  ctx.fillRect(22, 112, 56, 9);
+  ctx.restore();
+
+  // "BREAKING" — red parallelogram
+  const BK_X = 84, BK_Y = 48, BK_W = 526, BK_H = 92;
+  const redG  = ctx.createLinearGradient(BK_X, BK_Y, BK_X + BK_W, BK_Y + BK_H);
+  redG.addColorStop(0, "#e20000");
+  redG.addColorStop(1, "#880000");
+  ctx.fillStyle = redG;
+  ctx.beginPath();
+  ctx.moveTo(BK_X + SKEW, BK_Y);
+  ctx.lineTo(BK_X + BK_W, BK_Y);
+  ctx.lineTo(BK_X + BK_W - SKEW, BK_Y + BK_H);
+  ctx.lineTo(BK_X, BK_Y + BK_H);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.save();
+  ctx.font         = "bold 74px English";
+  ctx.fillStyle    = "#ffffff";
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor  = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur   = 10;
+  ctx.fillText("BREAKING", BK_X + SKEW + 18, BK_Y + BK_H / 2 + 2);
+  ctx.restore();
+
+  // "NEWS" — gold/yellow parallelogram
+  const NW_X = 84, NW_Y = BK_Y + BK_H - 8, NW_W = 386, NW_H = 78;
+  const goldG = ctx.createLinearGradient(NW_X, NW_Y, NW_X, NW_Y + NW_H);
+  goldG.addColorStop(0, "#ffcc00");
+  goldG.addColorStop(1, "#ff9900");
+  ctx.fillStyle = goldG;
+  ctx.beginPath();
+  ctx.moveTo(NW_X + SKEW, NW_Y);
+  ctx.lineTo(NW_X + NW_W, NW_Y);
+  ctx.lineTo(NW_X + NW_W - SKEW, NW_Y + NW_H);
+  ctx.lineTo(NW_X, NW_Y + NW_H);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.save();
+  ctx.font         = "bold 70px English";
+  ctx.fillStyle    = "#111111";
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "middle";
+  ctx.shadowBlur   = 0;
+  ctx.fillText("NEWS", NW_X + SKEW + 20, NW_Y + NW_H / 2 + 2);
+  ctx.restore();
+
+  // ═══════════════════════════════════════════════════════
+  // 4. SIREN — top right
+  // ═══════════════════════════════════════════════════════
+  drawSiren(ctx, W - 178, 158, 112);
+
+  // ═══════════════════════════════════════════════════════
+  // 5. MAIN BOX — glowing red-bordered rounded rectangle
+  // ═══════════════════════════════════════════════════════
+
+  // Layered outer glow
+  for (let i = 16; i > 0; i--) {
+    ctx.save();
+    ctx.strokeStyle = `rgba(220,10,0,${0.055 * (i / 16)})`;
+    ctx.lineWidth   = i * 3.5;
+    roundRect(ctx, BOX_X - i * 1.5, BOX_Y - i * 1.5, BOX_W + i * 3, BOX_H + i * 3, BOX_R + i * 1.5);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Box dark fill
+  ctx.save();
+  roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
+  ctx.fillStyle = "#120000";
+  ctx.fill();
+  ctx.restore();
+
+  // ═══════════════════════════════════════════════════════
+  // 6. NEWS IMAGE — clipped into the box
+  // ═══════════════════════════════════════════════════════
+  const TEXT_ZONE_H = 285;
+
+  ctx.save();
+  roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
+  ctx.clip();
 
   try {
     const img   = await loadImage(newsItem.image);
-    const scale = Math.max(W / img.width, IMG_H / img.height);
+    const scale = Math.max(BOX_W / img.width, BOX_H / img.height);
     const dw    = img.width  * scale;
     const dh    = img.height * scale;
-    const dx    = (W     - dw) / 2;
-    const dy    = (IMG_H - dh) / 2;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, W, IMG_H);
-    ctx.clip();
+    const dx    = BOX_X + (BOX_W - dw) / 2;
+    const dy    = BOX_Y + (BOX_H - dh) / 2;
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    const fade1 = ctx.createLinearGradient(0, IMG_H * 0.38, 0, IMG_H);
-    fade1.addColorStop(0,    "rgba(13,15,20,0)");
-    fade1.addColorStop(0.75, "rgba(13,15,20,0.85)");
-    fade1.addColorStop(1,    "rgba(13,15,20,1)");
-    ctx.fillStyle = fade1;
-    ctx.fillRect(0, 0, W, IMG_H);
+    // Bottom dark gradient for text legibility
+    const fade = ctx.createLinearGradient(
+      0, BOX_Y + BOX_H - TEXT_ZONE_H - 70,
+      0, BOX_Y + BOX_H
+    );
+    fade.addColorStop(0,    "rgba(0,0,0,0)");
+    fade.addColorStop(0.3,  "rgba(0,0,0,0.72)");
+    fade.addColorStop(1,    "rgba(0,0,0,0.97)");
+    ctx.fillStyle = fade;
+    ctx.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H);
 
-    const leftVig = ctx.createLinearGradient(0, 0, 120, 0);
-    leftVig.addColorStop(0, "rgba(0,0,0,0.55)");
-    leftVig.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = leftVig;
-    ctx.fillRect(0, 0, 120, IMG_H);
+    // Left vignette
+    const lv = ctx.createLinearGradient(BOX_X, 0, BOX_X + 90, 0);
+    lv.addColorStop(0, "rgba(0,0,0,0.52)");
+    lv.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = lv;
+    ctx.fillRect(BOX_X, BOX_Y, 90, BOX_H);
 
-    const rightVig = ctx.createLinearGradient(W - 120, 0, W, 0);
-    rightVig.addColorStop(0, "rgba(0,0,0,0)");
-    rightVig.addColorStop(1, "rgba(0,0,0,0.55)");
-    ctx.fillStyle = rightVig;
-    ctx.fillRect(W - 120, 0, 120, IMG_H);
-
-    const topVig = ctx.createLinearGradient(0, 0, 0, 180);
-    topVig.addColorStop(0, "rgba(0,0,0,0.60)");
-    topVig.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = topVig;
-    ctx.fillRect(0, 0, W, IMG_H);
-
-    ctx.restore();
+    // Right vignette
+    const rv = ctx.createLinearGradient(BOX_X + BOX_W - 90, 0, BOX_X + BOX_W, 0);
+    rv.addColorStop(0, "rgba(0,0,0,0)");
+    rv.addColorStop(1, "rgba(0,0,0,0.52)");
+    ctx.fillStyle = rv;
+    ctx.fillRect(BOX_X + BOX_W - 90, BOX_Y, 90, BOX_H);
   } catch {
-    const fallback = ctx.createLinearGradient(0, 0, W, IMG_H);
-    fallback.addColorStop(0, "#1a1d26");
-    fallback.addColorStop(1, "#0d0f14");
-    ctx.fillStyle = fallback;
-    ctx.fillRect(0, 0, W, IMG_H);
+    ctx.fillStyle = "#180000";
+    ctx.fillRect(BOX_X, BOX_Y, BOX_W, BOX_H);
   }
+  ctx.restore(); // end clip
 
-  // 3. TOP BAR
-  const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
-  accentGrad.addColorStop(0,   "rgba(255,180,0,0)");
-  accentGrad.addColorStop(0.2, "rgba(255,180,0,1)");
-  accentGrad.addColorStop(0.8, "rgba(255,180,0,1)");
-  accentGrad.addColorStop(1,   "rgba(255,180,0,0)");
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, W, 3);
-
+  // Red border drawn ON TOP of the image so it stays crisp
   ctx.save();
-  ctx.font = "bold 26px English"; ctx.letterSpacing = "4px";
-  ctx.fillStyle = "#ffffff"; ctx.globalAlpha = 0.92;
-  ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  ctx.fillText("FLASH", 48, 52);
-  ctx.restore();
-
-  ctx.save();
-  ctx.font = "bold 26px English"; ctx.letterSpacing = "4px";
-  const flashW = ctx.measureText("FLASH").width + 34;
-  ctx.fillStyle = "#ffb400"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  ctx.fillText("KERALAM", 48 + flashW, 52);
-  ctx.restore();
-
-  const now     = new Date();
-  const day     = String(now.getDate()).padStart(2, "0");
-  const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
-  const year    = now.getFullYear();
-  const dateStr = `${day} ${month} ${year}`;
-
-  ctx.save();
-  ctx.font = "bold 20px English";
-  ctx.fillStyle = "rgba(255,255,255,0.55)";
-  ctx.textAlign = "right"; ctx.textBaseline = "middle";
-  ctx.fillText(dateStr, W - 48, 52);
-  ctx.restore();
-
-  // 4. BREAKING TAG
-  const TAG_Y    = IMG_H - 38;
-  const tagLabel = newsItem.tag || "BREAKING";
-
-  ctx.save();
-  ctx.font = "bold 19px English"; ctx.letterSpacing = "3px";
-  const tagTW = ctx.measureText(tagLabel).width + 22;
-  const tagW  = tagTW + 48;
-  const tagH  = 38;
-  const tagX  = W / 2 - tagW / 2;
-  const tagCY = TAG_Y;
-
-  const redGrad = ctx.createLinearGradient(tagX, tagCY - tagH / 2, tagX, tagCY + tagH / 2);
-  redGrad.addColorStop(0, "#ff2d2d");
-  redGrad.addColorStop(1, "#cc0000");
-  ctx.fillStyle = redGrad;
-  roundRect(ctx, tagX, tagCY - tagH / 2, tagW, tagH, tagH / 2);
-  ctx.fill();
-
-  ctx.strokeStyle = "rgba(255,120,120,0.4)"; ctx.lineWidth = 1.5;
-  roundRect(ctx, tagX + 1, tagCY - tagH / 2 + 1, tagW - 2, tagH - 2, tagH / 2 - 1);
+  roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
+  ctx.strokeStyle = "#dd0e00";
+  ctx.lineWidth   = 7;
   ctx.stroke();
-
-  ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText(tagLabel, W / 2, tagCY + 1);
   ctx.restore();
 
-  // 5. DIVIDER
-  const DIV_Y   = IMG_H + 18;
-  const divGrad = ctx.createLinearGradient(54, 0, W - 54, 0);
-  divGrad.addColorStop(0,    "rgba(255,180,0,0)");
-  divGrad.addColorStop(0.15, "rgba(255,180,0,0.9)");
-  divGrad.addColorStop(0.85, "rgba(255,180,0,0.9)");
-  divGrad.addColorStop(1,    "rgba(255,180,0,0)");
-  ctx.fillStyle = divGrad;
-  ctx.fillRect(54, DIV_Y, W - 108, 2);
-
-  // 6. MALAYALAM TITLE
-  const PAD      = 58;
-  const TEXT_TOP = IMG_H + 44;
-  const TEXT_BOT = H - 36;
+  // ═══════════════════════════════════════════════════════
+  // 7. MALAYALAM TITLE TEXT — bottom of box
+  // ═══════════════════════════════════════════════════════
+  const PAD      = 50;
+  const TEXT_W   = BOX_W - PAD * 2;
+  const TEXT_TOP = BOX_Y + BOX_H - TEXT_ZONE_H + 12;
+  const TEXT_BOT = BOX_Y + BOX_H - 24;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
-  const TEXT_W   = W - PAD * 2;
   const CX       = W / 2;
 
-  const allSegments = resolveSegments(newsItem);
+  let allSegments = [];
+  if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
+    allSegments = newsItem.titleLines;
+  } else if (newsItem.title) {
+    allSegments = [newsItem.title];
+  }
+  if (newsItem.lastLine) {
+    allSegments = [
+      ...(Array.isArray(newsItem.titleLines) ? newsItem.titleLines : [newsItem.title || ""]),
+      newsItem.lastLine
+    ];
+  }
 
   let FONT_SIZE = 72;
   let allLines  = [];
-
-  while (FONT_SIZE >= 38) {
-    ctx.font = `bold ${FONT_SIZE}px Malayalam`; ctx.letterSpacing = "0px";
-    allLines  = [];
+  while (FONT_SIZE >= 34) {
+    ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
+    ctx.letterSpacing = "0px";
+    allLines = [];
     for (const seg of allSegments) {
-      allLines.push(...wrapTextSimple(ctx, seg, TEXT_W));
+      allLines.push(...wrapText(ctx, seg, TEXT_W));
     }
-    if (allLines.length * Math.round(FONT_SIZE * 1.18) <= TEXT_H) break;
+    const LH = Math.round(FONT_SIZE * 1.2);
+    if (allLines.length * LH <= TEXT_H) break;
     FONT_SIZE -= 2;
   }
 
-  const LINE_H = Math.round(FONT_SIZE * 1.18);
+  const LINE_H = Math.round(FONT_SIZE * 1.2);
   const totalH = allLines.length * LINE_H;
-  let drawY    = TEXT_TOP + Math.round((TEXT_H - totalH) / 2);
+  let   drawY  = TEXT_TOP + Math.round((TEXT_H - totalH) / 2);
 
-  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "top";
 
   for (let i = 0; i < allLines.length; i++) {
     ctx.save();
-    ctx.font = `bold ${FONT_SIZE}px Malayalam`; ctx.letterSpacing = "0px";
-    ctx.shadowColor = "rgba(0,0,0,0.95)"; ctx.shadowBlur = 18;
-    ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3;
+    ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
+    ctx.letterSpacing = "0px";
+    ctx.shadowColor   = "rgba(0,0,0,1)";
+    ctx.shadowBlur    = 22;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 3;
 
     const isLast       = i === allLines.length - 1;
     const isSecondLast = i === allLines.length - 2;
 
     if (isLast) {
       const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
-      g.addColorStop(0, "#ffe566"); g.addColorStop(1, "#ffaa00");
+      g.addColorStop(0, "#ffe566");
+      g.addColorStop(1, "#ffaa00");
       ctx.fillStyle = g;
     } else if (isSecondLast && allLines.length > 2) {
       const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
-      g.addColorStop(0, "#fff0aa"); g.addColorStop(1, "#ffd040");
+      g.addColorStop(0, "#fff0aa");
+      g.addColorStop(1, "#ffd040");
       ctx.fillStyle = g;
     } else {
       ctx.fillStyle = "#f5f5f5";
@@ -311,168 +453,81 @@ async function designA(newsItem) {
     drawY += LINE_H;
   }
 
-  // 7. FOOTER
-  const FOOT_Y = H - 34;
+  // ═══════════════════════════════════════════════════════
+  // 8. FOOTER BAR
+  // ═══════════════════════════════════════════════════════
+  const FOOT_Y = BOX_Y + BOX_H + 20;
+  const FOOT_H = H - FOOT_Y;
+  const FOOT_CY = FOOT_Y + FOOT_H / 2;
+
+  // Dark footer background with rounded top
+  const footGrad = ctx.createLinearGradient(0, FOOT_Y, 0, H);
+  footGrad.addColorStop(0, "#1c1c1c");
+  footGrad.addColorStop(1, "#080808");
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
-  ctx.fillRect(0, FOOT_Y - 1, W, 1);
-  ctx.font = "bold 17px English"; ctx.letterSpacing = "2px";
-  ctx.fillStyle = "rgba(255,180,0,0.55)";
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  ctx.fillText("www.flashkeralam.com", W / 2, FOOT_Y + 17);
+  ctx.fillStyle = footGrad;
+  ctx.beginPath();
+  ctx.roundRect(0, FOOT_Y, W, FOOT_H, [18, 18, 0, 0]);
+  ctx.fill();
+  // Subtle top highlight line
+  ctx.strokeStyle = "rgba(255,60,0,0.35)";
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(20, FOOT_Y + 1);
+  ctx.lineTo(W - 20, FOOT_Y + 1);
+  ctx.stroke();
   ctx.restore();
 
-  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.letterSpacing = "0px";
+  // Bell icon (circle + emoji)
+  const bellCX = 72;
+  ctx.save();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.arc(bellCX, FOOT_CY, 36, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.font         = "32px English";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🔔", bellCX, FOOT_CY + 1);
+  ctx.restore();
+
+  // "FOLLOW FOR" & "MORE UPDATES >>"
+  ctx.save();
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "middle";
+  ctx.font         = "bold 27px English";
+  ctx.fillStyle    = "#ffffff";
+  ctx.fillText("FOLLOW FOR", 126, FOOT_CY - 17);
+  ctx.font      = "bold 27px English";
+  ctx.fillStyle = "#ffcc00";
+  ctx.fillText("MORE UPDATES >>", 126, FOOT_CY + 17);
+  ctx.restore();
+
+  // Divider
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,0.28)";
+  ctx.fillRect(W / 2 - 8, FOOT_Y + 18, 2, FOOT_H - 36);
+  ctx.restore();
+
+  // Instagram icon + handle
+  const igCX = W / 2 + 48;
+  drawInstagramIcon(ctx, igCX, FOOT_CY, 30);
+
+  ctx.save();
+  ctx.font         = "bold 29px English";
+  ctx.fillStyle    = "#ffffff";
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("flash_keralam", igCX + 46, FOOT_CY);
+  ctx.restore();
+
+  // ── Reset canvas state ──────────────────────────────────
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.letterSpacing= "0px";
 
   return canvas.toBuffer("image/png");
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DESIGN B — Full-bleed image with text overlaid at bottom (left-aligned)
-// ═══════════════════════════════════════════════════════════════════════════
-async function designB(newsItem) {
-  const canvas = createCanvas(W, H);
-  const ctx    = canvas.getContext("2d");
-
-  // 1. BACKGROUND FALLBACK
-  ctx.fillStyle = "#1a1a1a";
-  ctx.fillRect(0, 0, W, H);
-
-  // 2. FULL-HEIGHT IMAGE — cover crop
-  try {
-    const img   = await loadImage(newsItem.image);
-    const scale = Math.max(W / img.width, H / img.height);
-    const dw    = img.width  * scale;
-    const dh    = img.height * scale;
-    ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
-  } catch {
-    const fallback = ctx.createLinearGradient(0, 0, W, H);
-    fallback.addColorStop(0, "#2a2a2a");
-    fallback.addColorStop(1, "#0a0a0a");
-    ctx.fillStyle = fallback;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  // 3. GRADIENT OVERLAYS
-  const bottomFade = ctx.createLinearGradient(0, H * 0.28, 0, H);
-  bottomFade.addColorStop(0,    "rgba(0,0,0,0)");
-  bottomFade.addColorStop(0.35, "rgba(0,0,0,0.60)");
-  bottomFade.addColorStop(0.65, "rgba(0,0,0,0.85)");
-  bottomFade.addColorStop(1,    "rgba(0,0,0,0.95)");
-  ctx.fillStyle = bottomFade;
-  ctx.fillRect(0, 0, W, H);
-
-  const topFade = ctx.createLinearGradient(0, 0, 0, 200);
-  topFade.addColorStop(0,   "rgba(0,0,0,0.72)");
-  topFade.addColorStop(0.6, "rgba(0,0,0,0.30)");
-  topFade.addColorStop(1,   "rgba(0,0,0,0)");
-  ctx.fillStyle = topFade;
-  ctx.fillRect(0, 0, W, 200);
-
-  const leftVig = ctx.createLinearGradient(0, 0, 160, 0);
-  leftVig.addColorStop(0, "rgba(0,0,0,0.40)");
-  leftVig.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = leftVig;
-  ctx.fillRect(0, 0, 160, H);
-
-  // 4. TOP-LEFT BRAND + DATE
-  const BRAND_X = 36;
-  const BRAND_Y = 44;
-
-  ctx.save();
-  ctx.font = "bold 32px English"; ctx.letterSpacing = "1px";
-  ctx.fillStyle = "#ffffff"; ctx.textAlign = "left"; ctx.textBaseline = "top";
-  ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 8;
-  ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1;
-  ctx.fillText(newsItem.brand || "FLASH KERALAM", BRAND_X, BRAND_Y);
-  ctx.restore();
-
-  const now     = new Date();
-  const dateStr = `${now.toLocaleDateString("en-IN", { weekday: "short" })} ${now.toLocaleDateString("en-IN", { month: "short" })} ${now.getDate()} ${now.getFullYear()}`;
-
-  ctx.save();
-  ctx.font = "bold 20px English"; ctx.letterSpacing = "0px";
-  ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.textAlign = "left"; ctx.textBaseline = "top";
-  ctx.shadowColor = "rgba(0,0,0,0.7)"; ctx.shadowBlur = 6;
-  ctx.fillText(dateStr, BRAND_X, BRAND_Y + 42);
-  ctx.restore();
-
-  // 5. MALAYALAM TITLE — left-aligned, bottom-anchored
-  const PAD_L            = 36;
-  const PAD_R            = 40;
-  const MALAYALAM_SAFETY = 0.88;
-  const TEXT_W           = (W - PAD_L - PAD_R) * MALAYALAM_SAFETY;
-  const TITLE_BOT        = H - 80;
-  const ZONE_TOP         = Math.round(H * 0.38);
-  const MAX_TEXT_H       = TITLE_BOT - ZONE_TOP;
-  const MAX_FONT         = 55;
-  const MIN_FONT         = 28;
-
-  const allSegments = resolveSegments(newsItem);
-
-  let lo = MIN_FONT, hi = MAX_FONT, bestSize = MIN_FONT, bestLines = [];
-
-  while (lo <= hi) {
-    const mid = Math.floor((lo + hi) / 2);
-    ctx.font = `bold ${mid}px Malayalam`; ctx.letterSpacing = "0px";
-
-    const wrapped = [];
-    for (const seg of allSegments) {
-      wrapped.push(...wrapTextFull(ctx, seg, TEXT_W));
-    }
-
-    if (wrapped.length * Math.round(mid * 1.10) <= MAX_TEXT_H) {
-      bestSize  = mid;
-      bestLines = wrapped;
-      lo = mid + 1;
-    } else {
-      hi = mid - 1;
-    }
-  }
-
-  const FONT_SIZE = bestSize;
-  const LINE_H    = Math.round(FONT_SIZE * 1.15);
-  let drawY       = TITLE_BOT - bestLines.length * LINE_H;
-
-  for (let i = 0; i < bestLines.length; i++) {
-    ctx.save();
-    ctx.font = `bold ${FONT_SIZE}px Malayalam`; ctx.letterSpacing = "0px";
-    ctx.textAlign = "left"; ctx.textBaseline = "top";
-
-    ctx.shadowColor = "rgba(0,0,0,0.95)"; ctx.shadowBlur = 22;
-    ctx.shadowOffsetX = 2; ctx.shadowOffsetY = 3;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillText(bestLines[i], PAD_L, drawY);
-
-    ctx.shadowColor = "rgba(0,0,0,0.70)"; ctx.shadowBlur = 40;
-    ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 6;
-    ctx.fillText(bestLines[i], PAD_L, drawY);
-
-    ctx.restore();
-    drawY += LINE_H;
-  }
-
-  // 6. BOTTOM HANDLE / WATERMARK
-  ctx.save();
-  ctx.font = "bold 22px English"; ctx.letterSpacing = "0px";
-  ctx.fillStyle = "rgba(255,255,255,0.80)";
-  ctx.textAlign = "left"; ctx.textBaseline = "middle";
-  ctx.shadowColor = "rgba(0,0,0,0.8)"; ctx.shadowBlur = 8;
-  ctx.fillText(newsItem.handle || "@flashkeralam", PAD_L, H - 46);
-  ctx.restore();
-
-  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.letterSpacing = "0px";
-
-  return canvas.toBuffer("image/png");
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PUBLIC API — randomly picks Design A or Design B on each call
-// ═══════════════════════════════════════════════════════════════════════════
-async function createNewsPoster(newsItem) {
-  const useDesignA = Math.random() < 0.5;
-  console.log(`[canvasService] Using Design ${useDesignA ? "A (Split layout)" : "B (Full-bleed)"}`);
-  return useDesignA ? designA(newsItem) : designB(newsItem);
 }
 
 module.exports = { createNewsPoster };
