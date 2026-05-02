@@ -128,9 +128,9 @@ async function preparePlatformPayload(sourceKey) {
         : "Latest Malayalam News 🔥 #Shorts";
 
     // 3 — Generate hashtags
-    // const hashtags = await aiService.generateHashtags(`${item.title} ${item.summary}`);
+    const hashtags = await aiService.generateHashtags(`${item.title} ${item.summary}`);
 
-const hashtags ='#gaintrick #thrissur #photooftheday #entekeralam #trivandrum #likeforfollow #keralaattraction #byelection #election #like #instadaily #tamil #keraladiaries #travel #malayalamcinema #chuvadelikes #follow #delhi #followforfollowback #mohanlal #gaintrain #naturephotography #gainparty #nilambur #keralaphotography #followtrain #bangalore #model #karnataka #travelphotography'
+// const hashtags ='#gaintrick #thrissur #photooftheday #entekeralam #trivandrum #likeforfollow #keralaattraction #byelection #election #like #instadaily #tamil #keraladiaries #travel #malayalamcinema #chuvadelikes #follow #delhi #followforfollowback #mohanlal #gaintrain #naturephotography #gainparty #nilambur #keralaphotography #followtrain #bangalore #model #karnataka #travelphotography'
 
     // 4 — Pick ad banner (round-robin)
     const adBannerPath = await getNextAdBannerPath();
@@ -184,8 +184,8 @@ const hashtags ='#gaintrick #thrissur #photooftheday #entekeralam #trivandrum #l
 // ─────────────────────────────────────────────────────────────
 function buildCaptions(summary, hashtags) {
   return {
-    instagram: `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n#gaintrick #thrissur #photooftheday #entekeralam #trivandrum #likeforfollow #keralaattraction #byelection #election #like #instadaily #tamil #keraladiaries #travel #malayalamcinema #chuvadelikes #follow #delhi #followforfollowback #mohanlal #gaintrain #naturephotography #gainparty #nilambur #keralaphotography #followtrain #bangalore #model #karnataka #travelphotography`,
-    facebook:  `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags}`,
+    instagram: `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n ${hashtags}  #kerala #latestnews `,
+    facebook:  `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n ${hashtags}`,
     youtube:   `${summary}\n\n${hashtags} #Shorts`,
   };
 }
@@ -231,14 +231,14 @@ exports.postToInstagram = async (req, res) => {
     console.log(`✅ ${fresh.length} fresh payload(s). Posting to Instagram simultaneously…`);
 
     // Step 3 — Post all fresh payloads simultaneously
-    const freshResults = await Promise.allSettled(
-      fresh.map((p) =>
-        postReelToInstagram(
-          p.finalUrl,
-          buildCaptions(p.summary, p.hashtags).instagram
-        )
-      )
-    );
+    // const freshResults = await Promise.allSettled(
+    //   fresh.map((p) =>
+    //     postReelToInstagram(
+    //       p.finalUrl,
+    //       buildCaptions(p.summary, p.hashtags).instagram
+    //     )
+    //   )
+    // );
 
     freshResults.forEach((result, i) => {
       if (result.status === "fulfilled") {
