@@ -59,7 +59,7 @@ async function getNextAdBannerPath() {
 function keepMalayalamAndSpaces(text) {
   if (!text) return "";
   return text
-    .replace(/[^\u0D00-\u0D7F0-9\s,.]/g, "")
+    .replace(/[^\u0D00-\u0D7F0-9\s,.\-"'?!:;()]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }

@@ -87,26 +87,13 @@ async function createNewsPoster(newsItem) {
     ctx.fillStyle = "rgba(20,5,0,0.18)";
     ctx.fillRect(0, 0, W, IMG_H);
 
-    // Bottom fade
-    const fade = ctx.createLinearGradient(0, IMG_H * 0.3, 0, IMG_H);
-    fade.addColorStop(0, "rgba(10,10,12,0)");
-    fade.addColorStop(0.6, "rgba(10,10,12,0.7)");
-    fade.addColorStop(1,   "rgba(10,10,12,1)");
+    // Bottom fade — subtle, starts late
+    const fade = ctx.createLinearGradient(0, IMG_H * 0.6, 0, IMG_H);
+    fade.addColorStop(0,   "rgba(10,10,12,0)");
+    fade.addColorStop(0.7, "rgba(10,10,12,0.45)");
+    fade.addColorStop(1,   "rgba(10,10,12,0.85)");
     ctx.fillStyle = fade;
     ctx.fillRect(0, 0, W, IMG_H);
-
-    // Side fades
-    const leftFade = ctx.createLinearGradient(0, 0, 80, 0);
-    leftFade.addColorStop(0, "rgba(10,10,12,0.8)");
-    leftFade.addColorStop(1, "rgba(10,10,12,0)");
-    ctx.fillStyle = leftFade;
-    ctx.fillRect(0, 0, 80, IMG_H);
-
-    const rightFade = ctx.createLinearGradient(W - 80, 0, W, 0);
-    rightFade.addColorStop(0, "rgba(10,10,12,0)");
-    rightFade.addColorStop(1, "rgba(10,10,12,0.8)");
-    ctx.fillStyle = rightFade;
-    ctx.fillRect(W - 80, 0, 80, IMG_H);
 
     // Top vignette
     const topFade = ctx.createLinearGradient(0, 0, 0, 100);
