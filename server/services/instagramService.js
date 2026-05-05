@@ -102,4 +102,45 @@ async function postReelToInstagram(videoUrl, caption) {
   }
 }
 
-module.exports = { postReelToInstagram };
+async function postImageToInstagram(imageUrl, caption) {
+  try {
+    console.log("🚀 Starting Instagram Image upload...");
+    console.log("🖼️ Image URL:", imageUrl);
+
+    const safeCaption = sanitizeCaption(caption); // ← add sanitization
+
+    // Step 1: Create media container
+    const containerRes = await axios.post(
+      `https://graph.facebook.com/v18.0/${IG_USER_ID}/media`, // ← use v18.0 to match rest of file
+      {
+        image_url: imageUrl,
+        caption: safeCaption,
+        access_token: ACCESS_TOKEN,
+      }
+    );
+
+    const creationId = containerRes.data.id;
+    console.log("🖼️ Instagram image container created:", creationId);
+
+    // Step 2: Publish the container
+    const publishRes = await axios.post(
+      `https://graph.facebook.com/v18.0/${IG_USER_ID}/media_publish`,
+      {
+        creation_id: creationId,
+        access_token: ACCESS_TOKEN,
+      }
+    );
+
+    console.log("✅ Instagram Image posted:", publishRes.data);
+    return publishRes.data;
+
+  } catch (err) {
+    console.error(
+      "❌ Instagram Image ERROR:",
+      err.response?.data || err.message  // ← log full Instagram error
+    );
+    throw err;
+  }
+}
+
+module.exports = { postReelToInstagram,postImageToInstagram };

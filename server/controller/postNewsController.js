@@ -184,7 +184,7 @@ async function preparePlatformPayload(sourceKey) {
 // ─────────────────────────────────────────────────────────────
 function buildCaptions(summary, hashtags) {
   return {
-    instagram: `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n ${hashtags}  #kerala #latestnews `,
+    instagram: `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n ${hashtags}  #kerala #malayalam #keralagoodnews #keralanews #മലയാളം `,
     facebook:  `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n ${hashtags}`,
     youtube:   `${summary}\n\n${hashtags} #Shorts`,
   };

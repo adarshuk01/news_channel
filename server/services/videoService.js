@@ -18,7 +18,7 @@ function convertImageToVideo(imgPath, vidPath) {
       .inputOptions(["-loop 1"])
       .outputOptions([
         "-c:v libx264",
-        "-t 5",
+        "-t 10",
         "-pix_fmt yuv420p",
         `-vf scale=${W}:${H}`,
         "-r 25",

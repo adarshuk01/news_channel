@@ -65,9 +65,9 @@ async function createNewsPoster(newsItem) {
   ctx.restore();
 
   // ═══════════════════════════════════════════════════════
-  // 2. IMAGE — top 55%
+  // 2. IMAGE — top 52%
   // ═══════════════════════════════════════════════════════
-  const IMG_H = Math.round(H * 0.55);
+  const IMG_H = Math.round(H * 0.52);
 
   try {
     const img   = await loadImage(newsItem.image);
@@ -90,7 +90,7 @@ async function createNewsPoster(newsItem) {
     // Bottom fade
     const fade = ctx.createLinearGradient(0, IMG_H * 0.3, 0, IMG_H);
     fade.addColorStop(0, "rgba(10,10,12,0)");
-    fade.addColorStop(0.6, "rgba(10,10,12,0.7)");
+    fade.addColorStop(0.6, "rgba(10,10,12,0.75)");
     fade.addColorStop(1,   "rgba(10,10,12,1)");
     ctx.fillStyle = fade;
     ctx.fillRect(0, 0, W, IMG_H);
@@ -130,7 +130,7 @@ async function createNewsPoster(newsItem) {
   const headerH = 72;
 
   ctx.save();
-  ctx.fillStyle = "rgba(10,10,12,0.82)";
+  ctx.fillStyle = "rgba(10,10,12,0.85)";
   ctx.fillRect(0, 0, W, headerH);
   ctx.restore();
 
@@ -140,71 +140,23 @@ async function createNewsPoster(newsItem) {
   ctx.fillRect(0, 0, 6, headerH);
   ctx.restore();
 
-  // FLASH white
-  ctx.save();
-  ctx.font          = "bold 30px English";
-  ctx.letterSpacing = "6px";
-  ctx.fillStyle     = "#ffffff";
-  ctx.textAlign     = "left";
-  ctx.textBaseline  = "middle";
-  ctx.fillText("FLASH", 30, headerH / 2);
-  ctx.restore();
-
-  // KERALAM red
-  ctx.save();
-  ctx.font = "bold 30px English";
-  ctx.letterSpacing = "6px";
-  const flashW = ctx.measureText("FLASH").width + 42;
-  ctx.fillStyle    = "#e8000d";
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText("KERALAM", 30 + flashW, headerH / 2);
-  ctx.restore();
-
-  // Separator
-  ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  ctx.fillRect(W - 200, 14, 1, headerH - 28);
-  ctx.restore();
-
-  // Date
-  const now     = new Date();
-  const day     = String(now.getDate()).padStart(2, "0");
-  const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
-  const year    = now.getFullYear();
-  const weekday = now.toLocaleDateString("en-IN", { weekday: "short" }).toUpperCase();
+  // ── BREAKING NEWS tag (left side of header) ──────────
+  const tagLabel  = (newsItem.tag || "BREAKING NEWS").toUpperCase();
+  const tagCY     = headerH / 2;
+  const tagX      = 24;
+  const tagH      = 40;
 
   ctx.save();
-  ctx.textAlign    = "right";
-  ctx.textBaseline = "middle";
-  ctx.font         = "bold 22px English";
-  ctx.fillStyle    = "#ffffff";
-  ctx.fillText(`${day} ${month}`, W - 30, headerH / 2 - 10);
-  ctx.font         = "bold 14px English";
-  ctx.fillStyle    = "rgba(255,255,255,0.45)";
-  ctx.fillText(`${weekday} · ${year}`, W - 30, headerH / 2 + 12);
-  ctx.restore();
-
-  // ═══════════════════════════════════════════════════════
-  // 4. BREAKING TAG
-  // ═══════════════════════════════════════════════════════
-  const tagLabel = (newsItem.tag || "BREAKING NEWS").toUpperCase();
-  const TAG_Y    = IMG_H - 52;
-
-  ctx.save();
-  ctx.font          = "bold 18px English";
-  ctx.letterSpacing = "4px";
-  const tagTextW    = ctx.measureText(tagLabel).width + 30;
-  const tagW        = tagTextW + 40;
-  const tagH        = 40;
-  const tagX        = 54;
-  const tagCY       = TAG_Y;
+  ctx.font          = "bold 17px English";
+  ctx.letterSpacing = "3px";
+  const tagTextW    = ctx.measureText(tagLabel).width;
+  const tagW        = tagTextW + 52; // dot + padding
 
   ctx.fillStyle = "#e8000d";
-  roundRect(ctx, tagX, tagCY - tagH / 2, tagW, tagH, 4);
+  roundRect(ctx, tagX, tagCY - tagH / 2, tagW, tagH, 5);
   ctx.fill();
 
-  // Live dot
+  // Animated live dot
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.arc(tagX + 18, tagCY, 5, 0, Math.PI * 2);
@@ -216,42 +168,83 @@ async function createNewsPoster(newsItem) {
   ctx.fillText(tagLabel, tagX + 32, tagCY + 1);
   ctx.restore();
 
-  // ═══════════════════════════════════════════════════════
-  // 5. TEXT ZONE DESIGN ELEMENTS
-  // ═══════════════════════════════════════════════════════
-  const TEXT_ZONE_Y = IMG_H - 10;
-
-  // Diagonal red slash (subtle bg element)
+  // ── FLASH KERALAM branding (right side of header) ────
   ctx.save();
-  ctx.globalAlpha = 0.06;
-  ctx.fillStyle   = "#e8000d";
-  ctx.beginPath();
-  ctx.moveTo(-60, TEXT_ZONE_Y + 80);
-  ctx.lineTo(W * 0.72, TEXT_ZONE_Y + 80);
-  ctx.lineTo(W * 0.72 + 180, H);
-  ctx.lineTo(-60, H);
-  ctx.closePath();
-  ctx.fill();
+  // Separator line
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fillRect(W - 230, 14, 1, headerH - 28);
+
+  ctx.font          = "bold 26px English";
+  ctx.letterSpacing = "5px";
+  ctx.textBaseline  = "middle";
+  ctx.textAlign     = "right";
+
+  // Measure "FLASH" width to position "KERALAM"
+  ctx.fillStyle = "#ffffff";
+  const flashW  = ctx.measureText("FLASH").width;
+
+  // Right-align: draw KERALAM first (rightmost), then FLASH before it
+  // Total string: "FLASH KERALAM"
+  ctx.fillStyle = "#e8000d";
+  ctx.fillText("KERALAM", W - 22, headerH / 2);
+
+  const keralamW = ctx.measureText("KERALAM").width;
+  ctx.fillStyle  = "#ffffff";
+  ctx.fillText("FLASH ", W - 22 - keralamW, headerH / 2);
+
   ctx.restore();
+
+  // ═══════════════════════════════════════════════════════
+  // 4. RED RULE + DATE BLOCK
+  // ═══════════════════════════════════════════════════════
+  const PAD        = 54;
+  const RULE_Y     = IMG_H + 24;
 
   // Bold red rule
   ctx.save();
   ctx.fillStyle = "#e8000d";
-  ctx.fillRect(54, TEXT_ZONE_Y + 28, 64, 4);
+  ctx.fillRect(PAD, RULE_Y, 64, 5);
   ctx.restore();
 
-  // Thin white line
+  // Thin white line extending to right
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.15)";
-  ctx.fillRect(54 + 72, TEXT_ZONE_Y + 29, W - 54 - 72 - 54, 2);
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fillRect(PAD + 72, RULE_Y + 1.5, W - PAD - 72 - PAD, 2);
+  ctx.restore();
+
+  // ── Date — just above the title ──────────────────────
+  const now     = new Date();
+  const day     = String(now.getDate()).padStart(2, "0");
+  const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
+  const year    = now.getFullYear();
+  const weekday = now.toLocaleDateString("en-IN", { weekday: "long" }).toUpperCase();
+
+  const DATE_Y = RULE_Y + 22;
+
+  ctx.save();
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "top";
+
+  // Day + Month in white
+  ctx.font          = "bold 22px English";
+  ctx.letterSpacing = "2px";
+  ctx.fillStyle     = "#ffffff";
+  ctx.fillText(`${day} ${month} ${year}`, PAD, DATE_Y);
+
+  // Weekday separator dot + weekday
+  const dmW = ctx.measureText(`${day} ${month} ${year}`).width + 14;
+  ctx.font      = "bold 16px English";
+  ctx.fillStyle = "rgba(255,255,255,0.38)";
+  ctx.fillText("·", PAD + dmW, DATE_Y + 3);
+  ctx.fillText(weekday, PAD + dmW + 18, DATE_Y + 3);
+
   ctx.restore();
 
   // ═══════════════════════════════════════════════════════
-  // 6. MALAYALAM TITLE — ALL lines with red bg + white text
+  // 5. MALAYALAM TITLE — red bg + white text
   // ═══════════════════════════════════════════════════════
-  const PAD      = 54;
-  const TEXT_TOP = TEXT_ZONE_Y + 52;
-  const TEXT_BOT = H - 70;
+  const TEXT_TOP = DATE_Y + 48;
+  const TEXT_BOT = H - 148; // leave room for source tag + footer
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const TEXT_W   = W - PAD * 2;
 
@@ -270,7 +263,7 @@ async function createNewsPoster(newsItem) {
   }
 
   // ── Step B: find best font size ──────────────────────
-  let FONT_SIZE = 78;
+  let FONT_SIZE = 82;
   let allLines  = [];
   const GAP     = 10;
 
@@ -343,9 +336,43 @@ async function createNewsPoster(newsItem) {
   }
 
   // ═══════════════════════════════════════════════════════
+  // 6. SOURCE TAG (below title, above footer)
+  // ═══════════════════════════════════════════════════════
+  if (newsItem.source) {
+    const srcLabel  = ("● " + newsItem.source).toUpperCase();
+    const SRC_Y     = H - 138;
+    const srcH      = 42;
+
+    ctx.save();
+    ctx.font          = "bold 16px English";
+    ctx.letterSpacing = "3px";
+    const srcTextW    = ctx.measureText(srcLabel).width;
+    const srcW        = srcTextW + 36;
+
+    // Dark pill bg
+    ctx.fillStyle = "rgba(255,255,255,0.09)";
+    roundRect(ctx, PAD - 12, SRC_Y - srcH / 2, srcW, srcH, 6);
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = "rgba(255,255,255,0.18)";
+    ctx.lineWidth   = 1.5;
+    roundRect(ctx, PAD - 12, SRC_Y - srcH / 2, srcW, srcH, 6);
+    ctx.stroke();
+
+    // Text
+    ctx.fillStyle    = "rgba(255,255,255,0.75)";
+    ctx.textAlign    = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(srcLabel, PAD + 6, SRC_Y + 1);
+
+    ctx.restore();
+  }
+
+  // ═══════════════════════════════════════════════════════
   // 7. BOTTOM FOOTER
   // ═══════════════════════════════════════════════════════
-  const FOOT_H = 68;
+  const FOOT_H = 72;
   const FOOT_Y = H - FOOT_H;
 
   ctx.save();
@@ -356,25 +383,27 @@ async function createNewsPoster(newsItem) {
   ctx.fillStyle = "#e8000d";
   ctx.fillRect(0, FOOT_Y, W, 3);
 
-  // Brand
-  ctx.font          = "bold 16px English";
-  ctx.letterSpacing = "3px";
+  ctx.textBaseline = "middle";
+
+  // Brand — FLASH (white) KERALAM (red)
+  ctx.font          = "bold 18px English";
+  ctx.letterSpacing = "4px";
+  ctx.fillStyle     = "rgba(255,255,255,0.55)";
   ctx.textAlign     = "left";
-  ctx.textBaseline  = "middle";
-  ctx.fillStyle     = "rgba(255,255,255,0.5)";
   ctx.fillText("FLASH", 28, FOOT_Y + FOOT_H / 2);
 
+  const fW = ctx.measureText("FLASH").width;
   ctx.fillStyle = "#e8000d";
-  ctx.fillText("KERALAM", 28 + ctx.measureText("FLASH").width + 22, FOOT_Y + FOOT_H / 2);
+  ctx.fillText("KERALAM", 28 + fW + 12, FOOT_Y + FOOT_H / 2);
 
-  // Website
+  // Website — centre
   ctx.font          = "bold 15px English";
   ctx.letterSpacing = "2px";
-  ctx.fillStyle     = "rgba(255,255,255,0.28)";
+  ctx.fillStyle     = "rgba(255,255,255,0.30)";
   ctx.textAlign     = "center";
   ctx.fillText("www.flashkeralam.com", W / 2, FOOT_Y + FOOT_H / 2);
 
-  // Hashtag
+  // Hashtag — right
   ctx.font          = "bold 14px English";
   ctx.letterSpacing = "1px";
   ctx.fillStyle     = "rgba(255,255,255,0.22)";
@@ -384,9 +413,9 @@ async function createNewsPoster(newsItem) {
   ctx.restore();
 
   // ── Reset ─────────────────────────────────────────────
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "alphabetic";
-  ctx.letterSpacing= "0px";
+  ctx.textAlign     = "left";
+  ctx.textBaseline  = "alphabetic";
+  ctx.letterSpacing = "0px";
 
   return canvas.toBuffer("image/png");
 }
