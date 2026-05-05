@@ -12,7 +12,11 @@ GlobalFonts.registerFromPath(
 );
 
 const W = 1080;
-const H = 1280;
+const H = 1080; // Square format like the template
+
+// ─────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────
 
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(" ");
@@ -41,381 +45,375 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// ─────────────────────────────────────────────────────────
+// MAIN
+// ─────────────────────────────────────────────────────────
+
 async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, H);
   const ctx    = canvas.getContext("2d");
 
-  // ═══════════════════════════════════════════════════════
-  // 1. BACKGROUND
-  // ═══════════════════════════════════════════════════════
-  ctx.fillStyle = "#0a0a0c";
+  // ── Palette matching the template ──────────────────────
+  const GOLD       = "#F5C518";   // bright golden yellow for main text
+  const GOLD_LIGHT = "#FFD84D";   // lighter gold accent
+  const WHITE      = "#FFFFFF";
+  const DARK_BG    = "#0D0D0D";   // near-black base
+  const OVERLAY    = "rgba(0,0,0,0.55)";
+
+  const PAD    = 48;
+  // Text zone: top ~54%, image zone: bottom ~46%
+  const TEXT_H = Math.round(H * 0.54);
+  const IMG_Y  = TEXT_H;
+  const IMG_H  = H - IMG_Y;
+
+  // ══════════════════════════════════════════════════════
+  // 1. BASE BACKGROUND — deep dark gradient
+  // ══════════════════════════════════════════════════════
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0,   "#111111");
+  bgGrad.addColorStop(0.5, "#0A0A0A");
+  bgGrad.addColorStop(1,   "#050505");
+  ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, W, H);
 
-  // Halftone dot texture
-  ctx.save();
-  ctx.globalAlpha = 0.018;
-  ctx.fillStyle = "#ffffff";
-  for (let row = 0; row < H; row += 12) {
-    for (let col = 0; col < W; col += 12) {
-      ctx.beginPath();
-      ctx.arc(col, row, 1.2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.restore();
+  // Subtle vignette corners
+  const vig = ctx.createRadialGradient(W/2, H/2, W*0.3, W/2, H/2, W*0.85);
+  vig.addColorStop(0, "rgba(0,0,0,0)");
+  vig.addColorStop(1, "rgba(0,0,0,0.55)");
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, W, H);
 
-  // ═══════════════════════════════════════════════════════
-  // 2. IMAGE — top 52%
-  // ═══════════════════════════════════════════════════════
-  const IMG_H = Math.round(H * 0.52);
+  // ══════════════════════════════════════════════════════
+  // 2. PHOTO ZONE — bottom half, full-bleed with blend
+  // ══════════════════════════════════════════════════════
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, IMG_Y, W, IMG_H);
+  ctx.clip();
 
   try {
     const img   = await loadImage(newsItem.image);
     const scale = Math.max(W / img.width, IMG_H / img.height);
     const dw    = img.width  * scale;
     const dh    = img.height * scale;
-    const dx    = (W - dw) / 2;
-    const dy    = (IMG_H - dh) / 2;
+    const dx    = (W  - dw) / 2;
+    const dy    = IMG_Y + (IMG_H - dh) / 2;
 
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, W, IMG_H);
-    ctx.clip();
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    // Warm tone overlay
-    ctx.fillStyle = "rgba(20,5,0,0.18)";
-    ctx.fillRect(0, 0, W, IMG_H);
+    // Strong top-fade so photo blends into dark text area
+    const fadeTop = ctx.createLinearGradient(0, IMG_Y, 0, IMG_Y + IMG_H * 0.45);
+    fadeTop.addColorStop(0,    "rgba(10,10,10,1)");
+    fadeTop.addColorStop(0.55, "rgba(10,10,10,0.2)");
+    fadeTop.addColorStop(1,    "rgba(10,10,10,0)");
+    ctx.fillStyle = fadeTop;
+    ctx.fillRect(0, IMG_Y, W, IMG_H);
 
-    // Bottom fade
-    const fade = ctx.createLinearGradient(0, IMG_H * 0.3, 0, IMG_H);
-    fade.addColorStop(0, "rgba(10,10,12,0)");
-    fade.addColorStop(0.6, "rgba(10,10,12,0.75)");
-    fade.addColorStop(1,   "rgba(10,10,12,1)");
-    ctx.fillStyle = fade;
-    ctx.fillRect(0, 0, W, IMG_H);
+    // Bottom fade out
+    const fadeBot = ctx.createLinearGradient(0, H - IMG_H * 0.3, 0, H);
+    fadeBot.addColorStop(0, "rgba(10,10,10,0)");
+    fadeBot.addColorStop(1, "rgba(10,10,10,0.7)");
+    ctx.fillStyle = fadeBot;
+    ctx.fillRect(0, H - IMG_H * 0.5, W, IMG_H * 0.5);
 
-    // Side fades
-    const leftFade = ctx.createLinearGradient(0, 0, 80, 0);
-    leftFade.addColorStop(0, "rgba(10,10,12,0.8)");
-    leftFade.addColorStop(1, "rgba(10,10,12,0)");
-    ctx.fillStyle = leftFade;
-    ctx.fillRect(0, 0, 80, IMG_H);
+    // Slight warm colour grade overlay
+    ctx.fillStyle = "rgba(255,190,0,0.06)";
+    ctx.fillRect(0, IMG_Y, W, IMG_H);
 
-    const rightFade = ctx.createLinearGradient(W - 80, 0, W, 0);
-    rightFade.addColorStop(0, "rgba(10,10,12,0)");
-    rightFade.addColorStop(1, "rgba(10,10,12,0.8)");
-    ctx.fillStyle = rightFade;
-    ctx.fillRect(W - 80, 0, 80, IMG_H);
-
-    // Top vignette
-    const topFade = ctx.createLinearGradient(0, 0, 0, 100);
-    topFade.addColorStop(0, "rgba(10,10,12,0.7)");
-    topFade.addColorStop(1, "rgba(10,10,12,0)");
-    ctx.fillStyle = topFade;
-    ctx.fillRect(0, 0, W, 100);
-
-    ctx.restore();
   } catch {
-    const fallback = ctx.createLinearGradient(0, 0, W, IMG_H);
-    fallback.addColorStop(0, "#1c1a20");
-    fallback.addColorStop(1, "#0a0a0c");
+    // Fallback gradient if no image
+    const fallback = ctx.createLinearGradient(0, IMG_Y, 0, H);
+    fallback.addColorStop(0, "#1a1200");
+    fallback.addColorStop(1, DARK_BG);
     ctx.fillStyle = fallback;
-    ctx.fillRect(0, 0, W, IMG_H);
+    ctx.fillRect(0, IMG_Y, W, IMG_H);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 3. TOP HEADER BAR
-  // ═══════════════════════════════════════════════════════
-  const headerH = 72;
-
-  ctx.save();
-  ctx.fillStyle = "rgba(10,10,12,0.85)";
-  ctx.fillRect(0, 0, W, headerH);
   ctx.restore();
 
-  // Left red accent bar
-  ctx.save();
-  ctx.fillStyle = "#e8000d";
-  ctx.fillRect(0, 0, 6, headerH);
-  ctx.restore();
+  // ══════════════════════════════════════════════════════
+  // 3. TITLE TEXT BLOCK — large Malayalam, golden yellow
+  //    Matches the bold centered text in the template
+  // ══════════════════════════════════════════════════════
+  // Date box sits top-right: 148w × 72h starting at y=16
+  // Title must start below it so they never overlap
+  const TITLE_TOP = 16 + 72 + 10;  // BOX_Y + BOX_H + gap = 98
+  const TITLE_BOT = TEXT_H - 60;   // leave room for branding row
+  const TITLE_H   = TITLE_BOT - TITLE_TOP;
+  const TITLE_W   = W - PAD * 2;
 
-  // ── BREAKING NEWS tag (left side of header) ──────────
-  const tagLabel  = (newsItem.tag || "BREAKING NEWS").toUpperCase();
-  const tagCY     = headerH / 2;
-  const tagX      = 24;
-  const tagH      = 40;
-
-  ctx.save();
-  ctx.font          = "bold 17px English";
-  ctx.letterSpacing = "3px";
-  const tagTextW    = ctx.measureText(tagLabel).width;
-  const tagW        = tagTextW + 52; // dot + padding
-
-  ctx.fillStyle = "#e8000d";
-  roundRect(ctx, tagX, tagCY - tagH / 2, tagW, tagH, 5);
-  ctx.fill();
-
-  // Animated live dot
-  ctx.fillStyle = "#ffffff";
-  ctx.beginPath();
-  ctx.arc(tagX + 18, tagCY, 5, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle    = "#ffffff";
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(tagLabel, tagX + 32, tagCY + 1);
-  ctx.restore();
-
-  // ── FLASH KERALAM branding (right side of header) ────
-  ctx.save();
-  // Separator line
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  ctx.fillRect(W - 230, 14, 1, headerH - 28);
-
-  ctx.font          = "bold 26px English";
-  ctx.letterSpacing = "5px";
-  ctx.textBaseline  = "middle";
-  ctx.textAlign     = "right";
-
-  // Measure "FLASH" width to position "KERALAM"
-  ctx.fillStyle = "#ffffff";
-  const flashW  = ctx.measureText("FLASH").width;
-
-  // Right-align: draw KERALAM first (rightmost), then FLASH before it
-  // Total string: "FLASH KERALAM"
-  ctx.fillStyle = "#e8000d";
-  ctx.fillText("KERALAM", W - 22, headerH / 2);
-
-  const keralamW = ctx.measureText("KERALAM").width;
-  ctx.fillStyle  = "#ffffff";
-  ctx.fillText("FLASH ", W - 22 - keralamW, headerH / 2);
-
-  ctx.restore();
-
-  // ═══════════════════════════════════════════════════════
-  // 4. RED RULE + DATE BLOCK
-  // ═══════════════════════════════════════════════════════
-  const PAD        = 54;
-  const RULE_Y     = IMG_H + 24;
-
-  // Bold red rule
-  ctx.save();
-  ctx.fillStyle = "#e8000d";
-  ctx.fillRect(PAD, RULE_Y, 64, 5);
-  ctx.restore();
-
-  // Thin white line extending to right
-  ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  ctx.fillRect(PAD + 72, RULE_Y + 1.5, W - PAD - 72 - PAD, 2);
-  ctx.restore();
-
-  // ── Date — just above the title ──────────────────────
-  const now     = new Date();
-  const day     = String(now.getDate()).padStart(2, "0");
-  const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
-  const year    = now.getFullYear();
-  const weekday = now.toLocaleDateString("en-IN", { weekday: "long" }).toUpperCase();
-
-  const DATE_Y = RULE_Y + 22;
-
-  ctx.save();
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "top";
-
-  // Day + Month in white
-  ctx.font          = "bold 22px English";
-  ctx.letterSpacing = "2px";
-  ctx.fillStyle     = "#ffffff";
-  ctx.fillText(`${day} ${month} ${year}`, PAD, DATE_Y);
-
-  // Weekday separator dot + weekday
-  const dmW = ctx.measureText(`${day} ${month} ${year}`).width + 14;
-  ctx.font      = "bold 16px English";
-  ctx.fillStyle = "rgba(255,255,255,0.38)";
-  ctx.fillText("·", PAD + dmW, DATE_Y + 3);
-  ctx.fillText(weekday, PAD + dmW + 18, DATE_Y + 3);
-
-  ctx.restore();
-
-  // ═══════════════════════════════════════════════════════
-  // 5. MALAYALAM TITLE — red bg + white text
-  // ═══════════════════════════════════════════════════════
-  const TEXT_TOP = DATE_Y + 48;
-  const TEXT_BOT = H - 148; // leave room for source tag + footer
-  const TEXT_H   = TEXT_BOT - TEXT_TOP;
-  const TEXT_W   = W - PAD * 2;
-
-  // ── Step A: resolve segments ──────────────────────────
-  let allSegments = [];
+  // Collect text segments
+  let segs = [];
   if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
-    allSegments = newsItem.titleLines;
+    segs = [...newsItem.titleLines];
   } else if (newsItem.title) {
-    allSegments = [newsItem.title];
+    segs = [newsItem.title];
   }
   if (newsItem.lastLine) {
-    allSegments = [
+    segs = [
       ...(Array.isArray(newsItem.titleLines) ? newsItem.titleLines : [newsItem.title || ""]),
       newsItem.lastLine
     ];
   }
 
-  // ── Step B: find best font size ──────────────────────
-  let FONT_SIZE = 82;
-  let allLines  = [];
-  const GAP     = 10;
+  // Auto-size font to fill the text zone — tight spacing
+  let FS    = 110;
+  let lines = [];
+  const GAP = 2;   // minimal gap between lines
 
-  while (FONT_SIZE >= 40) {
-    ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
+  while (FS >= 44) {
+    ctx.font          = `bold ${FS}px Malayalam`;
     ctx.letterSpacing = "0px";
-    allLines = [];
-    for (const seg of allSegments) {
-      allLines.push(...wrapText(ctx, seg, TEXT_W));
+    lines = [];
+    for (const s of segs) {
+      lines.push(...wrapText(ctx, s, TITLE_W));
     }
-    const V_PAD  = Math.round(FONT_SIZE * 0.22);
-    const blockH = FONT_SIZE + V_PAD * 2;
-    if (allLines.length * (blockH + GAP) - GAP <= TEXT_H) break;
-    FONT_SIZE -= 2;
+    const lineH = FS * 1.08;   // tight line height
+    if (lines.length * lineH + (lines.length - 1) * GAP <= TITLE_H) break;
+    FS -= 3;
   }
 
-  const V_PAD  = Math.round(FONT_SIZE * 0.22);
-  const blockH = FONT_SIZE + V_PAD * 2;
-  const totalH = allLines.length * (blockH + GAP) - GAP;
-  let   drawY  = TEXT_TOP + Math.round((TEXT_H - totalH) / 2);
+  const LINE_H  = FS * 1.08;
+  const totalTH = lines.length * LINE_H + (lines.length - 1) * GAP;
+  const startY  = TITLE_TOP + Math.round((TITLE_H - totalTH) / 2);
 
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "top";
+  const lastLineIsSpecial = !!newsItem.lastLine;
+  let drawY = startY;
 
-  // ── Step C: ALL lines — red bg + white text ───────────
-  for (let i = 0; i < allLines.length; i++) {
+  for (let i = 0; i < lines.length; i++) {
     ctx.save();
-    ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
+
+    const isLast  = i === lines.length - 1 && lastLineIsSpecial;
+    const isFirst = i === 0;
+    const fSize   = isFirst ? FS + 2 : FS;
+
+    ctx.font          = `bold ${fSize}px Malayalam`;
     ctx.letterSpacing = "0px";
+    ctx.textAlign     = "center";
+    ctx.textBaseline  = "top";
 
-    const lineW = ctx.measureText(allLines[i]).width;
-    const rectX = PAD - 12;
-    const rectY = drawY - V_PAD;
-    const rectW = lineW + 24;
-    const rectH = blockH;
+    if (isLast) {
+      // Last accent line — slightly lighter gold with glow
+      ctx.shadowColor   = "rgba(255,210,0,0.8)";
+      ctx.shadowBlur    = 30;
+      ctx.fillStyle     = GOLD_LIGHT;
+    } else {
+      // All other lines — deep golden yellow matching template
+      ctx.shadowColor   = "rgba(0,0,0,0.95)";
+      ctx.shadowBlur    = 18;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 3;
+      ctx.fillStyle     = GOLD;
+    }
 
-    // Red tapered rectangle
-    ctx.fillStyle = "#e8000d";
-    ctx.beginPath();
-    ctx.moveTo(rectX, rectY);
-    ctx.lineTo(rectX + rectW + 8, rectY);
-    ctx.lineTo(rectX + rectW, rectY + rectH);
-    ctx.lineTo(rectX, rectY + rectH);
-    ctx.closePath();
-    ctx.fill();
-
-    // Shine on top half
-    const shine = ctx.createLinearGradient(0, rectY, 0, rectY + rectH * 0.5);
-    shine.addColorStop(0, "rgba(255,255,255,0.10)");
-    shine.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = shine;
-    ctx.beginPath();
-    ctx.moveTo(rectX, rectY);
-    ctx.lineTo(rectX + rectW + 8, rectY);
-    ctx.lineTo(rectX + rectW, rectY + rectH * 0.5);
-    ctx.lineTo(rectX, rectY + rectH * 0.5);
-    ctx.closePath();
-    ctx.fill();
-
-    // White text
-    ctx.shadowColor   = "rgba(0,0,0,0.6)";
-    ctx.shadowBlur    = 4;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 2;
-    ctx.fillStyle     = "#ffffff";
-    ctx.fillText(allLines[i], PAD, drawY);
-
+    ctx.fillText(lines[i], W / 2, drawY);
     ctx.restore();
-    drawY += blockH + GAP;
+
+    drawY += LINE_H + GAP;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 6. SOURCE TAG (below title, above footer)
-  // ═══════════════════════════════════════════════════════
-  if (newsItem.source) {
-    const srcLabel  = ("● " + newsItem.source).toUpperCase();
-    const SRC_Y     = H - 138;
-    const srcH      = 42;
-
-    ctx.save();
-    ctx.font          = "bold 16px English";
-    ctx.letterSpacing = "3px";
-    const srcTextW    = ctx.measureText(srcLabel).width;
-    const srcW        = srcTextW + 36;
-
-    // Dark pill bg
-    ctx.fillStyle = "rgba(255,255,255,0.09)";
-    roundRect(ctx, PAD - 12, SRC_Y - srcH / 2, srcW, srcH, 6);
-    ctx.fill();
-
-    // Border
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth   = 1.5;
-    roundRect(ctx, PAD - 12, SRC_Y - srcH / 2, srcW, srcH, 6);
-    ctx.stroke();
-
-    // Text
-    ctx.fillStyle    = "rgba(255,255,255,0.75)";
-    ctx.textAlign    = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(srcLabel, PAD + 6, SRC_Y + 1);
-
-    ctx.restore();
-  }
-
-  // ═══════════════════════════════════════════════════════
-  // 7. BOTTOM FOOTER
-  // ═══════════════════════════════════════════════════════
-  const FOOT_H = 72;
-  const FOOT_Y = H - FOOT_H;
+  // ══════════════════════════════════════════════════════
+  // 4. BRANDING ROW — "White devil media" style
+  //    Sits just below the text block, above the photo
+  // ══════════════════════════════════════════════════════
+  const BRAND_Y = TEXT_H - 48;
 
   ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.04)";
-  ctx.fillRect(0, FOOT_Y, W, FOOT_H);
 
-  // Red top border
-  ctx.fillStyle = "#e8000d";
-  ctx.fillRect(0, FOOT_Y, W, 3);
-
-  ctx.textBaseline = "middle";
-
-  // Brand — FLASH (white) KERALAM (red)
-  ctx.font          = "bold 18px English";
-  ctx.letterSpacing = "4px";
-  ctx.fillStyle     = "rgba(255,255,255,0.55)";
-  ctx.textAlign     = "left";
-  ctx.fillText("FLASH", 28, FOOT_Y + FOOT_H / 2);
-
-  const fW = ctx.measureText("FLASH").width;
-  ctx.fillStyle = "#e8000d";
-  ctx.fillText("KERALAM", 28 + fW + 12, FOOT_Y + FOOT_H / 2);
-
-  // Website — centre
+  // Semi-transparent pill background
+  const brandLabel  = (newsItem.brand || newsItem.source || "FLASH KERALAM").toUpperCase();
   ctx.font          = "bold 15px English";
-  ctx.letterSpacing = "2px";
-  ctx.fillStyle     = "rgba(255,255,255,0.30)";
-  ctx.textAlign     = "center";
-  ctx.fillText("www.flashkeralam.com", W / 2, FOOT_Y + FOOT_H / 2);
+  ctx.letterSpacing = "3px";
+  const brandTW     = ctx.measureText(brandLabel).width + 3 * 15;
+  const brandW      = brandTW + 64; // icon space + padding
+  const brandH      = 36;
+  const brandX      = (W - brandW) / 2;
 
-  // Hashtag — right
-  ctx.font          = "bold 14px English";
-  ctx.letterSpacing = "1px";
-  ctx.fillStyle     = "rgba(255,255,255,0.22)";
-  ctx.textAlign     = "right";
-  ctx.fillText("#FlashKeralam", W - 28, FOOT_Y + FOOT_H / 2);
+  // Pill fill
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  roundRect(ctx, brandX, BRAND_Y - brandH / 2, brandW, brandH, brandH / 2);
+  ctx.fill();
+
+  // Pill border
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth   = 1.5;
+  roundRect(ctx, brandX, BRAND_Y - brandH / 2, brandW, brandH, brandH / 2);
+  ctx.stroke();
+
+  // Facebook icon circle
+  const iconR = 9;
+  let   iconX = brandX + 20;
+  ctx.fillStyle = "#1877F2";
+  ctx.beginPath();
+  ctx.arc(iconX, BRAND_Y, iconR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle    = WHITE;
+  ctx.font         = "bold 13px English";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("f", iconX, BRAND_Y + 1);
+
+  // Instagram icon circle
+  iconX += 24;
+  const igGrad = ctx.createLinearGradient(iconX - iconR, BRAND_Y - iconR, iconX + iconR, BRAND_Y + iconR);
+  igGrad.addColorStop(0,   "#f09433");
+  igGrad.addColorStop(0.25,"#e6683c");
+  igGrad.addColorStop(0.5, "#dc2743");
+  igGrad.addColorStop(0.75,"#cc2366");
+  igGrad.addColorStop(1,   "#bc1888");
+  ctx.fillStyle = igGrad;
+  ctx.beginPath();
+  ctx.arc(iconX, BRAND_Y, iconR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle  = WHITE;
+  ctx.lineWidth    = 1.5;
+  ctx.beginPath();
+  roundRect(ctx, iconX - 5.5, BRAND_Y - 5.5, 11, 11, 3);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(iconX, BRAND_Y, 3, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Brand label text
+  ctx.font          = "bold 15px English";
+  ctx.letterSpacing = "3px";
+  ctx.fillStyle     = "rgba(255,255,255,0.85)";
+  ctx.textAlign     = "left";
+  ctx.textBaseline  = "middle";
+  ctx.fillText(brandLabel, iconX + 18, BRAND_Y + 1);
 
   ctx.restore();
 
-  // ── Reset ─────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════
+  // 5. WATERMARK — centred over image (subtle, like template)
+  // ══════════════════════════════════════════════════════
+  {
+    const wm = (newsItem.watermark || newsItem.brand || "FLASH KERALAM");
+    ctx.save();
+    ctx.font          = "bold 18px English";
+    ctx.letterSpacing = "2px";
+    ctx.fillStyle     = "rgba(255,255,255,0.28)";
+    ctx.textAlign     = "center";
+    ctx.textBaseline  = "middle";
+    ctx.fillText(wm, W / 2, IMG_Y + IMG_H * 0.28);
+    ctx.restore();
+  }
+
+  // ══════════════════════════════════════════════════════
+  // 6. DATE BOX — top-right corner, like the reference image
+  //    Layout: [ big day | divider | MON\nYYYY ]
+  // ══════════════════════════════════════════════════════
+  {
+    const now    = newsItem.date ? new Date(newsItem.date) : new Date();
+    const dayStr = String(now.getDate()).padStart(2, "0");
+    const monStr = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
+    const yrStr  = String(now.getFullYear());
+
+    // Box dimensions
+    const BOX_W  = 148;
+    const BOX_H  = 72;
+    const BOX_X  = W - PAD - BOX_W;
+    const BOX_Y  = 16;   // top of canvas with small margin — TITLE starts below this box
+    const BOX_R  = 8;
+
+    ctx.save();
+
+    // Box fill — semi-transparent dark with slight warm tint
+    ctx.fillStyle = "rgba(10,8,4,0.82)";
+    roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
+    ctx.fill();
+
+    // Gold border
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth   = 2.5;
+    roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_R);
+    ctx.stroke();
+
+    // Left section: big day number
+    const DAY_CX = BOX_X + 46;
+    const BOX_CY = BOX_Y + BOX_H / 2;
+
+    ctx.font          = "bold 48px English";
+    ctx.letterSpacing = "0px";
+    ctx.textAlign     = "center";
+    ctx.textBaseline  = "middle";
+    ctx.fillStyle     = WHITE;
+    ctx.fillText(dayStr, DAY_CX, BOX_CY + 2);
+
+    // Vertical gold divider
+    const DIV_X = BOX_X + 82;
+    ctx.fillStyle = GOLD;
+    ctx.fillRect(DIV_X, BOX_Y + 12, 2, BOX_H - 24);
+
+    // Right section: month on top, year below
+    const RIGHT_CX = DIV_X + (BOX_W - (DIV_X - BOX_X)) / 2 + 4;
+
+    ctx.font          = "bold 20px English";
+    ctx.letterSpacing = "2px";
+    ctx.fillStyle     = GOLD;
+    ctx.textAlign     = "center";
+    ctx.textBaseline  = "middle";
+    ctx.fillText(monStr, RIGHT_CX, BOX_CY - 12);
+
+    ctx.font          = "bold 17px English";
+    ctx.letterSpacing = "1px";
+    ctx.fillStyle     = "rgba(255,255,255,0.78)";
+    ctx.fillText(yrStr, RIGHT_CX, BOX_CY + 13);
+
+    ctx.restore();
+  }
+
+  // ══════════════════════════════════════════════════════
+  // 7. BOTTOM FOOTER STRIP
+  // ══════════════════════════════════════════════════════
+  const FOOT_H = 52; // footer height
+  const FOOT_Y = H - FOOT_H;
+
+  ctx.save();
+
+  // Dark strip
+  ctx.fillStyle = "rgba(0,0,0,0.72)";
+  ctx.fillRect(0, FOOT_Y, W, FOOT_H);
+
+  // Top gold accent line
+  ctx.fillStyle = GOLD;
+  ctx.fillRect(0, FOOT_Y, W, 3);
+
+  const footCY = FOOT_Y + FOOT_H / 2;
+  ctx.textBaseline = "middle";
+
+  // Brand name — left
+  ctx.font          = "bold 15px English";
+  ctx.letterSpacing = "4px";
+  ctx.fillStyle     = "rgba(255,255,255,0.6)";
+  ctx.textAlign     = "left";
+  ctx.fillText((newsItem.brand || "FLASH KERALAM").toUpperCase(), PAD, footCY);
+
+  // Website — centre
+  if (newsItem.website) {
+    ctx.font          = "bold 13px English";
+    ctx.letterSpacing = "1px";
+    ctx.fillStyle     = "rgba(255,255,255,0.28)";
+    ctx.textAlign     = "center";
+    ctx.fillText(newsItem.website, W / 2, footCY);
+  }
+
+  // Hashtag — right
+  const tag = newsItem.hashtag || ("#" + (newsItem.brand || "FlashKeralam").replace(/\s+/g, ""));
+  ctx.font          = "bold 14px English";
+  ctx.letterSpacing = "1px";
+  ctx.fillStyle     = "rgba(245,197,24,0.75)";
+  ctx.textAlign     = "right";
+  ctx.fillText(tag, W - PAD, footCY);
+
+  ctx.restore();
+
+  // ── Reset ctx state ───────────────────────────────
   ctx.textAlign     = "left";
   ctx.textBaseline  = "alphabetic";
   ctx.letterSpacing = "0px";
+  ctx.shadowColor   = "transparent";
+  ctx.shadowBlur    = 0;
 
   return canvas.toBuffer("image/png");
 }
