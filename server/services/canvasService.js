@@ -658,7 +658,7 @@ async function design3(newsItem) {
 // MAIN EXPORT — picks one of the 3 designs at random
 // ─────────────────────────────────────────────────────────
 
-const DESIGNS = [design1,design2];
+const DESIGNS = [design1,design2,design3];
 
 async function createNewsPoster(newsItem) {
   const idx = Math.floor(Math.random() * DESIGNS.length);
