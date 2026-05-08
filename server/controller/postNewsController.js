@@ -80,11 +80,11 @@ async function preparePlatformPayload(sourceKey) {
     console.log(`📰 [${label}] Title:`, item.title);
 
     // 2 — Duplicate check
-    // const lastTitle = await redis.get(redisKey);
-    // if (lastTitle && lastTitle === item.title) {
-    //   console.log(`⏭️  [${label}] Skipped duplicate: "${item.title}"`);
-    //   return { label, isDuplicate: true };
-    // }
+    const lastTitle = await redis.get(redisKey);
+    if (lastTitle && lastTitle === item.title) {
+      console.log(`⏭️  [${label}] Skipped duplicate: "${item.title}"`);
+      return { label, isDuplicate: true };
+    }
 
     const safeTitle  = getSafeYouTubeTitle(cleanTitle);
     const finalTitle =
