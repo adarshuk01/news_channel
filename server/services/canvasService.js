@@ -362,7 +362,7 @@ async function design2(newsItem) {
   // ════════════════════════════════════════════════════════════════
   const PAD      = 54;
   const TEXT_TOP = TEXT_ZONE_Y + 52;
-  const TEXT_BOT = H - 70;
+  const TEXT_BOT = H - 70 - 180 - 10; // leave room for ad banner
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const TEXT_W   = W - PAD * 2;
 
@@ -451,7 +451,14 @@ async function design2(newsItem) {
   }
 
   // ════════════════════════════════════════════════════════════════
-  // 7. BOTTOM FOOTER
+  // 7. AD BANNER
+  // ════════════════════════════════════════════════════════════════
+  const AD_H   = 180;
+  const AD_Y   = H - 68 - AD_H;
+  await drawAdBanner(ctx, newsItem.adBannerUrl || null, W, AD_Y, AD_H);
+
+  // ════════════════════════════════════════════════════════════════
+  // 8. BOTTOM FOOTER
   // ════════════════════════════════════════════════════════════════
   const FOOT_H = 68;
   const FOOT_Y = H - FOOT_H;
@@ -657,6 +664,55 @@ async function design3(newsItem) {
 // ─────────────────────────────────────────────────────────
 // MAIN EXPORT — picks one of the 3 designs at random
 // ─────────────────────────────────────────────────────────
+
+
+// ─────────────────────────────────────────────────────────────
+// AD BANNER HELPER
+// Draws the ad banner at the bottom of the canvas.
+// bannerUrl: Cloudinary URL string, or null
+// W: canvas width, targetY: top Y where banner starts, targetH: reserved height
+// ─────────────────────────────────────────────────────────────
+async function drawAdBanner(ctx, bannerUrl, W, targetY, targetH) {
+  if (bannerUrl) {
+    try {
+      const adImg   = await loadImage(bannerUrl);
+      // Scale to fill width, maintaining aspect ratio
+      const scale   = W / adImg.width;
+      const drawH   = Math.min(adImg.height * scale, targetH);
+      const drawY   = targetY + (targetH - drawH) / 2;
+      ctx.drawImage(adImg, 0, drawY, W, drawH);
+    } catch (e) {
+      console.warn("⚠️  Ad banner load failed:", e.message);
+      _drawFallbackAd(ctx, W, targetY, targetH);
+    }
+  } else {
+    _drawFallbackAd(ctx, W, targetY, targetH);
+  }
+}
+
+function _drawFallbackAd(ctx, W, targetY, targetH) {
+  ctx.save();
+
+  // Dark background strip
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(0, targetY, W, targetH);
+
+  // Subtle top separator line
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.fillRect(0, targetY, W, 2);
+
+  // Main text — "FOR AD DM ME" large, white, bold
+  ctx.font          = "bold 58px English";
+  ctx.letterSpacing = "6px";
+  ctx.fillStyle     = "#ffffff";
+  ctx.textAlign     = "center";
+  ctx.textBaseline  = "middle";
+  ctx.shadowColor   = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur    = 12;
+  ctx.fillText("FOR AD DM ME", W / 2, targetY + targetH / 2);
+
+  ctx.restore();
+}
 
 const DESIGNS = [design2];
 

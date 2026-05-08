@@ -16,41 +16,10 @@ const { TMP, safeDelete, cleanImageUrl } = require("../utils/fileUtils");
 const { uploadShort } = require("../services/youtubeShorts");
 
 
-// ─────────────────────────────────────────────────────────────
-// 📁 Ad Banner Folder
-// ─────────────────────────────────────────────────────────────
-const AD_BANNERS_DIR = path.join(__dirname, "../adBanners");
-const AD_EXTENSIONS  = new Set([".jpg", ".jpeg", ".png", ".webp"]);
-
-async function getNextAdBannerPath() {
-  if (!fs.existsSync(AD_BANNERS_DIR)) {
-    console.warn("⚠️  adBanners folder not found:", AD_BANNERS_DIR);
-    return null;
-  }
-
-  const files = fs.readdirSync(AD_BANNERS_DIR).filter((f) => {
-    const ext = path.extname(f).toLowerCase();
-    return AD_EXTENSIONS.has(ext) && !f.startsWith(".");
-  });
-
-  if (!files.length) {
-    console.warn("⚠️  No ad banners found in:", AD_BANNERS_DIR);
-    return null;
-  }
-
-  const REDIS_KEY  = "ad-banner-index";
-  const rawIndex   = await redis.get(REDIS_KEY);
-  const currentIdx = rawIndex ? parseInt(rawIndex, 10) : 0;
-  const safeIdx    = currentIdx % files.length;
-  const nextIdx    = (safeIdx + 1) % files.length;
-
-  await redis.set(REDIS_KEY, String(nextIdx));
-
-  const chosenFile = files[safeIdx];
-  console.log(`🖼️  Ad Banner [${safeIdx + 1}/${files.length}]: ${chosenFile}`);
-
-  return path.join(AD_BANNERS_DIR, chosenFile);
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// 🖼️  Ad Banner — fetched from Cloudinary via Redis
+// ─────────────────────────────────────────────────────────────────────────────
+const { getNextAdBannerUrl } = require("./adBannerController");
 
 
 // ─────────────────────────────────────────────────────────────
@@ -111,11 +80,11 @@ async function preparePlatformPayload(sourceKey) {
     console.log(`📰 [${label}] Title:`, item.title);
 
     // 2 — Duplicate check
-    const lastTitle = await redis.get(redisKey);
-    if (lastTitle && lastTitle === item.title) {
-      console.log(`⏭️  [${label}] Skipped duplicate: "${item.title}"`);
-      return { label, isDuplicate: true };
-    }
+    // const lastTitle = await redis.get(redisKey);
+    // if (lastTitle && lastTitle === item.title) {
+    //   console.log(`⏭️  [${label}] Skipped duplicate: "${item.title}"`);
+    //   return { label, isDuplicate: true };
+    // }
 
     const safeTitle  = getSafeYouTubeTitle(cleanTitle);
     const finalTitle =
@@ -129,14 +98,14 @@ async function preparePlatformPayload(sourceKey) {
 // const hashtags ='#gaintrick #thrissur #photooftheday #entekeralam #trivandrum #likeforfollow #keralaattraction #byelection #election #like #instadaily #tamil #keraladiaries #travel #malayalamcinema #chuvadelikes #follow #delhi #followforfollowback #mohanlal #gaintrain #naturephotography #gainparty #nilambur #keralaphotography #followtrain #bangalore #model #karnataka #travelphotography'
 
     // 4 — Pick ad banner (round-robin)
-    const adBannerPath = await getNextAdBannerPath();
+    const adBannerUrl = await getNextAdBannerUrl();
 
     // 5 — Create poster
     const pngBuffer = await canvasService.createNewsPoster({
       title:        cleanTitle || item.title,
       summary:      item.summary || "",
       image:        imageUrl,
-      adBannerPath,
+      adBannerUrl,
     });
     fs.writeFileSync(imgFilePath, pngBuffer);
 
@@ -164,7 +133,7 @@ async function preparePlatformPayload(sourceKey) {
       finalTitle,
       summary:      item.summary,
       hashtags,
-      adBannerUsed: adBannerPath ? path.basename(adBannerPath) : "none",
+      adBannerUsed: adBannerUrl ? adBannerUrl.split("/").pop() : "none",
     };
 
   } catch (err) {

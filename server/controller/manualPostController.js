@@ -13,6 +13,7 @@ const { postReelToFacebook }  = require("../services/facebookService");
 const { uploadShort }         = require("../services/youtubeShorts");
 
 const { TMP, safeDelete } = require("../utils/fileUtils");
+const { getNextAdBannerUrl } = require("./adBannerController");
 
 // ─────────────────────────────────────────────
 // Active SSE connections  { sessionId → res }
@@ -159,9 +160,11 @@ async function processPost({ sessionId, title, description, imageUrl, uploadedFi
 
     // ── Poster ───────────────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "🎨 Creating news poster…");
+    const adBannerUrl = await getNextAdBannerUrl();
     const pngBuffer = await canvasService.createNewsPoster({
-      title: cleanTitle || title,
-      image: imageSource,
+      title:       cleanTitle || title,
+      image:       imageSource,
+      adBannerUrl,
     });
     fs.writeFileSync(imgFilePath, pngBuffer);
     broadcastLog(sessionId, "success", "✅ Poster created");

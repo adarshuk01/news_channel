@@ -620,6 +620,206 @@
 
     .auth-chip.authed .auth-dot { background: var(--success); }
     .auth-chip.authed { color: var(--success); border-color: #bbf7d0; }
+
+    /* ── AD BANNER SECTION ── */
+    .ad-section {
+      margin-top: 2rem;
+    }
+
+    .ad-info-bar {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: .65rem .9rem;
+      margin-bottom: 1rem;
+      font-size: .78rem;
+      color: #92400e;
+    }
+
+    .ad-current-preview {
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      margin-bottom: 1rem;
+      display: none;
+      position: relative;
+    }
+
+    .ad-current-preview.show { display: block; }
+
+    .ad-current-preview img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .ad-preview-label {
+      position: absolute;
+      top: .5rem;
+      left: .5rem;
+      background: rgba(0,0,0,.55);
+      color: #fff;
+      font-size: .62rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: .2rem .5rem;
+      border-radius: 4px;
+    }
+
+    .ad-dim-note {
+      font-size: .72rem;
+      color: var(--muted);
+      margin-bottom: .75rem;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+    }
+
+    .ad-dim-badge {
+      display: inline-flex;
+      align-items: center;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: .15rem .45rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .68rem;
+      color: #475569;
+    }
+
+    .btn-upload-ad {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+      width: 100%;
+      padding: .8rem 1rem;
+      background: #f59e0b;
+      color: #fff;
+      font-family: 'Sora', sans-serif;
+      font-size: .875rem;
+      font-weight: 600;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background .2s, transform .15s, box-shadow .2s;
+      letter-spacing: .01em;
+    }
+
+    .btn-upload-ad:hover:not(:disabled) {
+      background: #d97706;
+      box-shadow: 0 4px 14px rgba(245,158,11,.35);
+      transform: translateY(-1px);
+    }
+
+    .btn-upload-ad:disabled { opacity: .6; cursor: not-allowed; }
+
+    .btn-upload-ad.loading .spinner { display: block; }
+    .btn-upload-ad.loading .btn-text { opacity: .8; }
+
+    .ad-status {
+      display: none;
+      margin-top: .75rem;
+      border-radius: 7px;
+      padding: .6rem .85rem;
+      font-size: .78rem;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    .ad-status.show   { display: flex; }
+    .ad-status.ok     { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .ad-status.fail   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+
+    .ad-banners-list  { margin-top: 1rem; display: flex; flex-direction: column; gap: .5rem; }
+
+    .ad-banner-item {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      padding: .6rem .75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+
+    .ad-banner-thumb {
+      width: 72px;
+      height: 24px;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+    }
+
+    .ad-banner-slot {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: .68rem;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .ad-banner-url {
+      flex: 1;
+      font-size: .72rem;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn-del-banner {
+      background: none;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      border-radius: 6px;
+      padding: .25rem .55rem;
+      font-size: .72rem;
+      cursor: pointer;
+      transition: background .15s;
+      flex-shrink: 0;
+    }
+
+    .btn-del-banner:hover { background: #fef2f2; }
+
+    .ad-drop-zone {
+      border: 2px dashed #fde68a;
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+      background: #fffdf5;
+    }
+
+    .ad-drop-zone:hover, .ad-drop-zone.drag-over {
+      border-color: #f59e0b;
+      background: #fffbeb;
+    }
+
+    .ad-drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .ad-drop-icon { font-size: 1.4rem; margin-bottom: .3rem; }
+
+    .ad-drop-text {
+      font-size: .78rem;
+      color: #92400e;
+    }
+
+    .ad-drop-text strong { color: #d97706; }
+
   </style>
 </head>
 <body>
@@ -726,6 +926,59 @@
           <div class="session-pill" id="sessionPill"></div>
 
         </form>
+      </div>
+    </div>
+
+    <!-- AD BANNER PANEL -->
+    <div class="panel ad-section" id="adPanel">
+      <div class="panel-head">
+        <span class="panel-title">📢 Ad Banner</span>
+        <span class="badge" style="background:#fffbeb;color:#92400e;border-color:#fde68a;">Cloudinary</span>
+      </div>
+      <div class="panel-body">
+
+        <div class="ad-info-bar">
+          ⚠️ Minimum size: <span class="ad-dim-badge">1944 × 528 px</span> — smaller images will be rejected.
+        </div>
+
+        <!-- Current banner preview -->
+        <div class="ad-current-preview" id="adCurrentPreview">
+          <span class="ad-preview-label">Current Active Banner</span>
+          <img id="adCurrentImg" alt="current ad banner"/>
+        </div>
+
+        <div id="adNoBanner" style="font-size:.8rem;color:var(--muted);margin-bottom:.75rem;display:none;">
+          No banner uploaded yet. Posts will show <em>"For Ad DM be"</em> placeholder.
+        </div>
+
+        <!-- Dim note -->
+        <div class="ad-dim-note">
+          📐 Required min dimensions: <span class="ad-dim-badge">1944 × 528</span>
+        </div>
+
+        <!-- Drop zone -->
+        <div class="ad-drop-zone" id="adDropZone">
+          <input type="file" id="adBannerFile" accept="image/jpeg,image/png,image/webp"/>
+          <div class="ad-drop-icon">🖼️</div>
+          <div class="ad-drop-text"><strong>Click to upload</strong> or drag & drop<br>JPEG / PNG / WEBP · min 1944×528 px</div>
+        </div>
+
+        <!-- Upload ad preview -->
+        <div class="preview-wrap" id="adUploadPreview" style="margin-top:.75rem;">
+          <span class="preview-label">Upload Preview</span>
+          <img id="adUploadPreviewImg" alt="ad preview" style="height:80px;"/>
+        </div>
+
+        <button class="btn-upload-ad" id="adUploadBtn" disabled>
+          <div class="spinner"></div>
+          <span class="btn-text">⬆️ Upload to Cloudinary</span>
+        </button>
+
+        <div class="ad-status" id="adStatus"></div>
+
+        <!-- Banners list -->
+        <div id="adBannersList"></div>
+
       </div>
     </div>
 
@@ -1046,6 +1299,193 @@
   });
 
   window.addEventListener('beforeunload', () => eventSource?.close());
+
+
+  // ── Ad Banner Manager ─────────────────────────────────────────────────────
+  const adBannerFile     = document.getElementById('adBannerFile');
+  const adDropZone       = document.getElementById('adDropZone');
+  const adUploadBtn      = document.getElementById('adUploadBtn');
+  const adStatus         = document.getElementById('adStatus');
+  const adCurrentPreview = document.getElementById('adCurrentPreview');
+  const adCurrentImg     = document.getElementById('adCurrentImg');
+  const adNoBanner       = document.getElementById('adNoBanner');
+  const adBannersList    = document.getElementById('adBannersList');
+  const adUploadPreview  = document.getElementById('adUploadPreview');
+  const adUploadPreviewImg = document.getElementById('adUploadPreviewImg');
+
+  const AD_API = 'https://news-channel-drab.vercel.app/api/ad-banner';
+  const MIN_AD_W = 1944, MIN_AD_H = 528;
+
+  let adSelectedFile = null;
+
+  function showAdStatus(ok, msg) {
+    adStatus.className = 'ad-status show ' + (ok ? 'ok' : 'fail');
+    adStatus.innerHTML = (ok ? '✅ ' : '❌ ') + msg;
+    setTimeout(() => adStatus.classList.remove('show'), 8000);
+  }
+
+  // Load current banner on page boot
+  async function loadCurrentAdBanner() {
+    try {
+      const res  = await fetch(AD_API + '/current');
+      const data = await res.json();
+      if (data.url) {
+        adCurrentImg.src = data.url;
+        adCurrentPreview.classList.add('show');
+        adNoBanner.style.display = 'none';
+      } else {
+        adCurrentPreview.classList.remove('show');
+        adNoBanner.style.display = 'block';
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  // Load banners list
+  async function loadAdBannersList() {
+    try {
+      const token = getToken();
+      if (!token) return;
+      const res  = await authFetch(AD_API + '/list');
+      const data = await res.json();
+      renderBannerList(data.banners || []);
+    } catch (e) { /* silent */ }
+  }
+
+  function renderBannerList(banners) {
+    if (!banners.length) {
+      adBannersList.innerHTML = '';
+      return;
+    }
+    adBannersList.innerHTML = '<div style="font-size:.72rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-top:.75rem;margin-bottom:.4rem;">Uploaded Banners</div>';
+    banners.forEach(b => {
+      const item = document.createElement('div');
+      item.className = 'ad-banner-item';
+      item.dataset.slot = b.slot;
+      item.innerHTML = `
+        <img class="ad-banner-thumb" src="${b.url}" alt="banner ${b.slot}" onerror="this.style.display='none'"/>
+        <span class="ad-banner-slot">Slot ${b.slot}</span>
+        <span class="ad-banner-url" title="${b.url}">${b.url.split('/').pop()}</span>
+        <button class="btn-del-banner" data-slot="${b.slot}">🗑</button>`;
+      adBannersList.appendChild(item);
+    });
+  }
+
+  // Validate dimensions client-side before upload
+  function validateAdImage(file) {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  adBannerFile.addEventListener('change', async () => {
+    const f = adBannerFile.files[0];
+    if (!f) return;
+
+    // Client-side dimension check
+    const dims = await validateAdImage(f);
+    if (!dims) {
+      showAdStatus(false, 'Could not read image dimensions.');
+      adUploadBtn.disabled = true;
+      adSelectedFile = null;
+      return;
+    }
+
+    if (dims.w < MIN_AD_W || dims.h < MIN_AD_H) {
+      showAdStatus(false,
+        `Image too small: ${dims.w}×${dims.h}px. Required minimum: ${MIN_AD_W}×${MIN_AD_H}px.`);
+      adUploadBtn.disabled = true;
+      adSelectedFile = null;
+      adUploadPreview.classList.remove('show');
+      return;
+    }
+
+    // Show preview
+    adUploadPreviewImg.src = URL.createObjectURL(f);
+    adUploadPreview.classList.add('show');
+
+    adSelectedFile = f;
+    adUploadBtn.disabled = false;
+    adStatus.classList.remove('show');
+  });
+
+  adDropZone.addEventListener('dragover',  e => { e.preventDefault(); adDropZone.classList.add('drag-over'); });
+  adDropZone.addEventListener('dragleave', () => adDropZone.classList.remove('drag-over'));
+  adDropZone.addEventListener('drop',      () => adDropZone.classList.remove('drag-over'));
+
+  adUploadBtn.addEventListener('click', async () => {
+    if (!adSelectedFile) return;
+
+    if (!getToken()) {
+      openLoginModal('Please sign in to upload ad banners.');
+      return;
+    }
+
+    adUploadBtn.disabled = true;
+    adUploadBtn.classList.add('loading');
+
+    try {
+      const fd = new FormData();
+      fd.append('adBanner', adSelectedFile);
+
+      const res  = await authFetch(AD_API + '/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Upload failed');
+
+      showAdStatus(true, `Uploaded! Slot ${data.slot} · ${data.dimensions.width}×${data.dimensions.height}px`);
+      adSelectedFile = null;
+      adUploadBtn.disabled = true;
+      adUploadPreview.classList.remove('show');
+      adBannerFile.value = '';
+
+      await loadCurrentAdBanner();
+      await loadAdBannersList();
+
+    } catch (err) {
+      showAdStatus(false, err.message);
+      adUploadBtn.disabled = false;
+    } finally {
+      adUploadBtn.classList.remove('loading');
+    }
+  });
+
+  // Delete banner
+  adBannersList.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.btn-del-banner');
+    if (!btn) return;
+
+    const slot = btn.dataset.slot;
+    if (!confirm(`Delete ad banner slot ${slot}?`)) return;
+
+    try {
+      const res = await authFetch(`${AD_API}/${slot}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Delete failed');
+      showAdStatus(true, `Slot ${slot} deleted. ${data.remaining} banner(s) remaining.`);
+      await loadCurrentAdBanner();
+      await loadAdBannersList();
+    } catch (err) {
+      showAdStatus(false, err.message);
+    }
+  });
+
+  // Load on boot
+  loadCurrentAdBanner();
+
+  // Re-load list when user logs in
+  const _origCloseModal = closeLoginModal;
+  closeLoginModal = function() {
+    _origCloseModal();
+    loadAdBannersList();
+  };
+
 
   // ── Boot: check token on page load ────────────────────────────────────────
   updateAuthChip();
