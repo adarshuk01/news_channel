@@ -4,13 +4,13 @@ const cloudinary = require("../config/cloudinary");
 const redis      = require("../config/redis");
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const REDIS_KEY_PREFIX = "ad-banner:";          // ad-banner:0, ad-banner:1, …
-const REDIS_COUNT_KEY  = "ad-banner-count";     // total banners stored
-const REDIS_INDEX_KEY  = "ad-banner-index";     // round-robin pointer
+const REDIS_KEY_PREFIX = "ad-banner:";   // ad-banner:0, ad-banner:1, …
+const REDIS_COUNT_KEY  = "ad-banner-count";
+const REDIS_INDEX_KEY  = "ad-banner-index";
 
-// Minimum dimensions required (matches the reference banner image)
-const MIN_WIDTH  = 1944;
-const MIN_HEIGHT = 528;
+// Recommended minimum dimensions (soft warning only — NOT enforced)
+const REC_WIDTH  = 1944;
+const REC_HEIGHT = 528;
 
 // ─── Helper: get total count ──────────────────────────────────────────────────
 async function getBannerCount() {
@@ -19,64 +19,48 @@ async function getBannerCount() {
 }
 
 // ─── POST /api/ad-banner/upload ───────────────────────────────────────────────
-// Accepts a multipart image, validates dimensions, uploads to Cloudinary,
-// stores the secure_url in Redis.
+// Accepts any image — NO dimension enforcement.
+// Uploads directly to Cloudinary ad_banners folder and stores the URL in Redis.
 exports.uploadAdBanner = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No image file provided." });
     }
 
-    // ── Dimension check via Cloudinary eager transformation ──────────────────
-    // Upload first to a temp public_id so we can inspect dimensions.
-    // We use the image's buffer (memory storage).
-    const b64   = req.file.buffer.toString("base64");
+    const b64     = req.file.buffer.toString("base64");
     const dataUri = `data:${req.file.mimetype};base64,${b64}`;
 
-    // Upload to a staging folder first to read dimensions
-    const probe = await cloudinary.uploader.upload(dataUri, {
-      resource_type: "image",
-      folder:        "ad_banners_staging",
-    });
-
-    const { width, height, secure_url, public_id } = probe;
-
-    if (width < MIN_WIDTH || height < MIN_HEIGHT) {
-      // Delete the staging upload immediately
-      await cloudinary.uploader.destroy(public_id, { resource_type: "image" });
-
-      return res.status(400).json({
-        error: `Image too small. Minimum dimensions: ${MIN_WIDTH}×${MIN_HEIGHT}px. ` +
-               `Uploaded image is ${width}×${height}px.`,
-        required: { width: MIN_WIDTH, height: MIN_HEIGHT },
-        uploaded: { width, height },
-      });
-    }
-
-    // ── Move to the real folder ───────────────────────────────────────────────
-    const final = await cloudinary.uploader.upload(dataUri, {
+    // ── Upload straight to the real folder — no staging, no dimension gate ───
+    const result = await cloudinary.uploader.upload(dataUri, {
       resource_type: "image",
       folder:        "ad_banners",
       overwrite:     false,
     });
 
-    // Delete staging copy
-    await cloudinary.uploader.destroy(public_id, { resource_type: "image" });
+    const { width, height, secure_url } = result;
+
+    // Soft log if below recommended size (won't block)
+    if (width < REC_WIDTH || height < REC_HEIGHT) {
+      console.warn(
+        `⚠️  Ad banner is ${width}×${height}px — below recommended ${REC_WIDTH}×${REC_HEIGHT}px. ` +
+        "It will still be used but may appear stretched."
+      );
+    }
 
     // ── Persist URL in Redis ──────────────────────────────────────────────────
     const count = await getBannerCount();
-    const slot  = count; // append at end
+    const slot  = count;
 
-    await redis.set(`${REDIS_KEY_PREFIX}${slot}`, final.secure_url);
+    await redis.set(`${REDIS_KEY_PREFIX}${slot}`, secure_url);
     await redis.set(REDIS_COUNT_KEY, String(count + 1));
 
-    console.log(`🖼️  Ad banner saved to slot ${slot}: ${final.secure_url}`);
+    console.log(`🖼️  Ad banner saved to slot ${slot}: ${secure_url}`);
 
     return res.json({
       message:    "✅ Ad banner uploaded successfully.",
       slot,
-      url:        final.secure_url,
-      dimensions: { width: final.width, height: final.height },
+      url:        secure_url,
+      dimensions: { width, height },
     });
 
   } catch (err) {
