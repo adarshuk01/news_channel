@@ -24,7 +24,7 @@ const activeStreams = new Map();
 // Helpers
 // ─────────────────────────────────────────────
 function keepMalayalamAndSpaces(text) {
-  return text || "";
+  return (text || "").replace(/[A-Za-z]/g, "");
 }
 
 function getSafeYouTubeTitle(text) {
