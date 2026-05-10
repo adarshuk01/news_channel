@@ -1,33 +1,45 @@
 const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
 const ffmpeg          = require("fluent-ffmpeg");
+const { createCanvas, loadImage } = require("@napi-rs/canvas");
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Output dimensions — scaled down from 1080×1280 to reduce x264 memory usage.
-// Vercel / serverless environments have limited memory (~512MB–1GB).
-// 720×854 keeps the same 0.844 aspect ratio while cutting memory by ~56%.
-// Instagram Reels & YouTube Shorts both accept this resolution.
+// Output width is fixed at 720px (memory-safe for serverless).
+// Output height is derived from the actual PNG dimensions so the full canvas
+// is preserved — whether that is:
+//   poster only  →  1080 × 1280  →  scaled to  720 × 854
+//   poster + ad  →  1080 × 1460  →  scaled to  720 × 975  (975 = 720×1460/1080, rounded to even)
+//
+// Rule: OUT_H must always be an even number (x264 requirement).
 // ─────────────────────────────────────────────────────────────────────────────
 const OUT_W = 720;
-const OUT_H = 854;   // 720 × (1280/1080) = 853.3 → rounded to 854 (must be even)
 
 /**
- * Convert a PNG file to a 5-second MP4 suitable for Instagram Reels /
- * YouTube Shorts / Facebook Reels.
- *
- * Key changes vs old version:
- *  - Scale output to 720×854  (was 1080×1280) → ~56% less memory per frame
- *  - preset ultrafast          (was fast)       → lowest encoder RAM use
- *  - crf 28                                     → acceptable quality at lower bitrate
- *  - threads 1                                  → avoids spawning extra threads in serverless
- *  - x264-params sliced-threads=0:sync-lookahead=0 → disables lookahead buffer allocs
+ * Read the pixel dimensions of a PNG without fully decoding it.
+ * @param {string} imgPath
+ * @returns {Promise<{ width: number, height: number }>}
+ */
+async function getImageSize(imgPath) {
+  const img = await loadImage(imgPath);
+  return { width: img.width, height: img.height };
+}
+
+/**
+ * Convert a PNG file to an MP4 video, preserving its full height.
  *
  * @param {string} imgPath  Input PNG file path
  * @param {string} vidPath  Output MP4 file path
  * @returns {Promise<void>}
  */
-function convertImageToVideo(imgPath, vidPath) {
+async function convertImageToVideo(imgPath, vidPath) {
+  // Derive output height from actual image — rounds to nearest even number
+  const { width: srcW, height: srcH } = await getImageSize(imgPath);
+  const rawH  = OUT_W * srcH / srcW;
+  const OUT_H = Math.ceil(rawH / 2) * 2;   // always even for x264
+
+  console.log(`📐 Source: ${srcW}×${srcH}  →  Output: ${OUT_W}×${OUT_H}`);
+
   return new Promise((resolve, reject) => {
     ffmpeg(imgPath)
       .inputOptions(["-loop 1"])
@@ -37,10 +49,10 @@ function convertImageToVideo(imgPath, vidPath) {
         "-pix_fmt yuv420p",
         `-vf scale=${OUT_W}:${OUT_H}`,
         "-r 25",
-        "-preset ultrafast",          // lowest memory footprint encoder preset
-        "-crf 28",                    // quality level — 23 default, 28 saves memory/size
-        "-threads 1",                 // single thread — avoids parallel malloc spikes
-        "-x264-params sliced-threads=0:sync-lookahead=0",  // kill lookahead buffer
+        "-preset ultrafast",
+        "-crf 28",
+        "-threads 1",
+        "-x264-params sliced-threads=0:sync-lookahead=0",
         "-movflags +faststart",
       ])
       .output(vidPath)

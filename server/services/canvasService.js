@@ -1,6 +1,5 @@
 const { createCanvas, GlobalFonts, loadImage } = require("@napi-rs/canvas");
 const path = require("path");
-const fs   = require("fs");
 
 GlobalFonts.registerFromPath(
   path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
@@ -11,8 +10,19 @@ GlobalFonts.registerFromPath(
   "English"
 );
 
-const W = 1080;
-const H = 1280;
+// ─────────────────────────────────────────────────────────────────────────────
+// CANVAS DIMENSIONS
+//   Main poster : 1080 × 1280  (always)
+//   Ad strip    : 1080 × AD_H  (appended below when adBannerUrl is provided)
+//   Final output: 1080 × (1280 + AD_H)  OR  1080 × 1280  (no ad)
+// ─────────────────────────────────────────────────────────────────────────────
+const W         = 1080;
+const H         = 1280;   // poster height — never changes
+const AD_H      = 180;    // height of the ad strip below the poster
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(" ");
@@ -41,13 +51,13 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-async function createNewsPoster(newsItem) {
-  const canvas = createCanvas(W, H);
-  const ctx    = canvas.getContext("2d");
+// ═══════════════════════════════════════════════════════════════════════════════
+// DRAW POSTER onto a canvas context (always 1080 × 1280, drawn at y=0)
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  // ═══════════════════════════════════════════════════════
-  // 1. BACKGROUND
-  // ═══════════════════════════════════════════════════════
+async function drawPoster(ctx, newsItem) {
+
+  // ── 1. BACKGROUND ────────────────────────────────────────────
   ctx.fillStyle = "#0a0a0c";
   ctx.fillRect(0, 0, W, H);
 
@@ -55,18 +65,15 @@ async function createNewsPoster(newsItem) {
   ctx.save();
   ctx.globalAlpha = 0.018;
   ctx.fillStyle = "#ffffff";
-  for (let row = 0; row < H; row += 12) {
+  for (let row = 0; row < H; row += 12)
     for (let col = 0; col < W; col += 12) {
       ctx.beginPath();
       ctx.arc(col, row, 1.2, 0, Math.PI * 2);
       ctx.fill();
     }
-  }
   ctx.restore();
 
-  // ═══════════════════════════════════════════════════════
-  // 2. IMAGE — top 52%
-  // ═══════════════════════════════════════════════════════
+  // ── 2. IMAGE — top 52 % ──────────────────────────────────────
   const IMG_H = Math.round(H * 0.52);
 
   try {
@@ -83,32 +90,17 @@ async function createNewsPoster(newsItem) {
     ctx.clip();
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    // Warm tone overlay
     ctx.fillStyle = "rgba(20,5,0,0.18)";
     ctx.fillRect(0, 0, W, IMG_H);
 
-    // Bottom fade
-    const fade = ctx.createLinearGradient(0, IMG_H * 0.3, 0, IMG_H);
-    fade.addColorStop(0, "rgba(10,10,12,0)");
-    fade.addColorStop(0.6, "rgba(10,10,12,0.75)");
-    fade.addColorStop(1,   "rgba(10,10,12,1)");
+    // Bottom fade — starts later and stays lighter for a natural falloff
+    const fade = ctx.createLinearGradient(0, IMG_H * 0.55, 0, IMG_H);
+    fade.addColorStop(0,   "rgba(10,10,12,0)");
+    fade.addColorStop(0.7, "rgba(10,10,12,0.50)");
+    fade.addColorStop(1,   "rgba(10,10,12,0.85)");
     ctx.fillStyle = fade;
     ctx.fillRect(0, 0, W, IMG_H);
 
-    // Side fades
-    const leftFade = ctx.createLinearGradient(0, 0, 80, 0);
-    leftFade.addColorStop(0, "rgba(10,10,12,0.8)");
-    leftFade.addColorStop(1, "rgba(10,10,12,0)");
-    ctx.fillStyle = leftFade;
-    ctx.fillRect(0, 0, 80, IMG_H);
-
-    const rightFade = ctx.createLinearGradient(W - 80, 0, W, 0);
-    rightFade.addColorStop(0, "rgba(10,10,12,0)");
-    rightFade.addColorStop(1, "rgba(10,10,12,0.8)");
-    ctx.fillStyle = rightFade;
-    ctx.fillRect(W - 80, 0, 80, IMG_H);
-
-    // Top vignette
     const topFade = ctx.createLinearGradient(0, 0, 0, 100);
     topFade.addColorStop(0, "rgba(10,10,12,0.7)");
     topFade.addColorStop(1, "rgba(10,10,12,0)");
@@ -124,9 +116,7 @@ async function createNewsPoster(newsItem) {
     ctx.fillRect(0, 0, W, IMG_H);
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 3. TOP HEADER BAR
-  // ═══════════════════════════════════════════════════════
+  // ── 3. TOP HEADER BAR ────────────────────────────────────────
   const headerH = 72;
 
   ctx.save();
@@ -134,29 +124,27 @@ async function createNewsPoster(newsItem) {
   ctx.fillRect(0, 0, W, headerH);
   ctx.restore();
 
-  // Left red accent bar
   ctx.save();
   ctx.fillStyle = "#e8000d";
   ctx.fillRect(0, 0, 6, headerH);
   ctx.restore();
 
-  // ── BREAKING NEWS tag (left side of header) ──────────
-  const tagLabel  = (newsItem.tag || "BREAKING NEWS").toUpperCase();
-  const tagCY     = headerH / 2;
-  const tagX      = 24;
-  const tagH      = 40;
+  // Breaking tag — left side
+  const tagLabel = (newsItem.tag || "BREAKING NEWS").toUpperCase();
+  const tagCY    = headerH / 2;
+  const tagX     = 24;
+  const tagH     = 40;
 
   ctx.save();
   ctx.font          = "bold 17px English";
   ctx.letterSpacing = "3px";
   const tagTextW    = ctx.measureText(tagLabel).width;
-  const tagW        = tagTextW + 52; // dot + padding
+  const tagW        = tagTextW + 52;
 
   ctx.fillStyle = "#e8000d";
   roundRect(ctx, tagX, tagCY - tagH / 2, tagW, tagH, 5);
   ctx.fill();
 
-  // Animated live dot
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
   ctx.arc(tagX + 18, tagCY, 5, 0, Math.PI * 2);
@@ -168,9 +156,8 @@ async function createNewsPoster(newsItem) {
   ctx.fillText(tagLabel, tagX + 32, tagCY + 1);
   ctx.restore();
 
-  // ── FLASH KERALAM branding (right side of header) ────
+  // Brand — right side of header
   ctx.save();
-  // Separator line
   ctx.fillStyle = "rgba(255,255,255,0.12)";
   ctx.fillRect(W - 230, 14, 1, headerH - 28);
 
@@ -179,76 +166,57 @@ async function createNewsPoster(newsItem) {
   ctx.textBaseline  = "middle";
   ctx.textAlign     = "right";
 
-  // Measure "FLASH" width to position "KERALAM"
-  ctx.fillStyle = "#ffffff";
-  const flashW  = ctx.measureText("FLASH").width;
-
-  // Right-align: draw KERALAM first (rightmost), then FLASH before it
-  // Total string: "FLASH KERALAM"
   ctx.fillStyle = "#e8000d";
   ctx.fillText("KERALAM", W - 22, headerH / 2);
 
   const keralamW = ctx.measureText("KERALAM").width;
   ctx.fillStyle  = "#ffffff";
   ctx.fillText("FLASH ", W - 22 - keralamW, headerH / 2);
-
   ctx.restore();
 
-  // ═══════════════════════════════════════════════════════
-  // 4. RED RULE + DATE BLOCK
-  // ═══════════════════════════════════════════════════════
-  const PAD        = 54;
-  const RULE_Y     = IMG_H + 24;
+  // ── 4. RED RULE + DATE BLOCK ─────────────────────────────────
+  const PAD    = 54;
+  const RULE_Y = IMG_H + 24;
 
-  // Bold red rule
   ctx.save();
   ctx.fillStyle = "#e8000d";
   ctx.fillRect(PAD, RULE_Y, 64, 5);
   ctx.restore();
 
-  // Thin white line extending to right
   ctx.save();
   ctx.fillStyle = "rgba(255,255,255,0.12)";
   ctx.fillRect(PAD + 72, RULE_Y + 1.5, W - PAD - 72 - PAD, 2);
   ctx.restore();
 
-  // ── Date — just above the title ──────────────────────
   const now     = new Date();
   const day     = String(now.getDate()).padStart(2, "0");
   const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
   const year    = now.getFullYear();
   const weekday = now.toLocaleDateString("en-IN", { weekday: "long" }).toUpperCase();
-
-  const DATE_Y = RULE_Y + 22;
+  const DATE_Y  = RULE_Y + 22;
 
   ctx.save();
   ctx.textAlign    = "left";
   ctx.textBaseline = "top";
 
-  // Day + Month in white
   ctx.font          = "bold 22px English";
   ctx.letterSpacing = "2px";
   ctx.fillStyle     = "#ffffff";
   ctx.fillText(`${day} ${month} ${year}`, PAD, DATE_Y);
 
-  // Weekday separator dot + weekday
   const dmW = ctx.measureText(`${day} ${month} ${year}`).width + 14;
   ctx.font      = "bold 16px English";
   ctx.fillStyle = "rgba(255,255,255,0.38)";
   ctx.fillText("·", PAD + dmW, DATE_Y + 3);
   ctx.fillText(weekday, PAD + dmW + 18, DATE_Y + 3);
-
   ctx.restore();
 
-  // ═══════════════════════════════════════════════════════
-  // 5. MALAYALAM TITLE — red bg + white text
-  // ═══════════════════════════════════════════════════════
+  // ── 5. MALAYALAM TITLE — red tapered bg + white text ─────────
   const TEXT_TOP = DATE_Y + 48;
-  const TEXT_BOT = H - 148; // leave room for source tag + footer
+  const TEXT_BOT = H - 148;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const TEXT_W   = W - PAD * 2;
 
-  // ── Step A: resolve segments ──────────────────────────
   let allSegments = [];
   if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
     allSegments = newsItem.titleLines;
@@ -262,7 +230,6 @@ async function createNewsPoster(newsItem) {
     ];
   }
 
-  // ── Step B: find best font size ──────────────────────
   let FONT_SIZE = 82;
   let allLines  = [];
   const GAP     = 10;
@@ -271,9 +238,7 @@ async function createNewsPoster(newsItem) {
     ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
     ctx.letterSpacing = "0px";
     allLines = [];
-    for (const seg of allSegments) {
-      allLines.push(...wrapText(ctx, seg, TEXT_W));
-    }
+    for (const seg of allSegments) allLines.push(...wrapText(ctx, seg, TEXT_W));
     const V_PAD  = Math.round(FONT_SIZE * 0.22);
     const blockH = FONT_SIZE + V_PAD * 2;
     if (allLines.length * (blockH + GAP) - GAP <= TEXT_H) break;
@@ -288,7 +253,6 @@ async function createNewsPoster(newsItem) {
   ctx.textAlign    = "left";
   ctx.textBaseline = "top";
 
-  // ── Step C: ALL lines — red bg + white text ───────────
   for (let i = 0; i < allLines.length; i++) {
     ctx.save();
     ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
@@ -303,10 +267,10 @@ async function createNewsPoster(newsItem) {
     // Red tapered rectangle
     ctx.fillStyle = "#e8000d";
     ctx.beginPath();
-    ctx.moveTo(rectX, rectY);
+    ctx.moveTo(rectX,          rectY);
     ctx.lineTo(rectX + rectW + 8, rectY);
-    ctx.lineTo(rectX + rectW, rectY + rectH);
-    ctx.lineTo(rectX, rectY + rectH);
+    ctx.lineTo(rectX + rectW,  rectY + rectH);
+    ctx.lineTo(rectX,          rectY + rectH);
     ctx.closePath();
     ctx.fill();
 
@@ -316,10 +280,10 @@ async function createNewsPoster(newsItem) {
     shine.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = shine;
     ctx.beginPath();
-    ctx.moveTo(rectX, rectY);
+    ctx.moveTo(rectX,             rectY);
     ctx.lineTo(rectX + rectW + 8, rectY);
-    ctx.lineTo(rectX + rectW, rectY + rectH * 0.5);
-    ctx.lineTo(rectX, rectY + rectH * 0.5);
+    ctx.lineTo(rectX + rectW,     rectY + rectH * 0.5);
+    ctx.lineTo(rectX,             rectY + rectH * 0.5);
     ctx.closePath();
     ctx.fill();
 
@@ -335,43 +299,34 @@ async function createNewsPoster(newsItem) {
     drawY += blockH + GAP;
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 6. SOURCE TAG (below title, above footer)
-  // ═══════════════════════════════════════════════════════
+  // ── 6. SOURCE TAG ────────────────────────────────────────────
   if (newsItem.source) {
-    const srcLabel  = ("● " + newsItem.source).toUpperCase();
-    const SRC_Y     = H - 138;
-    const srcH      = 42;
+    const srcLabel = ("● " + newsItem.source).toUpperCase();
+    const SRC_Y    = H - 138;
+    const srcH     = 42;
 
     ctx.save();
     ctx.font          = "bold 16px English";
     ctx.letterSpacing = "3px";
-    const srcTextW    = ctx.measureText(srcLabel).width;
-    const srcW        = srcTextW + 36;
+    const srcW        = ctx.measureText(srcLabel).width + 36;
 
-    // Dark pill bg
     ctx.fillStyle = "rgba(255,255,255,0.09)";
     roundRect(ctx, PAD - 12, SRC_Y - srcH / 2, srcW, srcH, 6);
     ctx.fill();
 
-    // Border
     ctx.strokeStyle = "rgba(255,255,255,0.18)";
     ctx.lineWidth   = 1.5;
     roundRect(ctx, PAD - 12, SRC_Y - srcH / 2, srcW, srcH, 6);
     ctx.stroke();
 
-    // Text
     ctx.fillStyle    = "rgba(255,255,255,0.75)";
     ctx.textAlign    = "left";
     ctx.textBaseline = "middle";
     ctx.fillText(srcLabel, PAD + 6, SRC_Y + 1);
-
     ctx.restore();
   }
 
-  // ═══════════════════════════════════════════════════════
-  // 7. BOTTOM FOOTER
-  // ═══════════════════════════════════════════════════════
+  // ── 7. FOOTER BAR ────────────────────────────────────────────
   const FOOT_H = 72;
   const FOOT_Y = H - FOOT_H;
 
@@ -379,13 +334,11 @@ async function createNewsPoster(newsItem) {
   ctx.fillStyle = "rgba(255,255,255,0.04)";
   ctx.fillRect(0, FOOT_Y, W, FOOT_H);
 
-  // Red top border
   ctx.fillStyle = "#e8000d";
   ctx.fillRect(0, FOOT_Y, W, 3);
 
   ctx.textBaseline = "middle";
 
-  // Brand — FLASH (white) KERALAM (red)
   ctx.font          = "bold 18px English";
   ctx.letterSpacing = "4px";
   ctx.fillStyle     = "rgba(255,255,255,0.55)";
@@ -396,14 +349,12 @@ async function createNewsPoster(newsItem) {
   ctx.fillStyle = "#e8000d";
   ctx.fillText("KERALAM", 28 + fW + 12, FOOT_Y + FOOT_H / 2);
 
-  // Website — centre
   ctx.font          = "bold 15px English";
   ctx.letterSpacing = "2px";
   ctx.fillStyle     = "rgba(255,255,255,0.30)";
   ctx.textAlign     = "center";
   ctx.fillText("www.flashkeralam.com", W / 2, FOOT_Y + FOOT_H / 2);
 
-  // Hashtag — right
   ctx.font          = "bold 14px English";
   ctx.letterSpacing = "1px";
   ctx.fillStyle     = "rgba(255,255,255,0.22)";
@@ -412,10 +363,84 @@ async function createNewsPoster(newsItem) {
 
   ctx.restore();
 
-  // ── Reset ─────────────────────────────────────────────
+  // ── Reset ─────────────────────────────────────────────────────
   ctx.textAlign     = "left";
   ctx.textBaseline  = "alphabetic";
   ctx.letterSpacing = "0px";
+  ctx.shadowColor   = "transparent";
+  ctx.shadowBlur    = 0;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DRAW AD STRIP onto a canvas context at yOffset below the poster
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function drawAdStrip(ctx, bannerUrl, yOffset) {
+  if (bannerUrl) {
+    try {
+      const adImg = await loadImage(bannerUrl);
+      const scale = W / adImg.width;
+      const drawH = Math.min(adImg.height * scale, AD_H);
+      const drawY = yOffset + (AD_H - drawH) / 2;
+      ctx.drawImage(adImg, 0, drawY, W, drawH);
+      return;
+    } catch (e) {
+      console.warn("Ad banner load failed:", e.message);
+    }
+  }
+
+  // Fallback placeholder
+  ctx.save();
+  ctx.fillStyle = "#111113";
+  ctx.fillRect(0, yOffset, W, AD_H);
+
+  // Thin separator at top of ad strip
+  ctx.fillStyle = "rgba(255,255,255,0.08)";
+  ctx.fillRect(0, yOffset, W, 1.5);
+
+  ctx.font          = "bold 52px English";
+  ctx.letterSpacing = "6px";
+  ctx.fillStyle     = "rgba(255,255,255,0.15)";
+  ctx.textAlign     = "center";
+  ctx.textBaseline  = "middle";
+  ctx.fillText("YOUR AD HERE", W / 2, yOffset + AD_H / 2);
+
+  ctx.font          = "bold 20px English";
+  ctx.letterSpacing = "2px";
+  ctx.fillStyle     = "rgba(255,255,255,0.08)";
+  ctx.fillText("DM @flashkeralam to advertise", W / 2, yOffset + AD_H / 2 + 52);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN EXPORT
+//
+// newsItem shape:
+//   image        {string}    URL / local path to main photo
+//   titleLines   {string[]}  Malayalam text segments (array)
+//   title        {string}    fallback if titleLines absent
+//   lastLine     {string}    optional extra line appended last
+//   tag          {string}    pill label, e.g. "BREAKING NEWS"
+//   source       {string}    optional source badge text
+//   adBannerUrl  {string}    optional ad image URL
+//                            When present  → output is 1080 × (1280 + 180)
+//                            When absent   → output is 1080 × 1280  (no ad strip)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function createNewsPoster(newsItem) {
+  const hasAd    = !!(newsItem.adBannerUrl);
+  const totalH   = hasAd ? H + AD_H : H;   // poster + optional ad strip
+
+  const canvas = createCanvas(W, totalH);
+  const ctx    = canvas.getContext("2d");
+
+  // Draw the main 1080×1280 poster at y = 0
+  await drawPoster(ctx, newsItem);
+
+  // Stitch the ad strip immediately below when provided
+  if (hasAd) {
+    await drawAdStrip(ctx, newsItem.adBannerUrl, H);
+  }
 
   return canvas.toBuffer("image/png");
 }
