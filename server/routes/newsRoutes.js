@@ -11,6 +11,11 @@ const {
   listAdBanners,
   deleteAdBanner,
 } = require("../controller/adBannerController");
+const {
+  getNewsList,
+  getPostStatus,
+  postNewsItem,
+} = require("../controller/newsListController");
 const multer = require("multer");
 const { protect } = require("../middleware/authMiddleware");
 const { login, logout } = require("../controller/authController");
@@ -23,7 +28,7 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
-// ── Platform-based news posting routes ───────────────────────────────────────
+// ── Platform-based auto news posting routes ───────────────────────────────────
 router.get("/post-instagram", postToInstagram);
 router.get("/post-facebook",  postToFacebook);
 router.get("/post-youtube",   postToYoutube);
@@ -38,6 +43,11 @@ router.post("/ad-banner/upload",  protect, upload.single("adBanner"), uploadAdBa
 router.get("/ad-banner/current",  getCurrentAdBanner);
 router.get("/ad-banner/list",     protect, listAdBanners);
 router.delete("/ad-banner/:slot", protect, deleteAdBanner);
+
+// ── News List & Per-Item Posting routes ──────────────────────────────────────
+router.get("/news/list",        getNewsList);
+router.get("/news/post-status", getPostStatus);
+router.post("/news/post-item",  protect, postNewsItem);
 
 // ── Auth routes ───────────────────────────────────────────────────────────────
 router.post("/auth/login",  login);

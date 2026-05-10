@@ -26,7 +26,7 @@ const { getNextAdBannerUrl } = require("./adBannerController");
 // Helpers
 // ─────────────────────────────────────────────────────────────
 function keepMalayalamAndSpaces(text) {
-  return (text || "").replace(/[A-Za-z]/g, "");
+  return text || "";
 }
 
 function getSafeYouTubeTitle(text) {

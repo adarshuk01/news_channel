@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MediaPost — Ad Banner</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    :root{
+      --bg:#f5f4f0; --surface:#ffffff; --border:#e2e0db; --border-md:#ccc9c1;
+      --text:#1a1917; --muted:#7a7770; --accent:#1d4ed8; --accent-h:#1e40af;
+      --success:#16a34a; --error:#dc2626; --radius:10px;
+      --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+      --sidebar-w:234px; --topbar-h:56px;
+    }
+    body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;overflow-x:hidden;}
+
+    /* SIDEBAR */
+    .sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:300;transition:transform .28s cubic-bezier(.4,0,.2,1);}
+    .sidebar-brand{padding:1.2rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.65rem;flex-shrink:0;}
+    .brand-icon{width:34px;height:34px;background:var(--accent);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.9rem;flex-shrink:0;}
+    .brand-name{font-weight:700;font-size:.93rem;letter-spacing:-.02em;}
+    .brand-sub{font-size:.62rem;color:var(--muted);}
+    .sidebar-nav{flex:1;padding:1rem .75rem;display:flex;flex-direction:column;gap:.2rem;overflow-y:auto;}
+    .nav-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:.55rem .75rem .28rem;}
+    .nav-link{display:flex;align-items:center;gap:.75rem;padding:.68rem .9rem;border-radius:8px;text-decoration:none;color:var(--muted);font-size:.83rem;font-weight:500;transition:all .15s;min-height:44px;}
+    .nav-link:hover{background:var(--bg);color:var(--text);}
+    .nav-link.active{background:#eff6ff;color:var(--accent);font-weight:600;}
+    .nav-icon{font-size:1.05rem;flex-shrink:0;width:22px;text-align:center;}
+    .sidebar-footer{padding:1rem 1.2rem;border-top:1px solid var(--border);flex-shrink:0;}
+    .auth-chip{display:flex;align-items:center;gap:.5rem;padding:.6rem .9rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:.77rem;font-weight:500;color:var(--muted);transition:all .15s;width:100%;min-height:44px;font-family:'Sora',sans-serif;}
+    .auth-chip.authed{color:var(--success);border-color:#bbf7d0;background:#f0fdf4;}
+    .auth-dot{width:7px;height:7px;border-radius:50%;background:var(--border-md);flex-shrink:0;}
+    .auth-chip.authed .auth-dot{background:var(--success);}
+    .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:299;opacity:0;transition:opacity .28s ease;pointer-events:none;}
+    .sidebar-overlay.show{opacity:1;pointer-events:all;}
+
+    /* TOPBAR */
+    .topbar{position:fixed;top:0;left:var(--sidebar-w);right:0;height:var(--topbar-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;z-index:200;gap:.75rem;}
+    .topbar-left{display:flex;align-items:center;gap:.75rem;min-width:0;flex:1;}
+    .hamburger{display:none;background:none;border:1px solid var(--border);border-radius:7px;cursor:pointer;color:var(--text);font-size:1.15rem;line-height:1;flex-shrink:0;transition:background .15s;min-width:40px;min-height:40px;align-items:center;justify-content:center;}
+    .hamburger:hover{background:var(--bg);}
+    .topbar-info{min-width:0;}
+    .topbar-title{font-weight:700;font-size:.93rem;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .topbar-subtitle{font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .badge-yellow{font-size:.62rem;font-weight:600;background:#fffbeb;color:#92400e;border:1px solid #fde68a;border-radius:20px;padding:.22rem .65rem;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;flex-shrink:0;}
+
+    /* LAYOUT */
+    .page-wrap{margin-left:var(--sidebar-w);padding-top:var(--topbar-h);min-height:100vh;}
+    .content{max-width:920px;margin:0 auto;padding:2rem;display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;align-items:start;}
+
+    /* PANEL */
+    .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:1.25rem;}
+    .panel:last-child{margin-bottom:0;}
+    .panel-head{padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+    .panel-title{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+    .panel-body{padding:1.25rem;}
+
+    /* AD COMPONENTS */
+    .ad-info-bar{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.65rem .9rem;margin-bottom:1rem;font-size:.76rem;color:#92400e;}
+    .ad-dim-note{font-size:.71rem;color:var(--muted);margin-bottom:.75rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
+    .ad-dim-badge{display:inline-flex;align-items:center;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:.15rem .45rem;font-family:'IBM Plex Mono',monospace;font-size:.67rem;color:#475569;}
+    .ad-drop-zone{border:2px dashed #fde68a;border-radius:8px;padding:1.4rem;text-align:center;cursor:pointer;transition:all .2s;position:relative;background:#fffdf5;}
+    .ad-drop-zone:hover,.ad-drop-zone.drag-over{border-color:#f59e0b;background:#fffbeb;}
+    .ad-drop-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+    .ad-drop-icon{font-size:1.5rem;margin-bottom:.35rem;}
+    .ad-drop-text{font-size:.78rem;color:#92400e;}
+    .ad-drop-text strong{color:#d97706;}
+    .preview-wrap{margin-top:.9rem;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:none;position:relative;}
+    .preview-wrap.show{display:block;}
+    .preview-wrap img{width:100%;height:80px;object-fit:cover;display:block;}
+    .preview-label{position:absolute;top:.5rem;left:.5rem;background:rgba(0,0,0,.55);color:#fff;font-size:.62rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.2rem .55rem;border-radius:4px;}
+    .btn-upload{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;padding:.9rem 1rem;background:#f59e0b;color:#fff;font-family:'Sora',sans-serif;font-size:.9rem;font-weight:600;border:none;border-radius:8px;cursor:pointer;transition:background .2s,transform .15s,box-shadow .2s;margin-top:1rem;min-height:48px;}
+    .btn-upload:hover:not(:disabled){background:#d97706;box-shadow:0 4px 14px rgba(245,158,11,.35);transform:translateY(-1px);}
+    .btn-upload:disabled{opacity:.6;cursor:not-allowed;}
+    .btn-upload.loading .spin-u{display:block;}
+    .btn-upload.loading .btn-text{opacity:.8;}
+    .spin-u{width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;flex-shrink:0;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    .ad-status{display:none;margin-top:.75rem;border-radius:7px;padding:.65rem .9rem;font-size:.77rem;align-items:center;gap:.5rem;}
+    .ad-status.show{display:flex;}
+    .ad-status.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;}
+    .ad-status.fail{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
+
+    /* Current banner */
+    .current-banner-card{border-radius:8px;overflow:hidden;border:1px solid var(--border);margin-bottom:1rem;display:none;position:relative;}
+    .current-banner-card.show{display:block;}
+    .current-banner-card img{width:100%;height:auto;display:block;}
+    .current-banner-label{position:absolute;top:.5rem;left:.5rem;background:rgba(0,0,0,.6);color:#fff;font-size:.61rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.2rem .55rem;border-radius:4px;}
+    .no-banner-note{font-size:.79rem;color:var(--muted);margin-bottom:.75rem;display:none;background:var(--bg);border:1px dashed var(--border-md);border-radius:8px;padding:1rem;text-align:center;}
+
+    /* Stats */
+    .stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:0;}
+    .stat-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.85rem 1rem;}
+    .stat-num{font-size:1.5rem;font-weight:700;color:var(--text);line-height:1;}
+    .stat-label{font-size:.7rem;color:var(--muted);margin-top:.25rem;}
+
+    /* Banner list */
+    .banner-list{display:flex;flex-direction:column;gap:.5rem;}
+    .banner-item{display:flex;align-items:center;gap:.75rem;padding:.65rem .85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;}
+    .banner-thumb{width:76px;height:26px;object-fit:cover;border-radius:4px;flex-shrink:0;border:1px solid var(--border);}
+    .banner-slot{font-family:'IBM Plex Mono',monospace;font-size:.66rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:.1rem .45rem;flex-shrink:0;}
+    .banner-url{flex:1;font-size:.71rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
+    .btn-del{background:none;border:1px solid #fecaca;color:#dc2626;border-radius:6px;padding:.3rem .6rem;font-size:.71rem;cursor:pointer;transition:background .15s;flex-shrink:0;min-height:34px;}
+    .btn-del:hover{background:#fef2f2;}
+    .btn-refresh-sm{background:none;border:1px solid var(--border);border-radius:6px;padding:.28rem .65rem;font-size:.71rem;cursor:pointer;color:var(--muted);min-height:34px;}
+    .btn-refresh-sm:hover{border-color:var(--border-md);color:var(--text);}
+    .empty-banners{text-align:center;color:var(--muted);font-size:.78rem;padding:1.5rem;background:var(--bg);border:1px dashed var(--border-md);border-radius:8px;}
+
+    /* MODAL */
+    .modal-backdrop{position:fixed;inset:0;background:rgba(15,15,20,.55);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:999;padding:1rem;opacity:0;pointer-events:none;transition:opacity .25s ease;}
+    .modal-backdrop.show{opacity:1;pointer-events:all;}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.14);width:100%;max-width:400px;transform:translateY(12px) scale(.98);transition:transform .25s ease;overflow:hidden;}
+    .modal-backdrop.show .modal{transform:translateY(0) scale(1);}
+    .modal-top{padding:1.75rem 1.75rem 1.25rem;border-bottom:1px solid var(--border);}
+    .modal-icon{width:40px;height:40px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:.9rem;}
+    .modal-title{font-size:1.1rem;font-weight:700;margin-bottom:.2rem;}
+    .modal-sub{font-size:.78rem;color:var(--muted);}
+    .modal-body{padding:1.25rem 1.75rem 1.75rem;}
+    .modal-field{margin-bottom:1rem;}
+    .modal-field label{font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.4rem;display:block;}
+    .input-wrap{position:relative;}
+    .modal-field input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem .9rem;font-family:'Sora',sans-serif;font-size:.9rem;color:var(--text);-webkit-appearance:none;}
+    .modal-field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff;}
+    .modal-field input.input-error{border-color:var(--error);}
+    .toggle-pw{position:absolute;right:.75rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:.9rem;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center;}
+    .modal-error{display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:.6rem .85rem;font-size:.75rem;color:#b91c1c;margin-bottom:1rem;align-items:center;gap:.5rem;}
+    .modal-error.show{display:flex;}
+    .btn-login{width:100%;padding:.9rem 1rem;background:var(--accent);color:#fff;font-family:'Sora',sans-serif;font-size:.9rem;font-weight:600;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem;transition:background .2s;min-height:48px;}
+    .btn-login:hover:not(:disabled){background:var(--accent-h);}
+    .btn-login:disabled{opacity:.6;cursor:not-allowed;}
+    .btn-login .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;}
+    .btn-login.loading .spin{display:block;}
+    .btn-login.loading .btn-login-text{opacity:.8;}
+
+    /* RESPONSIVE */
+    @media(max-width:860px){
+      .sidebar{transform:translateX(-100%);box-shadow:none;}
+      .sidebar.open{transform:translateX(0);box-shadow:4px 0 32px rgba(0,0,0,.15);}
+      .sidebar-overlay{display:block;}
+      .topbar{left:0;padding:0 1rem;}
+      .hamburger{display:flex;}
+      .page-wrap{margin-left:0;}
+      .content{grid-template-columns:1fr;padding:1rem;gap:0;}
+      .topbar-subtitle{display:none;}
+    }
+
+    @media(max-width:480px){
+      .content{padding:.75rem;}
+      .panel-body{padding:1rem;}
+      .panel-head{padding:.85rem 1rem;}
+      .stats-grid{grid-template-columns:1fr 1fr;}
+      .banner-item{flex-wrap:wrap;}
+      .banner-url{width:100%;order:1;}
+      .modal-top{padding:1.4rem 1.25rem 1rem;}
+      .modal-body{padding:1rem 1.25rem 1.5rem;}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN MODAL -->
+  <div class="modal-backdrop" id="loginBackdrop">
+    <div class="modal">
+      <div class="modal-top">
+        <div class="modal-icon">🔐</div>
+        <div class="modal-title">Admin Login</div>
+        <div class="modal-sub" id="modalSub">Sign in to manage ad banners</div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-error" id="loginError"><span>⚠️</span><span id="loginErrorMsg">Invalid credentials.</span></div>
+        <div class="modal-field">
+          <label for="loginUser">Username</label>
+          <input type="text" id="loginUser" placeholder="admin" autocomplete="username"/>
+        </div>
+        <div class="modal-field">
+          <label for="loginPass">Password</label>
+          <div class="input-wrap">
+            <input type="password" id="loginPass" placeholder="••••••••" style="padding-right:2.75rem;"/>
+            <button type="button" class="toggle-pw" id="togglePw">👁️</button>
+          </div>
+        </div>
+        <button class="btn-login" id="loginBtn">
+          <div class="spin"></div>
+          <span class="btn-login-text">Sign In</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR OVERLAY -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">📡</div>
+      <div><div class="brand-name">MediaPost</div><div class="brand-sub">Publish Dashboard</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Navigation</div>
+      <a href="index.html" class="nav-link"><span class="nav-icon">🏠</span> Dashboard</a>
+      <a href="newspost.html" class="nav-link"><span class="nav-icon">🗞️</span> News Posts</a>
+      <a href="adbanner.html" class="nav-link active"><span class="nav-icon">📢</span> Ad Banner</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="auth-chip" id="authChip"><div class="auth-dot"></div><span id="authChipLabel">Not signed in</span></button>
+    </div>
+  </aside>
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+      <div class="topbar-info">
+        <div class="topbar-title">Ad Banner Manager</div>
+        <div class="topbar-subtitle">Upload and manage ad banners shown on news posters</div>
+      </div>
+    </div>
+    <span class="badge-yellow">☁️ Cloudinary</span>
+  </div>
+
+  <!-- MAIN -->
+  <div class="page-wrap">
+    <div class="content">
+
+      <!-- LEFT COL: Upload -->
+      <div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">⬆️ Upload Banner</span></div>
+          <div class="panel-body">
+            <div class="ad-info-bar">⚠️ Minimum size: <span class="ad-dim-badge">1944 × 528 px</span></div>
+            <div class="ad-dim-note">📐 Required: <span class="ad-dim-badge">1944 × 528 px</span></div>
+            <div class="ad-drop-zone" id="adDropZone">
+              <input type="file" id="adBannerFile" accept="image/jpeg,image/png,image/webp"/>
+              <div class="ad-drop-icon">🖼️</div>
+              <div class="ad-drop-text"><strong>Tap to upload</strong> or drag & drop<br>JPEG / PNG / WEBP · min 1944 × 528 px</div>
+            </div>
+            <div class="preview-wrap" id="adUploadPreview">
+              <span class="preview-label">Preview</span>
+              <img id="adUploadPreviewImg" alt="ad preview"/>
+            </div>
+            <button class="btn-upload" id="adUploadBtn" disabled>
+              <div class="spin-u"></div>
+              <span class="btn-text">⬆️ Upload to Cloudinary</span>
+            </button>
+            <div class="ad-status" id="adStatus"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COL: Manage -->
+      <div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">📊 Overview</span></div>
+          <div class="panel-body">
+            <div class="stats-grid">
+              <div class="stat-card"><div class="stat-num" id="statTotal">–</div><div class="stat-label">Total banners</div></div>
+              <div class="stat-card"><div class="stat-num" id="statSlot">–</div><div class="stat-label">Active slot</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">🖼️ Active Banner</span></div>
+          <div class="panel-body">
+            <div class="current-banner-card" id="adCurrentPreview">
+              <span class="current-banner-label">Active</span>
+              <img id="adCurrentImg" alt="current banner"/>
+            </div>
+            <div class="no-banner-note" id="adNoBanner">📭 No banners uploaded yet.<br>Posts will show placeholder text.</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">📋 All Banners</span>
+            <button class="btn-refresh-sm" id="refreshBtn">🔄 Refresh</button>
+          </div>
+          <div class="panel-body">
+            <div class="banner-list" id="bannerList">
+              <div class="empty-banners">Loading banners…</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+<script>
+  const API='https://news-channel-drab.vercel.app/api', AD_API=`${API}/ad-banner`;
+  const TOKEN_KEY='mp_admin_token', MIN_AD_W=1944, MIN_AD_H=528;
+  const getToken=()=>sessionStorage.getItem(TOKEN_KEY);
+  const setToken=t=>sessionStorage.setItem(TOKEN_KEY,t);
+  const clearToken=()=>sessionStorage.removeItem(TOKEN_KEY);
+
+  /* Sidebar */
+  const sidebar=document.getElementById('sidebar'), sidebarOverlay=document.getElementById('sidebarOverlay'), hamburger=document.getElementById('hamburger');
+  function openSidebar(){sidebar.classList.add('open');sidebarOverlay.classList.add('show');document.body.style.overflow='hidden';}
+  function closeSidebar(){sidebar.classList.remove('open');sidebarOverlay.classList.remove('show');document.body.style.overflow='';}
+  hamburger.addEventListener('click',openSidebar);
+  sidebarOverlay.addEventListener('click',closeSidebar);
+  sidebar.querySelectorAll('.nav-link').forEach(l=>l.addEventListener('click',closeSidebar));
+
+  /* Auth chip */
+  const authChip=document.getElementById('authChip'), authChipLabel=document.getElementById('authChipLabel');
+  function updateAuthChip(){const t=getToken();authChip.classList.toggle('authed',!!t);authChipLabel.textContent=t?'Signed in · sign out':'Not signed in';}
+  authChip.addEventListener('click',()=>{if(!getToken())return;clearToken();updateAuthChip();closeSidebar();openLoginModal('Session ended. Please sign in again.');});
+
+  /* Modal */
+  const loginBackdrop=document.getElementById('loginBackdrop'),loginBtn=document.getElementById('loginBtn');
+  const loginUser=document.getElementById('loginUser'),loginPass=document.getElementById('loginPass');
+  const loginError=document.getElementById('loginError'),loginErrorMsg=document.getElementById('loginErrorMsg');
+  const modalSub=document.getElementById('modalSub'),togglePw=document.getElementById('togglePw');
+
+  function openLoginModal(sub){loginError.classList.remove('show');loginUser.value='';loginPass.value='';loginUser.classList.remove('input-error');loginPass.classList.remove('input-error');if(sub)modalSub.textContent=sub;loginBackdrop.classList.add('show');setTimeout(()=>loginUser.focus(),280);}
+  function closeLoginModal(){loginBackdrop.classList.remove('show');modalSub.textContent='Sign in to manage ad banners';loadAll();}
+
+  async function handleLogin(){
+    const username=loginUser.value.trim(),password=loginPass.value;
+    loginUser.classList.remove('input-error');loginPass.classList.remove('input-error');loginError.classList.remove('show');
+    if(!username){loginUser.classList.add('input-error');loginUser.focus();return;}
+    if(!password){loginPass.classList.add('input-error');loginPass.focus();return;}
+    loginBtn.disabled=true;loginBtn.classList.add('loading');
+    try{
+      const res=await fetch(`${API}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.message||'Invalid credentials');
+      const token=data.token||data.accessToken;if(!token)throw new Error('No token returned');
+      setToken(token);updateAuthChip();closeLoginModal();
+    }catch(err){loginErrorMsg.textContent=err.message;loginError.classList.add('show');loginPass.value='';loginPass.classList.add('input-error');loginPass.focus();}
+    finally{loginBtn.disabled=false;loginBtn.classList.remove('loading');}
+  }
+  loginBtn.addEventListener('click',handleLogin);
+  [loginUser,loginPass].forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter')handleLogin();}));
+  togglePw.addEventListener('click',()=>{const t=loginPass.type==='text';loginPass.type=t?'password':'text';togglePw.textContent=t?'👁️':'🙈';});
+
+  async function authFetch(url,options={}){
+    const token=getToken();const headers={...(options.headers||{})};if(token)headers['Authorization']=`Bearer ${token}`;
+    const res=await fetch(url,{...options,headers});
+    if(res.status===401){clearToken();updateAuthChip();openLoginModal('Your session expired. Please sign in again.');throw new Error('401 Unauthorized');}
+    return res;
+  }
+
+  /* Status */
+  const adStatus=document.getElementById('adStatus');
+  function showStatus(ok,msg){adStatus.className='ad-status show '+(ok?'ok':'fail');adStatus.innerHTML=(ok?'✅ ':'❌ ')+msg;setTimeout(()=>adStatus.classList.remove('show'),8000);}
+
+  /* Load current banner */
+  async function loadCurrentBanner(){
+    try{
+      const res=await fetch(`${AD_API}/current`),data=await res.json();
+      const preview=document.getElementById('adCurrentPreview'),img=document.getElementById('adCurrentImg'),noBanner=document.getElementById('adNoBanner');
+      if(data.url){img.src=data.url;preview.classList.add('show');noBanner.style.display='none';document.getElementById('statSlot').textContent=`Slot ${data.slot}`;document.getElementById('statTotal').textContent=data.total||'–';}
+      else{preview.classList.remove('show');noBanner.style.display='block';document.getElementById('statSlot').textContent='None';document.getElementById('statTotal').textContent='0';}
+    }catch{}
+  }
+
+  /* Load banners list */
+  async function loadBannersList(){
+    const list=document.getElementById('bannerList');
+    if(!getToken()){list.innerHTML='<div class="empty-banners">Sign in to view banners</div>';return;}
+    try{
+      const res=await authFetch(`${AD_API}/list`),data=await res.json();
+      const banners=data.banners||[];document.getElementById('statTotal').textContent=banners.length;
+      if(!banners.length){list.innerHTML='<div class="empty-banners">No banners uploaded yet</div>';return;}
+      list.innerHTML='';
+      banners.forEach(b=>{
+        const item=document.createElement('div');item.className='banner-item';
+        item.innerHTML=`<img class="banner-thumb" src="${b.url}" onerror="this.style.display='none'"/><span class="banner-slot">Slot ${b.slot}</span><span class="banner-url" title="${b.url}">${b.url.split('/').pop()}</span><button class="btn-del" data-slot="${b.slot}">🗑</button>`;
+        list.appendChild(item);
+      });
+    }catch(err){if(!err.message.startsWith('401'))list.innerHTML='<div class="empty-banners">Failed to load banners</div>';}
+  }
+
+  async function loadAll(){await Promise.all([loadCurrentBanner(),loadBannersList()]);}
+
+  document.getElementById('bannerList').addEventListener('click',async e=>{
+    const btn=e.target.closest('.btn-del');if(!btn)return;
+    const slot=btn.dataset.slot;if(!confirm(`Delete ad banner slot ${slot}?`))return;
+    try{const res=await authFetch(`${AD_API}/${slot}`,{method:'DELETE'});const data=await res.json();if(!res.ok)throw new Error(data.error||'Delete failed');showStatus(true,`Slot ${slot} deleted. ${data.remaining} banner(s) remaining.`);await loadAll();}
+    catch(err){showStatus(false,err.message);}
+  });
+  document.getElementById('refreshBtn').addEventListener('click',loadAll);
+
+  /* Upload */
+  const adBannerFile=document.getElementById('adBannerFile'),adDropZone=document.getElementById('adDropZone');
+  const adUploadBtn=document.getElementById('adUploadBtn'),adUploadPreview=document.getElementById('adUploadPreview'),adUploadPreviewImg=document.getElementById('adUploadPreviewImg');
+  let adSelectedFile=null;
+
+  function validateAdImage(file){return new Promise(r=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{URL.revokeObjectURL(url);r({w:img.naturalWidth,h:img.naturalHeight});};img.onerror=()=>{URL.revokeObjectURL(url);r(null);};img.src=url;});}
+
+  adBannerFile.addEventListener('change',async()=>{
+    const f=adBannerFile.files[0];if(!f)return;
+    const dims=await validateAdImage(f);
+    if(!dims){showStatus(false,'Could not read image.');adUploadBtn.disabled=true;return;}
+    if(dims.w<MIN_AD_W||dims.h<MIN_AD_H){showStatus(false,`Image too small: ${dims.w}×${dims.h}px. Min: ${MIN_AD_W}×${MIN_AD_H}px.`);adUploadBtn.disabled=true;adSelectedFile=null;adUploadPreview.classList.remove('show');return;}
+    adUploadPreviewImg.src=URL.createObjectURL(f);adUploadPreview.classList.add('show');adSelectedFile=f;adUploadBtn.disabled=false;adStatus.classList.remove('show');
+  });
+  adDropZone.addEventListener('dragover',e=>{e.preventDefault();adDropZone.classList.add('drag-over');});
+  adDropZone.addEventListener('dragleave',()=>adDropZone.classList.remove('drag-over'));
+  adDropZone.addEventListener('drop',()=>adDropZone.classList.remove('drag-over'));
+
+  adUploadBtn.addEventListener('click',async()=>{
+    if(!adSelectedFile)return;
+    if(!getToken()){openLoginModal('Please sign in to upload.');return;}
+    adUploadBtn.disabled=true;adUploadBtn.classList.add('loading');
+    try{
+      const fd=new FormData();fd.append('adBanner',adSelectedFile);
+      const res=await authFetch(`${AD_API}/upload`,{method:'POST',body:fd}),data=await res.json();
+      if(!res.ok)throw new Error(data.error||'Upload failed');
+      showStatus(true,`Uploaded! Slot ${data.slot} · ${data.dimensions.width}×${data.dimensions.height}px`);
+      adSelectedFile=null;adUploadBtn.disabled=true;adUploadPreview.classList.remove('show');adBannerFile.value='';await loadAll();
+    }catch(err){showStatus(false,err.message);adUploadBtn.disabled=false;}
+    finally{adUploadBtn.classList.remove('loading');}
+  });
+
+  /* Boot */
+  updateAuthChip();
+  loadCurrentBanner();
+  if(!getToken())openLoginModal('Sign in to manage ad banners');
+  else loadBannersList();
+</script>
+</body>
+</html>

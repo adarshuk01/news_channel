@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MediaPost — News Posts</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    :root{
+      --bg:#f5f4f0; --surface:#ffffff; --border:#e2e0db; --border-md:#ccc9c1;
+      --text:#1a1917; --muted:#7a7770; --accent:#1d4ed8; --accent-h:#1e40af;
+      --success:#16a34a; --error:#dc2626; --radius:10px;
+      --shadow:0 1px 3px rgba(0,0,0,.06),0 4px 16px rgba(0,0,0,.04);
+      --sidebar-w:234px; --topbar-h:56px;
+      --insta:#e1306c; --insta-h:#c1205a;
+      --fb:#1877f2;    --fb-h:#0f65d8;
+      --yt:#ff0000;    --yt-h:#cc0000;
+    }
+    body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.5;overflow-x:hidden;}
+
+    /* SIDEBAR */
+    .sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:300;transition:transform .28s cubic-bezier(.4,0,.2,1);}
+    .sidebar-brand{padding:1.2rem 1.4rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.65rem;flex-shrink:0;}
+    .brand-icon{width:34px;height:34px;background:var(--accent);border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:.9rem;flex-shrink:0;}
+    .brand-name{font-weight:700;font-size:.93rem;letter-spacing:-.02em;}
+    .brand-sub{font-size:.62rem;color:var(--muted);}
+    .sidebar-nav{flex:1;padding:1rem .75rem;display:flex;flex-direction:column;gap:.2rem;overflow-y:auto;}
+    .nav-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:.55rem .75rem .28rem;}
+    .nav-link{display:flex;align-items:center;gap:.75rem;padding:.68rem .9rem;border-radius:8px;text-decoration:none;color:var(--muted);font-size:.83rem;font-weight:500;transition:all .15s;min-height:44px;}
+    .nav-link:hover{background:var(--bg);color:var(--text);}
+    .nav-link.active{background:#eff6ff;color:var(--accent);font-weight:600;}
+    .nav-icon{font-size:1.05rem;flex-shrink:0;width:22px;text-align:center;}
+    .sidebar-footer{padding:1rem 1.2rem;border-top:1px solid var(--border);flex-shrink:0;}
+    .auth-chip{display:flex;align-items:center;gap:.5rem;padding:.6rem .9rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:.77rem;font-weight:500;color:var(--muted);transition:all .15s;width:100%;min-height:44px;font-family:'Sora',sans-serif;}
+    .auth-chip.authed{color:var(--success);border-color:#bbf7d0;background:#f0fdf4;}
+    .auth-dot{width:7px;height:7px;border-radius:50%;background:var(--border-md);flex-shrink:0;}
+    .auth-chip.authed .auth-dot{background:var(--success);}
+    .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:299;opacity:0;transition:opacity .28s ease;pointer-events:none;}
+    .sidebar-overlay.show{opacity:1;pointer-events:all;}
+
+    /* TOPBAR */
+    .topbar{position:fixed;top:0;left:var(--sidebar-w);right:0;height:var(--topbar-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;z-index:200;gap:.75rem;}
+    .topbar-left{display:flex;align-items:center;gap:.75rem;min-width:0;flex:1;}
+    .hamburger{display:none;background:none;border:1px solid var(--border);border-radius:7px;cursor:pointer;color:var(--text);font-size:1.15rem;flex-shrink:0;transition:background .15s;min-width:40px;min-height:40px;align-items:center;justify-content:center;}
+    .hamburger:hover{background:var(--bg);}
+    .topbar-info{min-width:0;}
+    .topbar-title{font-weight:700;font-size:.93rem;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .topbar-subtitle{font-size:.68rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .topbar-right{display:flex;align-items:center;gap:.65rem;flex-shrink:0;}
+    .badge{font-size:.62rem;font-weight:600;background:#eff6ff;color:var(--accent);border:1px solid #bfdbfe;border-radius:20px;padding:.22rem .65rem;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;}
+    .btn-refresh{display:flex;align-items:center;gap:.4rem;padding:.48rem .9rem;background:var(--accent);color:#fff;border:none;border-radius:8px;font-family:'Sora',sans-serif;font-size:.8rem;font-weight:600;cursor:pointer;transition:background .2s;white-space:nowrap;min-height:36px;}
+    .btn-refresh:hover{background:var(--accent-h);}
+    .btn-refresh:disabled{opacity:.6;cursor:not-allowed;}
+
+    /* LAYOUT */
+    .page-wrap{margin-left:var(--sidebar-w);padding-top:var(--topbar-h);min-height:100vh;}
+    .content{padding:1.5rem 2rem;max-width:1200px;margin:0 auto;}
+
+    /* CONTROLS */
+    .controls{display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap;}
+    .search-box{display:flex;align-items:center;gap:.5rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.5rem .85rem;flex:1;max-width:320px;min-width:160px;transition:border-color .2s;}
+    .search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,78,216,.08);}
+    .search-box input{border:none;background:none;font-family:'Sora',sans-serif;font-size:.84rem;color:var(--text);width:100%;min-width:0;}
+    .search-box input:focus{outline:none;}
+    .search-box input::placeholder{color:var(--muted);}
+    .filters{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
+    .filter-btn{display:flex;align-items:center;padding:.46rem .8rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:.77rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;min-height:36px;font-family:'Sora',sans-serif;}
+    .filter-btn:hover{border-color:var(--border-md);color:var(--text);}
+    .filter-btn.active{background:#eff6ff;border-color:#bfdbfe;color:var(--accent);font-weight:600;}
+
+    .count-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;}
+    .count-text{font-size:.76rem;color:var(--muted);}
+    .count-text strong{color:var(--text);}
+    .legend{font-size:.7rem;color:var(--muted);}
+
+    /* SKELETON */
+    .skeleton-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;display:flex;align-items:flex-start;gap:1rem;animation:pulse 1.5s ease infinite;}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+    .sk-img{width:90px;height:65px;border-radius:6px;background:var(--bg);flex-shrink:0;}
+    .sk-lines{flex:1;display:flex;flex-direction:column;gap:.5rem;padding-top:.25rem;}
+    .sk-line{height:11px;border-radius:4px;background:var(--bg);}
+
+    /* NEWS GRID */
+    .news-grid{display:flex;flex-direction:column;gap:.8rem;}
+
+    .news-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);display:grid;grid-template-columns:96px 1fr auto;align-items:start;gap:1.1rem;padding:.95rem 1.1rem;transition:box-shadow .15s,border-color .15s;}
+    .news-card:hover{border-color:var(--border-md);box-shadow:0 2px 8px rgba(0,0,0,.07),0 4px 20px rgba(0,0,0,.05);}
+
+    .news-thumb{width:96px;height:68px;object-fit:cover;border-radius:7px;border:1px solid var(--border);background:var(--bg);}
+    .thumb-placeholder{width:96px;height:68px;border-radius:7px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--border-md);}
+
+    .news-meta{min-width:0;}
+    .news-header{display:flex;align-items:center;gap:.45rem;margin-bottom:.3rem;flex-wrap:wrap;}
+    .channel-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.61rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:.1rem .4rem;color:var(--muted);flex-shrink:0;}
+    .channel-icon{width:12px;height:12px;object-fit:contain;border-radius:2px;}
+    .news-title{font-size:.86rem;font-weight:600;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+    .news-summary{font-size:.76rem;color:var(--muted);line-height:1.5;margin-top:.28rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+
+    /* POST BUTTONS */
+    .post-btns{display:flex;flex-direction:column;gap:.4rem;flex-shrink:0;min-width:130px;}
+    .post-btn{display:flex;align-items:center;justify-content:center;gap:.35rem;padding:.45rem .6rem;border:none;border-radius:7px;font-family:'Sora',sans-serif;font-size:.7rem;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;min-height:36px;}
+    .post-btn.insta{background:var(--insta);color:#fff;}
+    .post-btn.fb{background:var(--fb);color:#fff;}
+    .post-btn.yt{background:var(--yt);color:#fff;}
+    .post-btn.insta:hover:not(:disabled){background:var(--insta-h);transform:translateY(-1px);}
+    .post-btn.fb:hover:not(:disabled){background:var(--fb-h);transform:translateY(-1px);}
+    .post-btn.yt:hover:not(:disabled){background:var(--yt-h);transform:translateY(-1px);}
+    .post-btn:disabled{opacity:.55;cursor:not-allowed;transform:none!important;filter:saturate(.5);}
+    .post-btn.posted{opacity:1!important;filter:none!important;background:#e9f5ec!important;color:var(--success)!important;border:1px solid #bbf7d0;font-weight:700;}
+    .post-btn .btn-spin{width:12px;height:12px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;flex-shrink:0;}
+    .post-btn.loading .btn-spin{display:block;}
+    .post-btn.loading .btn-label{opacity:.75;}
+    .post-btn.posted .btn-spin{display:none;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* STATE CARDS */
+    .state-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:3rem 2rem;text-align:center;color:var(--muted);}
+    .state-icon{font-size:2.5rem;margin-bottom:.75rem;opacity:.5;}
+    .state-text{font-size:.88rem;}
+    .state-sub{font-size:.76rem;margin-top:.35rem;opacity:.75;}
+
+    /* TOASTS */
+    .toast-wrap{position:fixed;bottom:1.25rem;right:1.25rem;display:flex;flex-direction:column;gap:.5rem;z-index:1000;max-width:calc(100vw - 2.5rem);}
+    .toast{display:flex;align-items:center;gap:.6rem;padding:.7rem .95rem;border-radius:8px;font-size:.8rem;font-weight:500;animation:toastIn .25s ease;box-shadow:0 4px 16px rgba(0,0,0,.12);}
+    @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .toast.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;}
+    .toast.fail{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
+
+    /* MODAL */
+    .modal-backdrop{position:fixed;inset:0;background:rgba(15,15,20,.55);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:999;padding:1rem;opacity:0;pointer-events:none;transition:opacity .25s ease;}
+    .modal-backdrop.show{opacity:1;pointer-events:all;}
+    .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.14);width:100%;max-width:400px;transform:translateY(12px) scale(.98);transition:transform .25s ease;overflow:hidden;}
+    .modal-backdrop.show .modal{transform:translateY(0) scale(1);}
+    .modal-top{padding:1.75rem 1.75rem 1.25rem;border-bottom:1px solid var(--border);}
+    .modal-icon{width:40px;height:40px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;margin-bottom:.9rem;}
+    .modal-title{font-size:1.1rem;font-weight:700;margin-bottom:.2rem;}
+    .modal-sub{font-size:.78rem;color:var(--muted);}
+    .modal-body{padding:1.25rem 1.75rem 1.75rem;}
+    .modal-field{margin-bottom:1rem;}
+    .modal-field label{font-size:.68rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:.4rem;display:block;}
+    .input-wrap{position:relative;}
+    .modal-field input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem .9rem;font-family:'Sora',sans-serif;font-size:.9rem;color:var(--text);-webkit-appearance:none;}
+    .modal-field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(29,78,216,.1);background:#fff;}
+    .modal-field input.input-error{border-color:var(--error);}
+    .toggle-pw{position:absolute;right:.75rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:.9rem;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center;}
+    .modal-error{display:none;background:#fef2f2;border:1px solid #fecaca;border-radius:7px;padding:.6rem .85rem;font-size:.75rem;color:#b91c1c;margin-bottom:1rem;align-items:center;gap:.5rem;}
+    .modal-error.show{display:flex;}
+    .btn-login{width:100%;padding:.9rem 1rem;background:var(--accent);color:#fff;font-family:'Sora',sans-serif;font-size:.9rem;font-weight:600;border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem;transition:background .2s;min-height:48px;}
+    .btn-login:hover:not(:disabled){background:var(--accent-h);}
+    .btn-login:disabled{opacity:.6;cursor:not-allowed;}
+    .btn-login .spin{width:15px;height:15px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;}
+    .btn-login.loading .spin{display:block;}
+    .btn-login.loading .btn-login-text{opacity:.8;}
+
+    /* ══ RESPONSIVE ══ */
+    @media(max-width:860px){
+      .sidebar{transform:translateX(-100%);box-shadow:none;}
+      .sidebar.open{transform:translateX(0);box-shadow:4px 0 32px rgba(0,0,0,.15);}
+      .sidebar-overlay{display:block;}
+      .topbar{left:0;padding:0 1rem;}
+      .hamburger{display:flex;}
+      .page-wrap{margin-left:0;}
+      .topbar-subtitle{display:none;}
+      .content{padding:1rem;}
+      .badge{display:none;}
+    }
+
+    /* Medium mobile: collapse buttons to row below */
+    @media(max-width:640px){
+      .news-card{grid-template-columns:72px 1fr;grid-template-rows:auto auto;gap:.75rem .85rem;padding:.85rem .9rem;}
+      .news-thumb,.thumb-placeholder{width:72px;height:52px;}
+      .news-meta{grid-column:2;}
+      .post-btns{grid-column:1/-1;flex-direction:row;flex-wrap:wrap;gap:.4rem;min-width:unset;}
+      .post-btn{flex:1;min-width:90px;font-size:.69rem;padding:.5rem .4rem;}
+      .controls{gap:.5rem;}
+      .search-box{max-width:100%;flex:1 1 100%;}
+      .filters{width:100%;}
+      .toast-wrap{left:1rem;right:1rem;}
+    }
+
+    @media(max-width:400px){
+      .content{padding:.75rem;}
+      .news-card{padding:.75rem;}
+      .post-btn{font-size:.66rem;padding:.48rem .3rem;}
+      .modal-top{padding:1.4rem 1.25rem 1rem;}
+      .modal-body{padding:1rem 1.25rem 1.5rem;}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN MODAL -->
+  <div class="modal-backdrop" id="loginBackdrop">
+    <div class="modal">
+      <div class="modal-top">
+        <div class="modal-icon">🔐</div>
+        <div class="modal-title">Admin Login</div>
+        <div class="modal-sub" id="modalSub">Sign in to post news to platforms</div>
+      </div>
+      <div class="modal-body">
+        <div class="modal-error" id="loginError"><span>⚠️</span><span id="loginErrorMsg">Invalid credentials.</span></div>
+        <div class="modal-field">
+          <label for="loginUser">Username</label>
+          <input type="text" id="loginUser" placeholder="admin" autocomplete="username"/>
+        </div>
+        <div class="modal-field">
+          <label for="loginPass">Password</label>
+          <div class="input-wrap">
+            <input type="password" id="loginPass" placeholder="••••••••" style="padding-right:2.75rem;"/>
+            <button type="button" class="toggle-pw" id="togglePw">👁️</button>
+          </div>
+        </div>
+        <button class="btn-login" id="loginBtn">
+          <div class="spin"></div>
+          <span class="btn-login-text">Sign In</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR OVERLAY -->
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">📡</div>
+      <div><div class="brand-name">MediaPost</div><div class="brand-sub">Publish Dashboard</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-label">Navigation</div>
+      <a href="index.html" class="nav-link"><span class="nav-icon">🏠</span> Dashboard</a>
+      <a href="newspost.html" class="nav-link active"><span class="nav-icon">🗞️</span> News Posts</a>
+      <a href="adbanner.html" class="nav-link"><span class="nav-icon">📢</span> Ad Banner</a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="auth-chip" id="authChip"><div class="auth-dot"></div><span id="authChipLabel">Not signed in</span></button>
+    </div>
+  </aside>
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
+      <div class="topbar-info">
+        <div class="topbar-title">News Posts</div>
+        <div class="topbar-subtitle">Browse latest news and post to Instagram, Facebook or YouTube</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <span class="badge" id="newsCountBadge">Loading…</span>
+      <button class="btn-refresh" id="refreshBtn">🔄 Refresh</button>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="page-wrap">
+    <div class="content">
+
+      <div class="controls">
+        <div class="search-box">
+          <span style="color:var(--muted);font-size:.9rem;flex-shrink:0;">🔍</span>
+          <input type="text" id="searchInput" placeholder="Search news…"/>
+        </div>
+        <div class="filters">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="Manorama">Manorama</button>
+          <button class="filter-btn" data-filter="Asianet">Asianet</button>
+        </div>
+      </div>
+
+      <div class="count-bar">
+        <div class="count-text" id="countText">Loading articles…</div>
+        <div class="legend">🔴 not posted &nbsp;✅ posted</div>
+      </div>
+
+      <div class="news-grid" id="newsGrid">
+        <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:55%"></div><div class="sk-line" style="width:90%"></div><div class="sk-line" style="width:70%"></div></div></div>
+        <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:60%"></div><div class="sk-line" style="width:85%"></div><div class="sk-line" style="width:65%"></div></div></div>
+        <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:50%"></div><div class="sk-line" style="width:92%"></div><div class="sk-line" style="width:75%"></div></div></div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+  const API='https://news-channel-drab.vercel.app/api';
+  const TOKEN_KEY='mp_admin_token';
+  const getToken=()=>sessionStorage.getItem(TOKEN_KEY);
+  const setToken=t=>sessionStorage.setItem(TOKEN_KEY,t);
+  const clearToken=()=>sessionStorage.removeItem(TOKEN_KEY);
+
+  /* Sidebar */
+  const sidebar=document.getElementById('sidebar'),sidebarOverlay=document.getElementById('sidebarOverlay'),hamburger=document.getElementById('hamburger');
+  function openSidebar(){sidebar.classList.add('open');sidebarOverlay.classList.add('show');document.body.style.overflow='hidden';}
+  function closeSidebar(){sidebar.classList.remove('open');sidebarOverlay.classList.remove('show');document.body.style.overflow='';}
+  hamburger.addEventListener('click',openSidebar);
+  sidebarOverlay.addEventListener('click',closeSidebar);
+  sidebar.querySelectorAll('.nav-link').forEach(l=>l.addEventListener('click',closeSidebar));
+
+  /* Auth chip */
+  const authChip=document.getElementById('authChip'),authChipLabel=document.getElementById('authChipLabel');
+  function updateAuthChip(){const t=getToken();authChip.classList.toggle('authed',!!t);authChipLabel.textContent=t?'Signed in · sign out':'Not signed in';}
+  authChip.addEventListener('click',()=>{if(!getToken())return;clearToken();updateAuthChip();closeSidebar();openLoginModal('Session ended. Please sign in again.');});
+
+  /* Modal */
+  const loginBackdrop=document.getElementById('loginBackdrop'),loginBtn=document.getElementById('loginBtn');
+  const loginUser=document.getElementById('loginUser'),loginPass=document.getElementById('loginPass');
+  const loginError=document.getElementById('loginError'),loginErrorMsg=document.getElementById('loginErrorMsg');
+  const modalSub=document.getElementById('modalSub'),togglePw=document.getElementById('togglePw');
+
+  function openLoginModal(sub){loginError.classList.remove('show');loginUser.value='';loginPass.value='';loginUser.classList.remove('input-error');loginPass.classList.remove('input-error');if(sub)modalSub.textContent=sub;loginBackdrop.classList.add('show');setTimeout(()=>loginUser.focus(),280);}
+  function closeLoginModal(){loginBackdrop.classList.remove('show');modalSub.textContent='Sign in to post news to platforms';}
+
+  async function handleLogin(){
+    const username=loginUser.value.trim(),password=loginPass.value;
+    loginUser.classList.remove('input-error');loginPass.classList.remove('input-error');loginError.classList.remove('show');
+    if(!username){loginUser.classList.add('input-error');loginUser.focus();return;}
+    if(!password){loginPass.classList.add('input-error');loginPass.focus();return;}
+    loginBtn.disabled=true;loginBtn.classList.add('loading');
+    try{
+      const res=await fetch(`${API}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+      const data=await res.json();if(!res.ok)throw new Error(data.message||'Invalid credentials');
+      const token=data.token||data.accessToken;if(!token)throw new Error('No token returned');
+      setToken(token);updateAuthChip();closeLoginModal();
+    }catch(err){loginErrorMsg.textContent=err.message;loginError.classList.add('show');loginPass.value='';loginPass.classList.add('input-error');loginPass.focus();}
+    finally{loginBtn.disabled=false;loginBtn.classList.remove('loading');}
+  }
+  loginBtn.addEventListener('click',handleLogin);
+  [loginUser,loginPass].forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter')handleLogin();}));
+  togglePw.addEventListener('click',()=>{const t=loginPass.type==='text';loginPass.type=t?'password':'text';togglePw.textContent=t?'👁️':'🙈';});
+
+  async function authFetch(url,options={}){
+    const token=getToken();const headers={...(options.headers||{})};if(token)headers['Authorization']=`Bearer ${token}`;
+    const res=await fetch(url,{...options,headers});
+    if(res.status===401){clearToken();updateAuthChip();openLoginModal('Your session expired. Please sign in again.');throw new Error('401 Unauthorized');}
+    return res;
+  }
+
+  /* Toast */
+  function showToast(ok,message){
+    const wrap=document.getElementById('toastWrap');
+    const t=document.createElement('div');t.className=`toast ${ok?'ok':'fail'}`;
+    t.innerHTML=`${ok?'✅':'❌'} ${message}`;
+    wrap.appendChild(t);setTimeout(()=>t.remove(),5000);
+  }
+
+  /* State */
+  let allNews=[],statusMap={},filterChan='all',searchQuery='';
+
+  /* Fetch news */
+  async function fetchNews(){
+    const refreshBtn=document.getElementById('refreshBtn');
+    refreshBtn.disabled=true;
+    document.getElementById('newsCountBadge').textContent='Loading…';
+    document.getElementById('countText').textContent='Loading articles…';
+    renderSkeletons();
+    try{
+      const res=await fetch(`${API}/news/list`),data=await res.json();
+      if(!res.ok)throw new Error(data.error||'Failed to load news');
+      allNews=data.news||[];
+      document.getElementById('newsCountBadge').textContent=`${allNews.length} articles`;
+      await fetchStatuses(allNews.map(n=>n.id));
+      renderNews();
+    }catch(err){renderError(err.message);document.getElementById('newsCountBadge').textContent='Error';}
+    finally{refreshBtn.disabled=false;}
+  }
+
+  async function fetchStatuses(ids){
+    if(!ids.length)return;
+    try{const res=await fetch(`${API}/news/post-status?ids=${ids.join(',')}`),data=await res.json();statusMap=data.statuses||{};}
+    catch{statusMap={};}
+  }
+
+  /* Render */
+  function renderSkeletons(){
+    document.getElementById('newsGrid').innerHTML=Array(4).fill('').map(()=>`
+      <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:55%"></div><div class="sk-line" style="width:90%"></div><div class="sk-line" style="width:70%"></div></div></div>`).join('');
+  }
+
+  function renderError(msg){
+    document.getElementById('newsGrid').innerHTML=`<div class="state-card"><div class="state-icon">⚠️</div><div class="state-text">Failed to load news</div><div class="state-sub">${msg}</div></div>`;
+  }
+
+  function filteredNews(){
+    return allNews.filter(n=>{
+      const matchChan=filterChan==='all'||n.channel===filterChan;
+      const matchSearch=!searchQuery||n.title.toLowerCase().includes(searchQuery)||(n.summary||'').toLowerCase().includes(searchQuery);
+      return matchChan&&matchSearch;
+    });
+  }
+
+  function renderNews(){
+    const grid=document.getElementById('newsGrid'),list=filteredNews();
+    document.getElementById('countText').innerHTML=`Showing <strong>${list.length}</strong> of <strong>${allNews.length}</strong> articles`;
+    if(!list.length){grid.innerHTML=`<div class="state-card"><div class="state-icon">🔍</div><div class="state-text">No articles match your filter</div><div class="state-sub">Try a different search term or channel</div></div>`;return;}
+    grid.innerHTML=list.map(n=>{
+      const st=statusMap[n.id]||{instagram:false,facebook:false,youtube:false};
+      return buildCard(n,st);
+    }).join('');
+  }
+
+  function buildCard(n,st){
+    const thumb=n.image?`<img class="news-thumb" src="${escH(n.image)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=thumb-placeholder>🖼️</div>'">`:`<div class="thumb-placeholder">🖼️</div>`;
+    const chIcon=n.icon?`<img class="channel-icon" src="${escH(n.icon)}" alt="" onerror="this.style.display='none'">`:'';
+    return `
+      <div class="news-card" data-id="${n.id}">
+        ${thumb}
+        <div class="news-meta">
+          <div class="news-header"><span class="channel-badge">${chIcon} ${escH(n.channel)}</span></div>
+          <div class="news-title">${escH(n.title)}</div>
+          ${n.summary?`<div class="news-summary">${escH(n.summary)}</div>`:''}
+        </div>
+        <div class="post-btns">
+          <button class="post-btn insta${st.instagram?' posted':''}" data-platform="instagram" data-id="${n.id}" data-title="${escA(n.title)}" data-summary="${escA(n.summary||'')}" data-image="${escA(n.image||'')}" ${st.instagram?'disabled':''}>
+            <div class="btn-spin"></div><span class="btn-label">${st.instagram?'✅ Instagram':'📸 Instagram'}</span>
+          </button>
+          <button class="post-btn fb${st.facebook?' posted':''}" data-platform="facebook" data-id="${n.id}" data-title="${escA(n.title)}" data-summary="${escA(n.summary||'')}" data-image="${escA(n.image||'')}" ${st.facebook?'disabled':''}>
+            <div class="btn-spin"></div><span class="btn-label">${st.facebook?'✅ Facebook':'👍 Facebook'}</span>
+          </button>
+          <button class="post-btn yt${st.youtube?' posted':''}" data-platform="youtube" data-id="${n.id}" data-title="${escA(n.title)}" data-summary="${escA(n.summary||'')}" data-image="${escA(n.image||'')}" ${st.youtube?'disabled':''}>
+            <div class="btn-spin"></div><span class="btn-label">${st.youtube?'✅ YouTube':'▶️ YouTube'}</span>
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function escA(s){return String(s||'').replace(/"/g,'&quot;');}
+
+  /* Post to platform */
+  document.getElementById('newsGrid').addEventListener('click',async e=>{
+    const btn=e.target.closest('.post-btn');
+    if(!btn||btn.disabled)return;
+    if(!getToken()){openLoginModal('Please sign in to post news.');return;}
+    const{platform,id,title,summary,image}=btn.dataset;
+    btn.disabled=true;btn.classList.add('loading');
+    try{
+      const res=await authFetch(`${API}/news/post-item`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({newsId:id,platform,title,summary,image})});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||'Post failed');
+      if(!statusMap[id])statusMap[id]={};
+      statusMap[id][platform]=true;
+      btn.classList.remove('loading');btn.classList.add('posted');
+      btn.querySelector('.btn-label').textContent=`✅ ${capitalize(platform)}`;
+      showToast(true,`Posted to ${capitalize(platform)} successfully!`);
+    }catch(err){
+      btn.classList.remove('loading');
+      if(!err.message.startsWith('401')){btn.disabled=false;showToast(false,err.message);}
+    }
+  });
+
+  function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+
+  /* Filters */
+  document.querySelectorAll('.filter-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');filterChan=btn.dataset.filter;renderNews();
+    });
+  });
+
+  document.getElementById('searchInput').addEventListener('input',e=>{searchQuery=e.target.value.trim().toLowerCase();renderNews();});
+  document.getElementById('refreshBtn').addEventListener('click',fetchNews);
+
+  /* Boot */
+  updateAuthChip();
+  if(!getToken())openLoginModal('Sign in to post news to platforms');
+  fetchNews();
+</script>
+</body>
+</html>
