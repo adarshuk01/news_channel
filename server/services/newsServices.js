@@ -28,61 +28,290 @@ const SOURCES = {
     channel: "Oneindia",
   },
   news18: {
-    sitemapUrl: "https://malayalam.news18.com/commonfeeds/v1/mal/sitemap/google-news.xml",
-    baseUrl:    "https://malayalam.news18.com",
-    icon:       "https://static.news18.com/static/img/logo-news18-favicon-32.png",
-    channel:    "News18 Malayalam",
+    // Primary Google News Sitemap
+    sitemapUrl:      "https://malayalam.news18.com/commonfeeds/v1/mal/sitemap/google-news.xml",
+    // Fallback standard news sitemap
+    sitemapFallback: "https://malayalam.news18.com/sitemap/news-sitemap.xml",
+    baseUrl: "https://malayalam.news18.com",
+    icon:    "https://static.news18.com/static/img/logo-news18-favicon-32.png",
+    channel: "News18 Malayalam",
   },
 };
 
-// Default browser-like headers to avoid blocks
+// Default browser-like headers
 const DEFAULT_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
   "Accept-Language": "en-US,en;q=0.9",
+  "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 };
 
 // ─────────────────────────────────────────────
 //  Internal helpers
 // ─────────────────────────────────────────────
 
-/**
- * Safely fetch a URL and return a Cheerio instance.
- * Throws a descriptive error on failure.
- */
 async function loadPage(url) {
   try {
     const { data } = await axios.get(url, {
       headers: DEFAULT_HEADERS,
       timeout: 15000,
     });
-
-    return cheerio.load(data, {
-      xmlMode: true,
-      decodeEntities: true,
-    });
-
+    return cheerio.load(data, { xmlMode: true, decodeEntities: true });
   } catch (err) {
     throw new Error(`Failed to fetch "${url}": ${err.message}`);
   }
 }
 
-/** Strip leading "Live " labels that some outlets prefix to titles. */
-const stripLive = (text) => text.replace(/^Live\s*/gi, "").trim();
+const stripLive  = (text) => text.replace(/^Live\s*/gi, "").trim();
+const stripCdata = (s = "") => s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+const resolve    = (base, href = "") => href.startsWith("http") ? href : base + href;
 
-/** Strip CDATA wrappers */
-const stripCdata = (s = "") =>
-  s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+const isValidImage = (url) => {
+  if (!url) return false;
+  const clean = url.split("?")[0];
+  return /^https?:\/\//i.test(url) && /\.(jpg|jpeg|png|webp|gif)$/i.test(clean);
+};
 
-/** Resolve a possibly-relative URL against a base. */
-const resolve = (base, href = "") =>
-  href.startsWith("http") ? href : base + href;
+// ─────────────────────────────────────────────
+//  Raw XML helpers  (namespace-safe, no cheerio)
+//  These work reliably on Vercel where cheerio's
+//  namespace selectors (news\:title) often fail.
+// ─────────────────────────────────────────────
 
-/** Validate image URL */
-const isValidImage = (url) =>
-  !!url &&
-  /^https?:\/\//i.test(url) &&
-  /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(url);
+/**
+ * Extract text content of the FIRST matching tag (handles namespaced tags).
+ * e.g. xmlTag(chunk, "news:title")  or  xmlTag(chunk, "loc")
+ */
+function xmlTag(xml, tag) {
+  const esc = tag.replace(":", "\\:").replace(".", "\\.");
+  const re  = new RegExp(`<${esc}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${esc}>`, "i");
+  const m   = xml.match(re);
+  return m ? stripCdata(m[1]).trim() : "";
+}
+
+/**
+ * Extract an attribute value from the first matching tag.
+ * e.g. xmlAttr(chunk, "enclosure", "url")
+ */
+function xmlAttr(xml, tag, attr) {
+  const esc = tag.replace(":", "\\:").replace(".", "\\.");
+  const re  = new RegExp(`<${esc}[^>]*\\s${attr}="([^"]*)"`, "i");
+  const m   = xml.match(re);
+  return m ? m[1].trim() : "";
+}
+
+/**
+ * Split sitemap XML into individual <url>…</url> chunks.
+ */
+function splitUrlChunks(xml) {
+  const chunks = [];
+  let pos = 0;
+  while (true) {
+    const open  = xml.indexOf("<url>", pos);
+    if (open === -1) break;
+    const close = xml.indexOf("</url>", open);
+    if (close === -1) break;
+    chunks.push(xml.slice(open + 5, close));
+    pos = close + 6;
+  }
+  return chunks;
+}
+
+// ─────────────────────────────────────────────
+//  News18 fetch strategy
+//  Tries direct → multiple proxies → rss2json
+//  for BOTH the primary and fallback sitemap URLs.
+// ─────────────────────────────────────────────
+
+function buildNews18Attempts(targetUrl) {
+  const enc = encodeURIComponent(targetUrl);
+  return [
+    // 1. Direct request — works locally, often blocked on Vercel US egress IPs
+    {
+      name: "direct",
+      run: async () => {
+        const { data } = await axios.get(targetUrl, {
+          headers: DEFAULT_HEADERS,
+          timeout: 12000,
+        });
+        return typeof data === "string" ? data : null;
+      },
+    },
+    // 2. allorigins raw
+    {
+      name: "allorigins-raw",
+      run: async () => {
+        const { data } = await axios.get(
+          `https://api.allorigins.win/raw?url=${enc}`,
+          { headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] }, timeout: 15000 }
+        );
+        return typeof data === "string" ? data : null;
+      },
+    },
+    // 3. allorigins JSON wrapper
+    {
+      name: "allorigins-json",
+      run: async () => {
+        const { data } = await axios.get(
+          `https://api.allorigins.win/get?url=${enc}`,
+          { headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] }, timeout: 15000 }
+        );
+        return data && typeof data.contents === "string" ? data.contents : null;
+      },
+    },
+    // 4. corsproxy.io
+    {
+      name: "corsproxy",
+      run: async () => {
+        const { data } = await axios.get(
+          `https://corsproxy.io/?${enc}`,
+          { headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] }, timeout: 15000 }
+        );
+        return typeof data === "string" ? data : null;
+      },
+    },
+    // 5. codetabs
+    {
+      name: "codetabs",
+      run: async () => {
+        const { data } = await axios.get(
+          `https://api.codetabs.com/v1/proxy?quest=${targetUrl}`,
+          { headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] }, timeout: 15000 }
+        );
+        return typeof data === "string" ? data : null;
+      },
+    },
+    // 6. rss2json — reconstructs minimal XML from its JSON response
+    {
+      name: "rss2json",
+      run: async () => {
+        const { data } = await axios.get(
+          `https://api.rss2json.com/v1/api.json?rss_url=${enc}`,
+          { timeout: 15000 }
+        );
+        if (!data || !Array.isArray(data.items) || data.items.length === 0) return null;
+        // Build synthetic sitemap XML so the rest of the parser works unchanged
+        const urlBlocks = data.items.map((it) => {
+          const img =
+            it.thumbnail ||
+            (it.enclosure && it.enclosure.link) ||
+            "";
+          return [
+            "<url>",
+            `  <loc>${it.link || ""}</loc>`,
+            `  <news:title>${it.title || ""}</news:title>`,
+            `  <news:publication_date>${it.pubDate || ""}</news:publication_date>`,
+            `  <image:loc>${img}</image:loc>`,
+            `  <news:keywords>${(it.description || "").replace(/<[^>]+>/g, "")}</news:keywords>`,
+            "</url>",
+          ].join("\n");
+        });
+        return `<urlset>\n${urlBlocks.join("\n")}\n</urlset>`;
+      },
+    },
+  ];
+}
+
+/**
+ * Try every proxy strategy for both sitemap URLs.
+ * Returns the first raw XML string that contains <url> or <loc> tags.
+ */
+async function fetchNews18RawXml() {
+  const { sitemapUrl, sitemapFallback } = SOURCES.news18;
+
+  for (const targetUrl of [sitemapUrl, sitemapFallback]) {
+    const attempts = buildNews18Attempts(targetUrl);
+
+    for (const attempt of attempts) {
+      try {
+        const xml = await attempt.run();
+        if (xml && (xml.includes("<url>") || xml.includes("<loc>"))) {
+          console.log(
+            `[News18] ✅ Got XML via "${attempt.name}" from ${targetUrl} (${xml.length} chars)`
+          );
+          return xml;
+        }
+        console.log(`[News18] ⚠️  "${attempt.name}" returned no usable XML`);
+      } catch (err) {
+        console.log(`[News18] ⚠️  "${attempt.name}" threw: ${err.message}`);
+      }
+    }
+    console.log(`[News18] All attempts failed for: ${targetUrl} — trying fallback…`);
+  }
+
+  return null;
+}
+
+// ─────────────────────────────────────────────
+//  News18 Malayalam scraper
+// ─────────────────────────────────────────────
+
+async function scrapeNews18Malayalam() {
+  const { icon, channel } = SOURCES.news18;
+
+  const rawXml = await fetchNews18RawXml();
+  if (!rawXml) {
+    console.error("[News18] ❌ All fetch strategies exhausted — skipping source");
+    return [];
+  }
+
+  const chunks = splitUrlChunks(rawXml);
+  console.log(`[News18] Parsing ${chunks.length} <url> blocks`);
+
+  const news = [];
+
+  for (const chunk of chunks) {
+    const loc = xmlTag(chunk, "loc");
+    if (!loc || !loc.startsWith("http")) continue;
+
+    // Title: news:title preferred, fall back to plain title
+    const rawTitle = xmlTag(chunk, "news:title") || xmlTag(chunk, "title") || "";
+    const title    = stripLive(rawTitle);
+    if (!title) continue;
+
+    // Date: news:publication_date → lastmod → pubDate
+    const pubDateRaw =
+      xmlTag(chunk, "news:publication_date") ||
+      xmlTag(chunk, "lastmod") ||
+      xmlTag(chunk, "pubDate") ||
+      "";
+    let readableTime = "";
+    if (pubDateRaw) {
+      try {
+        readableTime = new Date(pubDateRaw).toLocaleString("en-IN", {
+          timeZone:   "Asia/Kolkata",
+          day:        "2-digit",
+          month:      "short",
+          year:       "numeric",
+          hour:       "2-digit",
+          minute:     "2-digit",
+        });
+      } catch {
+        readableTime = pubDateRaw;
+      }
+    }
+
+    // Summary / keywords
+    const summary = xmlTag(chunk, "news:keywords") || xmlTag(chunk, "description") || "";
+
+    // Image: image:loc → enclosure[url] → media:content[url]
+    const image =
+      xmlTag(chunk, "image:loc") ||
+      xmlAttr(chunk, "enclosure", "url") ||
+      xmlAttr(chunk, "media:content", "url") ||
+      "";
+
+    if (!isValidImage(image)) {
+      console.log("[News18] ⏭️  Skipping (no valid image):", title.slice(0, 50));
+      continue;
+    }
+
+    news.push({ title, link: loc, summary, image, readableTime, icon, channel });
+  }
+
+  console.log(`[News18] ✅ ${news.length} valid articles`);
+  return news;
+}
 
 // ─────────────────────────────────────────────
 //  Manorama scraper
@@ -123,7 +352,6 @@ async function scrapeManorama(url, selector) {
 
 async function scrapeAsianet(url) {
   const { icon, channel } = SOURCES.asianet;
-
   let $;
   try {
     $ = await loadPage(url);
@@ -133,45 +361,30 @@ async function scrapeAsianet(url) {
   }
 
   const news = [];
-
   $("item").each((_, el) => {
-    const raw = $(el).html();
-
-    const getTag = (tag) => {
-      const match = raw.match(new RegExp(`<${tag}>(.*?)</${tag}>`, "s"));
-      return match
-        ? match[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, "$1").trim()
-        : "";
+    const raw     = $(el).html();
+    const getTag  = (tag) => {
+      const m = raw.match(new RegExp(`<${tag}>(.*?)</${tag}>`, "s"));
+      return m ? m[1].replace(/<!\[CDATA\[(.*?)\]\]>/s, "$1").trim() : "";
     };
-
     const getAttr = (tag, attr) => {
-      const match = raw.match(new RegExp(`<${tag}[^>]*${attr}="(.*?)"`, "s"));
-      return match ? match[1] : "";
+      const m = raw.match(new RegExp(`<${tag}[^>]*${attr}="(.*?)"`, "s"));
+      return m ? m[1] : "";
     };
 
     const title   = stripLive(getTag("title"));
     const link    = getTag("link");
     const summary = getTag("description");
     const pubDate = getTag("pubDate");
+    const image   = (getAttr("media:content", "url") || getAttr("enclosure", "url") || "").trim();
 
-    let image =
-      getAttr("media:content", "url") ||
-      getAttr("enclosure", "url") ||
-      "";
-
-    image = image.trim();
-
-    if (!isValidImage(image)) {
-      console.log("[Asianet] ⏭️ Skipping (invalid image):", image);
-      return;
-    }
-
+    if (!isValidImage(image)) return;
     if (title && link) {
       news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
     }
   });
 
-  console.log(`[Asianet] ✅ Valid RSS articles: ${news.length}`);
+  console.log(`[Asianet] ✅ ${news.length} articles`);
   return news;
 }
 
@@ -233,7 +446,6 @@ async function scrapeOneindia() {
   ];
 
   let rawXml = null;
-
   for (const proxy of proxies) {
     try {
       const { data } = await axios.get(proxy.buildUrl(), {
@@ -242,179 +454,46 @@ async function scrapeOneindia() {
       });
       const candidate = proxy.extract(data);
       if (candidate && candidate.includes("<item>")) {
-        console.log(`[Oneindia] ✅ RSS fetched via ${proxy.name}, length: ${candidate.length}`);
+        console.log(`[Oneindia] ✅ via ${proxy.name} (${candidate.length} chars)`);
         rawXml = candidate;
         break;
       }
-      console.log(`[Oneindia] ⚠️ ${proxy.name} returned no valid XML`);
     } catch (err) {
-      console.log(`[Oneindia] ⚠️ ${proxy.name} failed: ${err.message}`);
+      console.log(`[Oneindia] ⚠️  ${proxy.name}: ${err.message}`);
     }
   }
 
   if (!rawXml) {
-    console.error("[Oneindia] ❌ All proxy attempts failed — skipping source");
+    console.error("[Oneindia] ❌ All proxies failed");
     return [];
   }
 
-  const _stripCdata = (s = "") =>
-    s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-     .replace(/<[^>]+>/g, "")
-     .trim();
-
+  const _strip = (s = "") =>
+    s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]+>/g, "").trim();
   const getTag = (chunk, tag) => {
     const m = chunk.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
-    return m ? _stripCdata(m[1]) : "";
+    return m ? _strip(m[1]) : "";
   };
 
-  const itemChunks = rawXml.split(/<item>/).slice(1);
   const news = [];
-
-  for (const chunk of itemChunks) {
-    const endIdx = chunk.indexOf("</item>");
-    const itemXml = endIdx !== -1 ? chunk.slice(0, endIdx) : chunk;
+  for (const chunk of rawXml.split(/<item>/).slice(1)) {
+    const end     = chunk.indexOf("</item>");
+    const itemXml = end !== -1 ? chunk.slice(0, end) : chunk;
 
     const title   = stripLive(getTag(itemXml, "title"));
     const link    = getTag(itemXml, "link");
-    const summary = getTag(itemXml, "description").replace(/<[^>]+>/g, "").trim();
+    const summary = getTag(itemXml, "description");
     const pubDate = getTag(itemXml, "pubDate");
+    const imgM    = itemXml.match(/url="(https?:\/\/[^"]+)"/);
+    const image   = imgM ? imgM[1].trim() : "";
 
-    const imgMatch = itemXml.match(/url="(https?:\/\/[^"]+)"/);
-    const image    = imgMatch ? imgMatch[1].trim() : "";
-
-    if (!isValidImage(image)) {
-      console.log("[Oneindia] ⏭️ Skipping:", title.slice(0, 40), "| img:", image.slice(0, 60));
-      continue;
-    }
-
+    if (!isValidImage(image)) continue;
     if (title && link) {
       news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
     }
   }
 
-  console.log(`[Oneindia] ✅ Valid articles parsed: ${news.length}`);
-  return news;
-}
-
-// ─────────────────────────────────────────────
-//  News18 Malayalam scraper  (News Sitemap XML)
-// ─────────────────────────────────────────────
-
-/**
- * Fetches News18 Malayalam articles from their Google News Sitemap.
- * The sitemap contains <url> entries with:
- *   - <loc>           → article URL
- *   - <lastmod>       → last modified ISO timestamp
- *   - <news:news>     → publication date, title, keywords
- *   - <image:image>   → <image:loc> for the thumbnail
- *
- * Tries direct fetch first, then falls back to proxy if blocked.
- */
-async function scrapeNews18Malayalam() {
-  const { sitemapUrl, icon, channel } = SOURCES.news18;
-
-  // Try fetching the sitemap directly first, then via proxy
-  const attempts = [
-    {
-      name: "direct",
-      buildUrl: () => sitemapUrl,
-      headers: DEFAULT_HEADERS,
-    },
-    {
-      name: "allorigins",
-      buildUrl: () => `https://api.allorigins.win/raw?url=${encodeURIComponent(sitemapUrl)}`,
-      headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] },
-    },
-    {
-      name: "allorigins-json",
-      buildUrl: () => `https://api.allorigins.win/get?url=${encodeURIComponent(sitemapUrl)}`,
-      headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] },
-    },
-  ];
-
-  let rawXml = null;
-
-  for (const attempt of attempts) {
-    try {
-      const { data } = await axios.get(attempt.buildUrl(), {
-        timeout: 15000,
-        headers: attempt.headers,
-      });
-
-      // allorigins-json wraps the response in a `contents` key
-      const candidate =
-        attempt.name === "allorigins-json"
-          ? data && data.contents
-            ? data.contents
-            : null
-          : typeof data === "string"
-          ? data
-          : null;
-
-      if (candidate && (candidate.includes("<url>") || candidate.includes("<loc>"))) {
-        console.log(`[News18] ✅ Sitemap fetched via ${attempt.name}, length: ${candidate.length}`);
-        rawXml = candidate;
-        break;
-      }
-      console.log(`[News18] ⚠️ ${attempt.name} returned no valid XML`);
-    } catch (err) {
-      console.log(`[News18] ⚠️ ${attempt.name} failed: ${err.message}`);
-    }
-  }
-
-  if (!rawXml) {
-    console.error("[News18] ❌ All fetch attempts failed — skipping source");
-    return [];
-  }
-
-  // Use cheerio in xmlMode to parse the sitemap
-  const $ = cheerio.load(rawXml, { xmlMode: true, decodeEntities: true });
-  const news = [];
-
-  $("url").each((_, el) => {
-    const loc = $(el).find("loc").first().text().trim();
-
-    // news:title
-    const rawTitle = $(el).find("news\\:title, title").first().text().trim();
-    const title    = stripLive(stripCdata(rawTitle));
-
-    // news:publication_date (ISO 8601) or lastmod
-    const pubDateRaw =
-      $(el).find("news\\:publication_date").first().text().trim() ||
-      $(el).find("lastmod").first().text().trim();
-    const readableTime = pubDateRaw
-      ? new Date(pubDateRaw).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-      : "";
-
-    // news:keywords (optional)
-    const keywords = stripCdata($(el).find("news\\:keywords").first().text().trim());
-
-    // image:loc
-    const rawImage = stripCdata(
-      $(el).find("image\\:loc").first().text().trim()
-    );
-    const image = rawImage.trim();
-
-    if (!title || !loc) return;
-
-    // Only include items with a valid image (consistent with other scrapers)
-    if (!isValidImage(image)) {
-      console.log("[News18] ⏭️ Skipping (no valid image):", title.slice(0, 50));
-      return;
-    }
-
-    news.push({
-      title,
-      link:        loc,
-      summary:     keywords, // keywords double as a brief summary
-      image,
-      readableTime,
-      icon,
-      channel,
-    });
-  });
-
-  console.log(`[News18] ✅ Valid articles parsed: ${news.length}`);
+  console.log(`[Oneindia] ✅ ${news.length} articles`);
   return news;
 }
 
@@ -422,67 +501,44 @@ async function scrapeNews18Malayalam() {
 //  Exported fetchers
 // ─────────────────────────────────────────────
 
-// -- Manorama --
-
-/** Latest Kerala news (Manorama) */
 exports.fetchManoramaLatestNews = () =>
   scrapeManorama(
     `${SOURCES.manorama.baseUrl}/news/latest-news.html`,
-    "#Just_in_Slot > div > ul > li",
+    "#Just_in_Slot > div > ul > li"
   );
 
-/** Technology news (Manorama) */
 exports.fetchManoramaTechNews = () =>
   scrapeManorama(
     `${SOURCES.manorama.baseUrl}/technology/technology-news.html`,
-    "#Tech___Gadgets_SubsectionPage_Technology_News > div > ul > li",
+    "#Tech___Gadgets_SubsectionPage_Technology_News > div > ul > li"
   );
-
-// -- Asianet --
 
 exports.fetchAsianetLatestNews = () =>
-  scrapeAsianet(
-    `${SOURCES.asianet.baseUrl}/rss`,
-    "div._2asjQ.gawidget_homeheadline > div > figure",
-  );
+  scrapeAsianet(`${SOURCES.asianet.baseUrl}/rss`);
 
-// -- MediaOne --
-
-/** Sports news (MediaOne) */
 exports.fetchMediaOneSportsNews = () =>
   scrapeMediaOneSports(`${SOURCES.mediaone.baseUrl}/sports`);
 
-// -- Oneindia --
-
-/** Latest news (Oneindia Malayalam) */
 exports.fetchOneindiaLatestNews = () => scrapeOneindia();
 
-// -- News18 Malayalam --
-
-/** Latest news (News18 Malayalam) from news sitemap */
 exports.fetchNews18MalayalamLatestNews = () => scrapeNews18Malayalam();
 
 // ─────────────────────────────────────────────
 //  Aggregate helpers
 // ─────────────────────────────────────────────
 
-/**
- * Fetch all latest news from every source in parallel.
- * Failed sources are skipped gracefully; errors are logged to stderr.
- * @returns {Promise<Array>} Merged array sorted by source order.
- */
 exports.fetchAllLatestNews = async () => {
   const results = await Promise.allSettled([
     exports.fetchManoramaLatestNews(),
     exports.fetchAsianetLatestNews(),
     exports.fetchOneindiaLatestNews(),
-    exports.fetchNews18MalayalamLatestNews(),   // ← NEW
+    exports.fetchNews18MalayalamLatestNews(),
   ]);
 
   return results
     .filter((r) => {
       if (r.status === "rejected") {
-        console.error("[NewsService] fetchAllLatestNews error:", r.reason?.message);
+        console.error("[NewsService] error:", r.reason?.message);
         return false;
       }
       return true;
@@ -490,10 +546,6 @@ exports.fetchAllLatestNews = async () => {
     .flatMap((r) => r.value);
 };
 
-/**
- * Fetch all news across every category and source in parallel.
- * @returns {Promise<{ latest: Array, tech: Array, sports: Array }>}
- */
 exports.fetchAllNews = async () => {
   const [latest, tech, sports] = await Promise.allSettled([
     exports.fetchAllLatestNews(),
@@ -503,7 +555,7 @@ exports.fetchAllNews = async () => {
 
   const safe = (r, label) => {
     if (r.status === "rejected") {
-      console.error(`[NewsService] fetchAllNews (${label}) error:`, r.reason?.message);
+      console.error(`[NewsService] fetchAllNews (${label}):`, r.reason?.message);
       return [];
     }
     return r.value;
