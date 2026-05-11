@@ -292,9 +292,9 @@
 <script>
   const API='https://news-channel-drab.vercel.app/api', AD_API=`${API}/ad-banner`;
   const TOKEN_KEY='mp_admin_token', MIN_AD_W=1944, MIN_AD_H=528;
-  const getToken=()=>sessionStorage.getItem(TOKEN_KEY);
-  const setToken=t=>sessionStorage.setItem(TOKEN_KEY,t);
-  const clearToken=()=>sessionStorage.removeItem(TOKEN_KEY);
+const getToken   = () => localStorage.getItem(TOKEN_KEY);
+const setToken   = (t) => localStorage.setItem(TOKEN_KEY, t);
+const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
   /* Sidebar */
   const sidebar=document.getElementById('sidebar'), sidebarOverlay=document.getElementById('sidebarOverlay'), hamburger=document.getElementById('hamburger');

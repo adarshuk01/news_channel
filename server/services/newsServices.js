@@ -22,6 +22,11 @@ const SOURCES = {
     icon:    "https://upload.wikimedia.org/wikipedia/commons/6/62/Media_One_Logo.png",
     channel: "MediaOne",
   },
+  oneindia: {
+    rssUrl:  "https://malayalam.oneindia.com/rss/feeds/malayalam-news-fb.xml",
+    icon:    "https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg",
+    channel: "Oneindia",
+  },
 };
 
 // Default browser-like headers to avoid blocks
@@ -226,8 +231,112 @@ async function scrapeMediaOneSports(url) {
 }
 
 // ─────────────────────────────────────────────
-//  Public API
+//  Oneindia Malayalam scraper  (RSS feed)
 // ─────────────────────────────────────────────
+
+/**
+ * Fetches and parses the Oneindia Malayalam RSS feed.
+ * Structure mirrors Asianet: <item> with <media:content url="…">
+ */
+async function scrapeOneindia() {
+  const { rssUrl, icon, channel } = SOURCES.oneindia;
+
+  // Cloudflare blocks direct requests AND some proxy services.
+  // Try multiple proxies in order — first one that returns valid XML wins.
+  const proxies = [
+    {
+      name: "allorigins",
+      buildUrl: () => `https://api.allorigins.win/raw?url=${encodeURIComponent(rssUrl)}`,
+      extract:  (data) => (typeof data === "string" ? data : null),
+    },
+    {
+      name: "allorigins-json",
+      buildUrl: () => `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`,
+      extract:  (data) => (data && data.contents ? data.contents : null),
+    },
+    {
+      name: "corsproxy",
+      buildUrl: () => `https://corsproxy.io/?${encodeURIComponent(rssUrl)}`,
+      extract:  (data) => (typeof data === "string" ? data : null),
+    },
+    {
+      name: "codetabs",
+      buildUrl: () => `https://api.codetabs.com/v1/proxy?quest=${rssUrl}`,
+      extract:  (data) => (typeof data === "string" ? data : null),
+    },
+  ];
+
+  let rawXml = null;
+
+  for (const proxy of proxies) {
+    try {
+      const { data } = await axios.get(proxy.buildUrl(), {
+        timeout: 15000,
+        headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] },
+      });
+      const candidate = proxy.extract(data);
+      if (candidate && candidate.includes("<item>")) {
+        console.log(`[Oneindia] ✅ RSS fetched via ${proxy.name}, length: ${candidate.length}`);
+        rawXml = candidate;
+        break;
+      }
+      console.log(`[Oneindia] ⚠️ ${proxy.name} returned no valid XML`);
+    } catch (err) {
+      console.log(`[Oneindia] ⚠️ ${proxy.name} failed: ${err.message}`);
+    }
+  }
+
+  if (!rawXml) {
+    console.error("[Oneindia] ❌ All proxy attempts failed — skipping source");
+    return [];
+  }
+
+  // Strip <![CDATA[...]]> wrappers and HTML tags
+  const stripCdata = (s = "") =>
+    s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+     .replace(/<[^>]+>/g, "")
+     .trim();
+
+  const getTag = (chunk, tag) => {
+    const m = chunk.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+    return m ? stripCdata(m[1]) : "";
+  };
+
+  const isValidImage = (url) =>
+    !!url &&
+    /^https?:\/\//i.test(url) &&
+    /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(url);
+
+  const itemChunks = rawXml.split(/<item>/).slice(1);
+  const news = [];
+
+  for (const chunk of itemChunks) {
+    const endIdx = chunk.indexOf("</item>");
+    const itemXml = endIdx !== -1 ? chunk.slice(0, endIdx) : chunk;
+
+    const title   = stripLive(getTag(itemXml, "title"));
+    const link    = getTag(itemXml, "link");
+    const summary = getTag(itemXml, "description").replace(/<[^>]+>/g, "").trim();
+    const pubDate = getTag(itemXml, "pubDate");
+
+    const imgMatch = itemXml.match(/url="(https?:\/\/[^"]+)"/);
+    const image    = imgMatch ? imgMatch[1].trim() : "";
+
+    if (!isValidImage(image)) {
+      console.log("[Oneindia] ⏭️ Skipping:", title.slice(0, 40), "| img:", image.slice(0, 60));
+      continue;
+    }
+
+    if (title && link) {
+      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
+    }
+  }
+
+  console.log(`[Oneindia] ✅ Valid articles parsed: ${news.length}`);
+  return news;
+}
+
+
 
 // -- Manorama --
 
@@ -264,6 +373,9 @@ exports.fetchAsianetLatestNews = () =>
 exports.fetchMediaOneSportsNews = () =>
   scrapeMediaOneSports(`${SOURCES.mediaone.baseUrl}/sports`);
 
+/** Latest news (Oneindia Malayalam) */
+exports.fetchOneindiaLatestNews = () => scrapeOneindia();
+
 // ─────────────────────────────────────────────
 //  Aggregate helpers
 // ─────────────────────────────────────────────
@@ -277,6 +389,7 @@ exports.fetchAllLatestNews = async () => {
   const results = await Promise.allSettled([
     exports.fetchManoramaLatestNews(),
     exports.fetchAsianetLatestNews(),
+    exports.fetchOneindiaLatestNews(),
   ]);
 
   return results
