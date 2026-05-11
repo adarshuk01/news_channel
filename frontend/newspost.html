@@ -68,6 +68,10 @@
     .filter-btn{display:flex;align-items:center;gap:.3rem;padding:.46rem .8rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:.77rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;min-height:36px;font-family:'Sora',sans-serif;}
     .filter-btn:hover{border-color:var(--border-md);color:var(--text);}
     .filter-btn.active{background:#eff6ff;border-color:#bfdbfe;color:var(--accent);font-weight:600;}
+
+    /* ── Loading shimmer on filter buttons while fetching ── */
+    .filter-btn.loading-state{opacity:.55;cursor:default;pointer-events:none;}
+
     .filter-icon{width:14px;height:14px;object-fit:contain;border-radius:2px;flex-shrink:0;}
 
     .count-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;}
@@ -87,8 +91,6 @@
 
     .news-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);display:grid;grid-template-columns:96px 1fr auto;align-items:start;gap:1.1rem;padding:.95rem 1.1rem;transition:box-shadow .15s,border-color .15s;}
     .news-card:hover{border-color:var(--border-md);box-shadow:0 2px 8px rgba(0,0,0,.07),0 4px 20px rgba(0,0,0,.05);}
-
-    /* News18 cards get a subtle red left accent */
     .news-card[data-channel="News18 Malayalam"]{border-left:3px solid #e53e3e;}
 
     .news-thumb{width:96px;height:68px;object-fit:cover;border-radius:7px;border:1px solid var(--border);background:var(--bg);}
@@ -98,7 +100,6 @@
     .news-header{display:flex;align-items:center;gap:.45rem;margin-bottom:.3rem;flex-wrap:wrap;}
     .channel-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.61rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:.1rem .4rem;color:var(--muted);flex-shrink:0;}
     .channel-icon{width:12px;height:12px;object-fit:contain;border-radius:2px;}
-    /* News18 badge highlight */
     .channel-badge.ch-news18{background:#fff5f5;border-color:#fed7d7;color:#c53030;}
     .news-time{font-size:.6rem;color:var(--muted);}
     .news-title{font-size:.86rem;font-weight:600;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
@@ -302,6 +303,7 @@
       </div>
 
       <div class="news-grid" id="newsGrid">
+        <!-- initial skeletons -->
         <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:55%"></div><div class="sk-line" style="width:90%"></div><div class="sk-line" style="width:70%"></div></div></div>
         <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:60%"></div><div class="sk-line" style="width:85%"></div><div class="sk-line" style="width:65%"></div></div></div>
         <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:50%"></div><div class="sk-line" style="width:92%"></div><div class="sk-line" style="width:75%"></div></div></div>
@@ -319,18 +321,24 @@
   const setToken   = (t) => localStorage.setItem(TOKEN_KEY, t);
   const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
-  // Channel meta for the source-stats strip
   const CHANNEL_META = {
-    "Manorama":        { icon: "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/50/3f/56/503f5669-704b-5689-b68b-88ce6dd7d7e9/AppIcon4NormalUsers-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg" },
-    "Asianet":         { icon: "https://play-lh.googleusercontent.com/P_-tUCKxNAhgNMwSyHF1NQBg0H27KnHiD_7SFf_y5BYFT3cMEV8FqUBiGGGJsJNMUg=w240-h480-rw" },
-    "Oneindia":        { icon: "https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg" },
-    "News18 Malayalam":{ icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png" },
+    "Manorama":         { icon: "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/50/3f/56/503f5669-704b-5689-b68b-88ce6dd7d7e9/AppIcon4NormalUsers-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg" },
+    "Asianet":          { icon: "https://play-lh.googleusercontent.com/P_-tUCKxNAhgNMwSyHF1NQBg0H27KnHiD_7SFf_y5BYFT3cMEV8FqUBiGGGJsJNMUg=w240-h480-rw" },
+    "Oneindia":         { icon: "https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg" },
+    "News18 Malayalam": { icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png" },
   };
 
+  /* ── State ── */
+  let allNews    = [];
+  let statusMap  = {};
+  let filterChan = 'all';
+  let searchQuery = '';
+  let isLoading  = false;   // ← KEY FIX: tracks whether a fetch is in progress
+
   /* ── Sidebar ── */
-  const sidebar = document.getElementById('sidebar');
+  const sidebar        = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
-  const hamburger = document.getElementById('hamburger');
+  const hamburger      = document.getElementById('hamburger');
   function openSidebar()  { sidebar.classList.add('open'); sidebarOverlay.classList.add('show'); document.body.style.overflow = 'hidden'; }
   function closeSidebar() { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('show'); document.body.style.overflow = ''; }
   hamburger.addEventListener('click', openSidebar);
@@ -338,7 +346,7 @@
   sidebar.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', closeSidebar));
 
   /* ── Auth chip ── */
-  const authChip = document.getElementById('authChip');
+  const authChip      = document.getElementById('authChip');
   const authChipLabel = document.getElementById('authChipLabel');
   function updateAuthChip() {
     const t = getToken();
@@ -425,17 +433,28 @@
     setTimeout(() => t.remove(), 5000);
   }
 
-  /* ── State ── */
-  let allNews = [], statusMap = {}, filterChan = 'all', searchQuery = '';
+  /* ── Set loading state on filter buttons ── */
+  function setFilterLoadingState(loading) {
+    document.querySelectorAll('.filter-btn').forEach(b => {
+      b.classList.toggle('loading-state', loading);
+    });
+    const searchInput = document.getElementById('searchInput');
+    searchInput.disabled = loading;
+  }
 
   /* ── Fetch news ── */
   async function fetchNews() {
+    if (isLoading) return;                          // prevent concurrent fetches
+    isLoading = true;
+
     const refreshBtn = document.getElementById('refreshBtn');
     refreshBtn.disabled = true;
     document.getElementById('newsCountBadge').textContent = 'Loading…';
     document.getElementById('countText').textContent = 'Loading articles…';
     document.getElementById('sourceStats').innerHTML = '';
+    setFilterLoadingState(true);                    // dim filters while loading
     renderSkeletons();
+
     try {
       const res  = await fetch(`${API}/news/list`);
       const data = await res.json();
@@ -444,12 +463,14 @@
       document.getElementById('newsCountBadge').textContent = `${allNews.length} articles`;
       await fetchStatuses(allNews.map(n => n.id));
       renderSourceStats();
-      renderNews();
+      renderNews();                                 // uses whatever filterChan/searchQuery the user set
     } catch (err) {
       renderError(err.message);
       document.getElementById('newsCountBadge').textContent = 'Error';
     } finally {
+      isLoading = false;
       refreshBtn.disabled = false;
+      setFilterLoadingState(false);                 // restore filters
     }
   }
 
@@ -480,17 +501,24 @@
 
   /* ── Render helpers ── */
   function renderSkeletons() {
-    document.getElementById('newsGrid').innerHTML = Array(4).fill('').map(() => `
-      <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines">
-        <div class="sk-line" style="width:55%"></div>
-        <div class="sk-line" style="width:90%"></div>
-        <div class="sk-line" style="width:70%"></div>
-      </div></div>`).join('');
+    document.getElementById('newsGrid').innerHTML = Array(5).fill('').map(() => `
+      <div class="skeleton-card">
+        <div class="sk-img"></div>
+        <div class="sk-lines">
+          <div class="sk-line" style="width:${40 + Math.floor(Math.random()*40)}%"></div>
+          <div class="sk-line" style="width:${70 + Math.floor(Math.random()*25)}%"></div>
+          <div class="sk-line" style="width:${50 + Math.floor(Math.random()*30)}%"></div>
+        </div>
+      </div>`).join('');
   }
 
   function renderError(msg) {
     document.getElementById('newsGrid').innerHTML =
-      `<div class="state-card"><div class="state-icon">⚠️</div><div class="state-text">Failed to load news</div><div class="state-sub">${msg}</div></div>`;
+      `<div class="state-card">
+        <div class="state-icon">⚠️</div>
+        <div class="state-text">Failed to load news</div>
+        <div class="state-sub">${escH(msg)}</div>
+      </div>`;
   }
 
   function filteredNews() {
@@ -509,7 +537,12 @@
     document.getElementById('countText').innerHTML =
       `Showing <strong>${list.length}</strong> of <strong>${allNews.length}</strong> articles`;
     if (!list.length) {
-      grid.innerHTML = `<div class="state-card"><div class="state-icon">🔍</div><div class="state-text">No articles match your filter</div><div class="state-sub">Try a different search term or channel</div></div>`;
+      grid.innerHTML = `
+        <div class="state-card">
+          <div class="state-icon">🔍</div>
+          <div class="state-text">No articles match your filter</div>
+          <div class="state-sub">Try a different search term or channel</div>
+        </div>`;
       return;
     }
     grid.innerHTML = list.map(n => {
@@ -527,7 +560,6 @@
       ? `<img class="channel-icon" src="${escH(n.icon)}" alt="" onerror="this.style.display='none'">`
       : '';
 
-    // Extra badge class for News18
     const badgeClass = n.channel === 'News18 Malayalam' ? 'channel-badge ch-news18' : 'channel-badge';
 
     const timeHtml = n.readableTime
@@ -605,16 +637,21 @@
   /* ── Filters ── */
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.addEventListener('click', () => {
+      // Always update active visual immediately
       document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       filterChan = btn.dataset.filter;
-      renderNews();
+
+      // ── KEY FIX: only render if data is ready; otherwise the fetch
+      //    completion will call renderNews() with the updated filterChan ──
+      if (!isLoading) renderNews();
     });
   });
 
   document.getElementById('searchInput').addEventListener('input', e => {
     searchQuery = e.target.value.trim().toLowerCase();
-    renderNews();
+    // Same guard: defer render until data is loaded
+    if (!isLoading) renderNews();
   });
 
   document.getElementById('refreshBtn').addEventListener('click', fetchNews);

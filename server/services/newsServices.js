@@ -32,9 +32,11 @@ const SOURCES = {
   },
 
   news18: {
+    // Primary: Google News sitemap (may be geo-restricted on Vercel)
     sitemapUrl:
       "https://malayalam.news18.com/commonfeeds/v1/mal/sitemap/google-news.xml",
 
+    // Fallback: standard news sitemap
     sitemapFallback:
       "https://malayalam.news18.com/sitemap/news-sitemap.xml",
 
@@ -195,30 +197,61 @@ function splitUrlChunks(xml) {
 }
 
 // ─────────────────────────────────────────────
-// NEWS18
+// NEWS18 — fetch raw XML with primary + fallback
 // ─────────────────────────────────────────────
 
 async function fetchNews18RawXml() {
-  const target =
-    SOURCES.news18.sitemapUrl;
+  const { sitemapUrl, sitemapFallback } = SOURCES.news18;
 
-  const { data } = await axios.get(target, {
-    headers: DEFAULT_HEADERS,
-    timeout: 15000,
-  });
+  // Try primary URL first
+  try {
+    const { data, status } = await axios.get(sitemapUrl, {
+      headers: DEFAULT_HEADERS,
+      timeout: 15000,
+    });
 
-  return data;
+    // Vercel may get a 200 but with an HTML error page instead of XML.
+    // Guard against that by checking for actual sitemap content.
+    if (
+      typeof data === "string" &&
+      data.includes("<url>") &&
+      data.length > 500
+    ) {
+      return data;
+    }
+
+    console.warn(
+      `[News18] Primary sitemap returned unexpected content (status ${status}), trying fallback...`
+    );
+  } catch (err) {
+    console.warn(
+      `[News18] Primary sitemap failed: ${err.message}. Trying fallback...`
+    );
+  }
+
+  // Fallback URL
+  try {
+    const { data } = await axios.get(sitemapFallback, {
+      headers: DEFAULT_HEADERS,
+      timeout: 15000,
+    });
+
+    if (typeof data === "string" && data.includes("<url>")) {
+      return data;
+    }
+
+    throw new Error("Fallback sitemap also returned unexpected content.");
+  } catch (err) {
+    throw new Error(`[News18] Both sitemaps failed: ${err.message}`);
+  }
 }
 
 async function scrapeNews18Malayalam() {
-  const { icon, channel } =
-    SOURCES.news18;
+  const { icon, channel } = SOURCES.news18;
 
-  const rawXml =
-    await fetchNews18RawXml();
+  const rawXml = await fetchNews18RawXml();
 
-  const chunks =
-    splitUrlChunks(rawXml);
+  const chunks = splitUrlChunks(rawXml);
 
   const news = [];
 
@@ -243,10 +276,7 @@ async function scrapeNews18Malayalam() {
       xmlAttr(chunk, "enclosure", "url");
 
     const pubDate =
-      xmlTag(
-        chunk,
-        "news:publication_date"
-      ) || "";
+      xmlTag(chunk, "news:publication_date") || "";
 
     if (!isValidImage(image)) continue;
 
@@ -268,38 +298,22 @@ async function scrapeNews18Malayalam() {
 // MANORAMA
 // ─────────────────────────────────────────────
 
-async function scrapeManorama(
-  url,
-  selector
-) {
-  const {
-    baseUrl,
-    icon,
-    channel,
-  } = SOURCES.manorama;
+async function scrapeManorama(url, selector) {
+  const { baseUrl, icon, channel } = SOURCES.manorama;
 
   const $ = await loadPage(url);
 
   const news = [];
 
   $(selector).each((_, el) => {
-    const anchor = $(el).find(
-      "h2 a"
-    );
+    const anchor = $(el).find("h2 a");
 
-    const title = stripLive(
-      anchor.text().trim()
-    );
+    const title = stripLive(anchor.text().trim());
 
-    const link = resolve(
-      baseUrl,
-      anchor.attr("href")
-    );
+    const link = resolve(baseUrl, anchor.attr("href"));
 
     const summary = cleanHtmlText(
-      $(el)
-        .find(".cmp-story-list__dispn")
-        .html() || ""
+      $(el).find(".cmp-story-list__dispn").html() || ""
     );
 
     const imgEl = $(el).find(
@@ -336,9 +350,11 @@ async function scrapeManorama(
 // ASIANET
 // ─────────────────────────────────────────────
 
+// Max words shown in the Asianet description
+const ASIANET_SUMMARY_WORD_LIMIT = 40;
+
 async function scrapeAsianet(url) {
-  const { icon, channel } =
-    SOURCES.asianet;
+  const { icon, channel } = SOURCES.asianet;
 
   const $ = await loadPage(url);
 
@@ -348,10 +364,7 @@ async function scrapeAsianet(url) {
     const raw = $(el).html();
 
     const getTag = (tag) => {
-      const esc = tag.replace(
-        ":",
-        "\\:"
-      );
+      const esc = tag.replace(":", "\\:");
 
       const re = new RegExp(
         `<${esc}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${esc}>`,
@@ -360,58 +373,40 @@ async function scrapeAsianet(url) {
 
       const m = raw.match(re);
 
-      return m
-        ? stripCdata(m[1]).trim()
-        : "";
+      return m ? stripCdata(m[1]).trim() : "";
     };
 
     const getAttr = (tag, attr) => {
       const m = raw.match(
-        new RegExp(
-          `<${tag}[^>]*${attr}="(.*?)"`,
-          "s"
-        )
+        new RegExp(`<${tag}[^>]*${attr}="(.*?)"`, "s")
       );
 
       return m ? m[1] : "";
     };
 
-    const title = stripLive(
-      getTag("title")
-    );
+    const title = stripLive(getTag("title"));
 
     const link = getTag("link");
 
     let summary = cleanHtmlText(
-      getTag("content:encoded") ||
-        getTag("description")
+      getTag("content:encoded") || getTag("description")
     );
 
-    const words = summary.split(" ");
+    // ── FIX: cap at ASIANET_SUMMARY_WORD_LIMIT words ──
+    const words = summary.split(" ").filter(Boolean);
 
-    if (words.length > 500) {
-      summary =
-        words
-          .slice(0, 500)
-          .join(" ") + "...";
+    if (words.length > ASIANET_SUMMARY_WORD_LIMIT) {
+      summary = words.slice(0, ASIANET_SUMMARY_WORD_LIMIT).join(" ") + "...";
     }
 
-    const pubDate =
-      getTag("pubDate");
+    const pubDate = getTag("pubDate");
 
     const image =
-      getAttr(
-        "media:content",
-        "url"
-      ) ||
-      getAttr(
-        "enclosure",
-        "url"
-      ) ||
+      getAttr("media:content", "url") ||
+      getAttr("enclosure", "url") ||
       "";
 
-    if (!isValidImage(image))
-      return;
+    if (!isValidImage(image)) return;
 
     if (title && link) {
       news.push({
@@ -433,81 +428,51 @@ async function scrapeAsianet(url) {
 // MEDIAONE
 // ─────────────────────────────────────────────
 
-async function scrapeMediaOneSports(
-  url
-) {
-  const {
-    baseUrl,
-    icon,
-    channel,
-  } = SOURCES.mediaone;
+async function scrapeMediaOneSports(url) {
+  const { baseUrl, icon, channel } = SOURCES.mediaone;
 
   const $ = await loadPage(url);
 
   const articles = [];
 
-  $(".d-flex.flex-wrap").each(
-    (_, el) => {
-      const title = $(el)
-        .find(
-          ".list-item-right h3.story-title"
-        )
-        .text()
-        .trim();
+  $(".d-flex.flex-wrap").each((_, el) => {
+    const title = $(el)
+      .find(".list-item-right h3.story-title")
+      .text()
+      .trim();
 
-      const href =
-        $(el)
-          .find("a")
-          .attr("href") || "";
+    const href = $(el).find("a").attr("href") || "";
 
-      const link = resolve(
-        baseUrl,
-        href
-      );
+    const link = resolve(baseUrl, href);
 
-      const summary =
-        cleanHtmlText(
-          $(el)
-            .find(
-              ".list-item-right p"
-            )
-            .html() || ""
-        );
+    const summary = cleanHtmlText(
+      $(el).find(".list-item-right p").html() || ""
+    );
 
-      const rawImage =
-        $(el)
-          .find(".story-img img")
-          .attr("data-src") || "";
+    const rawImage =
+      $(el).find(".story-img img").attr("data-src") || "";
 
-      const image =
-        rawImage.startsWith("https")
-          ? rawImage
-          : resolve(
-              baseUrl,
-              rawImage
-            );
+    const image = rawImage.startsWith("https")
+      ? rawImage
+      : resolve(baseUrl, rawImage);
 
-      const readableTime =
-        $(el)
-          .find(
-            ".time-as-duration"
-          )
-          .text()
-          .trim();
+    const readableTime = $(el)
+      .find(".time-as-duration")
+      .text()
+      .trim();
 
-      if (title && link) {
-        articles.push({
-          title,
-          link,
-          summary,
-          image,
-          readableTime,
-          icon,
-          channel,
-        });
-      }
+    if (title && link) {
+      articles.push({
+        title,
+        link,
+        summary,
+        image,
+        readableTime,
+        icon,
+        channel,
+      });
     }
-  );
+  });
 
   return articles;
 }
@@ -517,30 +482,21 @@ async function scrapeMediaOneSports(
 // ─────────────────────────────────────────────
 
 async function scrapeOneindia() {
-  const {
-    rssUrl,
-    icon,
-    channel,
-  } = SOURCES.oneindia;
+  const { rssUrl, icon, channel } = SOURCES.oneindia;
 
-  const { data } = await axios.get(
-    rssUrl,
-    {
-      headers: DEFAULT_HEADERS,
-      timeout: 15000,
-    }
-  );
+  const { data } = await axios.get(rssUrl, {
+    headers: DEFAULT_HEADERS,
+    timeout: 15000,
+  });
 
   const rawXml = data;
 
   const news = [];
 
-  const items =
-    rawXml.split("<item>");
+  const items = rawXml.split("<item>");
 
   for (const chunk of items.slice(1)) {
-    const itemXml =
-      chunk.split("</item>")[0];
+    const itemXml = chunk.split("</item>")[0];
 
     const getTag = (tag) => {
       const m = itemXml.match(
@@ -550,34 +506,22 @@ async function scrapeOneindia() {
         )
       );
 
-      return m
-        ? stripCdata(m[1]).trim()
-        : "";
+      return m ? stripCdata(m[1]).trim() : "";
     };
 
-    const title = stripLive(
-      getTag("title")
-    );
+    const title = stripLive(getTag("title"));
 
     const link = getTag("link");
 
-    const summary = cleanHtmlText(
-      getTag("description")
-    );
+    const summary = cleanHtmlText(getTag("description"));
 
-    const pubDate =
-      getTag("pubDate");
+    const pubDate = getTag("pubDate");
 
-    const imgM = itemXml.match(
-      /url="(https?:\/\/[^"]+)"/
-    );
+    const imgM = itemXml.match(/url="(https?:\/\/[^"]+)"/);
 
-    const image = imgM
-      ? imgM[1]
-      : "";
+    const image = imgM ? imgM[1] : "";
 
-    if (!isValidImage(image))
-      continue;
+    if (!isValidImage(image)) continue;
 
     if (title && link) {
       news.push({
@@ -599,71 +543,51 @@ async function scrapeOneindia() {
 // EXPORTS
 // ─────────────────────────────────────────────
 
-exports.fetchManoramaLatestNews =
-  () =>
-    scrapeManorama(
-      `${SOURCES.manorama.baseUrl}/news/latest-news.html`,
-      "#Just_in_Slot > div > ul > li"
-    );
+exports.fetchManoramaLatestNews = () =>
+  scrapeManorama(
+    `${SOURCES.manorama.baseUrl}/news/latest-news.html`,
+    "#Just_in_Slot > div > ul > li"
+  );
 
-exports.fetchAsianetLatestNews =
-  () =>
-    scrapeAsianet(
-      `${SOURCES.asianet.baseUrl}/rss`
-    );
+exports.fetchAsianetLatestNews = () =>
+  scrapeAsianet(`${SOURCES.asianet.baseUrl}/rss`);
 
-exports.fetchMediaOneSportsNews =
-  () =>
-    scrapeMediaOneSports(
-      `${SOURCES.mediaone.baseUrl}/sports`
-    );
+exports.fetchMediaOneSportsNews = () =>
+  scrapeMediaOneSports(`${SOURCES.mediaone.baseUrl}/sports`);
 
-exports.fetchOneindiaLatestNews =
-  () => scrapeOneindia();
+exports.fetchOneindiaLatestNews = () => scrapeOneindia();
 
-exports.fetchNews18MalayalamLatestNews =
-  () => scrapeNews18Malayalam();
+exports.fetchNews18MalayalamLatestNews = () =>
+  scrapeNews18Malayalam();
 
 // ─────────────────────────────────────────────
 // AGGREGATE
 // ─────────────────────────────────────────────
 
-exports.fetchAllLatestNews =
-  async () => {
-    const results =
-      await Promise.allSettled([
-        exports.fetchManoramaLatestNews(),
-        exports.fetchAsianetLatestNews(),
-        exports.fetchOneindiaLatestNews(),
-        exports.fetchNews18MalayalamLatestNews(),
-      ]);
+exports.fetchAllLatestNews = async () => {
+  const results = await Promise.allSettled([
+    exports.fetchManoramaLatestNews(),
+    exports.fetchAsianetLatestNews(),
+    exports.fetchOneindiaLatestNews(),
+    exports.fetchNews18MalayalamLatestNews(),
+  ]);
 
-    return results
-      .filter(
-        (r) => r.status === "fulfilled"
-      )
-      .flatMap((r) => r.value);
+  return results
+    .filter((r) => r.status === "fulfilled")
+    .flatMap((r) => r.value);
+};
+
+exports.fetchAllNews = async () => {
+  const [latest, sports] = await Promise.allSettled([
+    exports.fetchAllLatestNews(),
+    exports.fetchMediaOneSportsNews(),
+  ]);
+
+  return {
+    latest:
+      latest.status === "fulfilled" ? latest.value : [],
+
+    sports:
+      sports.status === "fulfilled" ? sports.value : [],
   };
-
-exports.fetchAllNews =
-  async () => {
-    const [
-      latest,
-      sports,
-    ] = await Promise.allSettled([
-      exports.fetchAllLatestNews(),
-      exports.fetchMediaOneSportsNews(),
-    ]);
-
-    return {
-      latest:
-        latest.status === "fulfilled"
-          ? latest.value
-          : [],
-
-      sports:
-        sports.status === "fulfilled"
-          ? sports.value
-          : [],
-    };
-  };
+};
