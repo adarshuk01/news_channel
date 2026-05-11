@@ -27,6 +27,12 @@ const SOURCES = {
     icon:    "https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg",
     channel: "Oneindia",
   },
+  news18: {
+    sitemapUrl: "https://malayalam.news18.com/commonfeeds/v1/mal/sitemap/google-news.xml",
+    baseUrl:    "https://malayalam.news18.com",
+    icon:       "https://static.news18.com/static/img/logo-news18-favicon-32.png",
+    channel:    "News18 Malayalam",
+  },
 };
 
 // Default browser-like headers to avoid blocks
@@ -51,7 +57,6 @@ async function loadPage(url) {
       timeout: 15000,
     });
 
-    // 🔥 FORCE XML parsing mode
     return cheerio.load(data, {
       xmlMode: true,
       decodeEntities: true,
@@ -65,19 +70,24 @@ async function loadPage(url) {
 /** Strip leading "Live " labels that some outlets prefix to titles. */
 const stripLive = (text) => text.replace(/^Live\s*/gi, "").trim();
 
+/** Strip CDATA wrappers */
+const stripCdata = (s = "") =>
+  s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+
 /** Resolve a possibly-relative URL against a base. */
 const resolve = (base, href = "") =>
   href.startsWith("http") ? href : base + href;
+
+/** Validate image URL */
+const isValidImage = (url) =>
+  !!url &&
+  /^https?:\/\//i.test(url) &&
+  /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(url);
 
 // ─────────────────────────────────────────────
 //  Manorama scraper
 // ─────────────────────────────────────────────
 
-/**
- * Generic Manorama list-page scraper.
- * @param {string} url
- * @param {string} selector  CSS selector targeting each <li> story card
- */
 async function scrapeManorama(url, selector) {
   const { baseUrl, icon, channel } = SOURCES.manorama;
   const $    = await loadPage(url);
@@ -89,14 +99,13 @@ async function scrapeManorama(url, selector) {
     const link     = resolve(baseUrl, anchor.attr("href"));
     const summary  = $(el).find(".cmp-story-list__dispn").text().trim();
 
-    const imgEl   = $(el).find(".cmp-story-list__image-block > a > img");
+    const imgEl    = $(el).find(".cmp-story-list__image-block > a > img");
     const rawImage = imgEl.attr("data-src") || imgEl.attr("data-websrc") || "";
-    const image   = rawImage ? rawImage.split("?")[0] : "";
-    console.log('my image', image);
+    const image    = rawImage ? rawImage.split("?")[0] : "";
 
-    const timeEl      = $(el).find(".cmp-story-list__date.en-font.text-sub-color");
-    const timeText    = timeEl.text().trim();
-    const timeAttr    = timeEl.attr("data-publish-date");
+    const timeEl       = $(el).find(".cmp-story-list__date.en-font.text-sub-color");
+    const timeText     = timeEl.text().trim();
+    const timeAttr     = timeEl.attr("data-publish-date");
     const readableTime =
       timeText || (timeAttr ? new Date(parseInt(timeAttr, 10)).toLocaleString() : "");
 
@@ -112,41 +121,18 @@ async function scrapeManorama(url, selector) {
 //  Asianet scraper
 // ─────────────────────────────────────────────
 
-/**
- * Generic Asianet News list-page scraper.
- *
- * Page structure (as of April 2026):
- *   #root > div > main > div._2asjQ.gawidget_homeheadline > div > figure
- *
- * @param {string} url
- * @param {string} selector  CSS selector targeting each <figure> story card
- */
 async function scrapeAsianet(url) {
   const { icon, channel } = SOURCES.asianet;
 
   let $;
   try {
     $ = await loadPage(url);
-    console.log("[Asianet] RSS loaded");
   } catch (err) {
     console.error("[Asianet] ❌ RSS failed:", err.message);
     return [];
   }
 
   const news = [];
-
-  // ✅ helper: validate image url
-  const isValidImage = (url) => {
-    if (!url) return false;
-
-    // must be http/https
-    if (!/^https?:\/\//i.test(url)) return false;
-
-    // must end with valid image extension
-    if (!/\.(jpg|jpeg|png|webp|gif)$/i.test(url)) return false;
-
-    return true;
-  };
 
   $("item").each((_, el) => {
     const raw = $(el).html();
@@ -168,7 +154,6 @@ async function scrapeAsianet(url) {
     const summary = getTag("description");
     const pubDate = getTag("pubDate");
 
-    // ✅ extract image (priority order)
     let image =
       getAttr("media:content", "url") ||
       getAttr("enclosure", "url") ||
@@ -176,22 +161,13 @@ async function scrapeAsianet(url) {
 
     image = image.trim();
 
-    // 🔥 skip if invalid image
     if (!isValidImage(image)) {
-      console.log("⏭️ Skipping (invalid image):", image);
+      console.log("[Asianet] ⏭️ Skipping (invalid image):", image);
       return;
     }
 
     if (title && link) {
-      news.push({
-        title,
-        link,
-        summary,
-        image,
-        readableTime: pubDate,
-        icon,
-        channel,
-      });
+      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
     }
   });
 
@@ -203,10 +179,6 @@ async function scrapeAsianet(url) {
 //  MediaOne scraper
 // ─────────────────────────────────────────────
 
-/**
- * MediaOne sports scraper.
- * @param {string} url
- */
 async function scrapeMediaOneSports(url) {
   const { baseUrl, icon, channel } = SOURCES.mediaone;
   const $        = await loadPage(url);
@@ -234,15 +206,9 @@ async function scrapeMediaOneSports(url) {
 //  Oneindia Malayalam scraper  (RSS feed)
 // ─────────────────────────────────────────────
 
-/**
- * Fetches and parses the Oneindia Malayalam RSS feed.
- * Structure mirrors Asianet: <item> with <media:content url="…">
- */
 async function scrapeOneindia() {
   const { rssUrl, icon, channel } = SOURCES.oneindia;
 
-  // Cloudflare blocks direct requests AND some proxy services.
-  // Try multiple proxies in order — first one that returns valid XML wins.
   const proxies = [
     {
       name: "allorigins",
@@ -291,21 +257,15 @@ async function scrapeOneindia() {
     return [];
   }
 
-  // Strip <![CDATA[...]]> wrappers and HTML tags
-  const stripCdata = (s = "") =>
+  const _stripCdata = (s = "") =>
     s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
      .replace(/<[^>]+>/g, "")
      .trim();
 
   const getTag = (chunk, tag) => {
     const m = chunk.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
-    return m ? stripCdata(m[1]) : "";
+    return m ? _stripCdata(m[1]) : "";
   };
-
-  const isValidImage = (url) =>
-    !!url &&
-    /^https?:\/\//i.test(url) &&
-    /\.(jpg|jpeg|png|webp|gif)(\?.*)?$/i.test(url);
 
   const itemChunks = rawXml.split(/<item>/).slice(1);
   const news = [];
@@ -336,7 +296,131 @@ async function scrapeOneindia() {
   return news;
 }
 
+// ─────────────────────────────────────────────
+//  News18 Malayalam scraper  (News Sitemap XML)
+// ─────────────────────────────────────────────
 
+/**
+ * Fetches News18 Malayalam articles from their Google News Sitemap.
+ * The sitemap contains <url> entries with:
+ *   - <loc>           → article URL
+ *   - <lastmod>       → last modified ISO timestamp
+ *   - <news:news>     → publication date, title, keywords
+ *   - <image:image>   → <image:loc> for the thumbnail
+ *
+ * Tries direct fetch first, then falls back to proxy if blocked.
+ */
+async function scrapeNews18Malayalam() {
+  const { sitemapUrl, icon, channel } = SOURCES.news18;
+
+  // Try fetching the sitemap directly first, then via proxy
+  const attempts = [
+    {
+      name: "direct",
+      buildUrl: () => sitemapUrl,
+      headers: DEFAULT_HEADERS,
+    },
+    {
+      name: "allorigins",
+      buildUrl: () => `https://api.allorigins.win/raw?url=${encodeURIComponent(sitemapUrl)}`,
+      headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] },
+    },
+    {
+      name: "allorigins-json",
+      buildUrl: () => `https://api.allorigins.win/get?url=${encodeURIComponent(sitemapUrl)}`,
+      headers: { "User-Agent": DEFAULT_HEADERS["User-Agent"] },
+    },
+  ];
+
+  let rawXml = null;
+
+  for (const attempt of attempts) {
+    try {
+      const { data } = await axios.get(attempt.buildUrl(), {
+        timeout: 15000,
+        headers: attempt.headers,
+      });
+
+      // allorigins-json wraps the response in a `contents` key
+      const candidate =
+        attempt.name === "allorigins-json"
+          ? data && data.contents
+            ? data.contents
+            : null
+          : typeof data === "string"
+          ? data
+          : null;
+
+      if (candidate && (candidate.includes("<url>") || candidate.includes("<loc>"))) {
+        console.log(`[News18] ✅ Sitemap fetched via ${attempt.name}, length: ${candidate.length}`);
+        rawXml = candidate;
+        break;
+      }
+      console.log(`[News18] ⚠️ ${attempt.name} returned no valid XML`);
+    } catch (err) {
+      console.log(`[News18] ⚠️ ${attempt.name} failed: ${err.message}`);
+    }
+  }
+
+  if (!rawXml) {
+    console.error("[News18] ❌ All fetch attempts failed — skipping source");
+    return [];
+  }
+
+  // Use cheerio in xmlMode to parse the sitemap
+  const $ = cheerio.load(rawXml, { xmlMode: true, decodeEntities: true });
+  const news = [];
+
+  $("url").each((_, el) => {
+    const loc = $(el).find("loc").first().text().trim();
+
+    // news:title
+    const rawTitle = $(el).find("news\\:title, title").first().text().trim();
+    const title    = stripLive(stripCdata(rawTitle));
+
+    // news:publication_date (ISO 8601) or lastmod
+    const pubDateRaw =
+      $(el).find("news\\:publication_date").first().text().trim() ||
+      $(el).find("lastmod").first().text().trim();
+    const readableTime = pubDateRaw
+      ? new Date(pubDateRaw).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
+      : "";
+
+    // news:keywords (optional)
+    const keywords = stripCdata($(el).find("news\\:keywords").first().text().trim());
+
+    // image:loc
+    const rawImage = stripCdata(
+      $(el).find("image\\:loc").first().text().trim()
+    );
+    const image = rawImage.trim();
+
+    if (!title || !loc) return;
+
+    // Only include items with a valid image (consistent with other scrapers)
+    if (!isValidImage(image)) {
+      console.log("[News18] ⏭️ Skipping (no valid image):", title.slice(0, 50));
+      return;
+    }
+
+    news.push({
+      title,
+      link:        loc,
+      summary:     keywords, // keywords double as a brief summary
+      image,
+      readableTime,
+      icon,
+      channel,
+    });
+  });
+
+  console.log(`[News18] ✅ Valid articles parsed: ${news.length}`);
+  return news;
+}
+
+// ─────────────────────────────────────────────
+//  Exported fetchers
+// ─────────────────────────────────────────────
 
 // -- Manorama --
 
@@ -356,11 +440,6 @@ exports.fetchManoramaTechNews = () =>
 
 // -- Asianet --
 
-/**
- * Latest news (Asianet).
- * Selector updated April 2026 — targets each <figure> inside the
- * headline grid: div._2asjQ.gawidget_homeheadline > div > figure
- */
 exports.fetchAsianetLatestNews = () =>
   scrapeAsianet(
     `${SOURCES.asianet.baseUrl}/rss`,
@@ -373,8 +452,15 @@ exports.fetchAsianetLatestNews = () =>
 exports.fetchMediaOneSportsNews = () =>
   scrapeMediaOneSports(`${SOURCES.mediaone.baseUrl}/sports`);
 
+// -- Oneindia --
+
 /** Latest news (Oneindia Malayalam) */
 exports.fetchOneindiaLatestNews = () => scrapeOneindia();
+
+// -- News18 Malayalam --
+
+/** Latest news (News18 Malayalam) from news sitemap */
+exports.fetchNews18MalayalamLatestNews = () => scrapeNews18Malayalam();
 
 // ─────────────────────────────────────────────
 //  Aggregate helpers
@@ -383,13 +469,14 @@ exports.fetchOneindiaLatestNews = () => scrapeOneindia();
 /**
  * Fetch all latest news from every source in parallel.
  * Failed sources are skipped gracefully; errors are logged to stderr.
- * @returns {Promise<Array>} Merged, deduplicated array sorted by source order.
+ * @returns {Promise<Array>} Merged array sorted by source order.
  */
 exports.fetchAllLatestNews = async () => {
   const results = await Promise.allSettled([
     exports.fetchManoramaLatestNews(),
     exports.fetchAsianetLatestNews(),
     exports.fetchOneindiaLatestNews(),
+    exports.fetchNews18MalayalamLatestNews(),   // ← NEW
   ]);
 
   return results

@@ -65,9 +65,10 @@
     .search-box input:focus{outline:none;}
     .search-box input::placeholder{color:var(--muted);}
     .filters{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
-    .filter-btn{display:flex;align-items:center;padding:.46rem .8rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:.77rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;min-height:36px;font-family:'Sora',sans-serif;}
+    .filter-btn{display:flex;align-items:center;gap:.3rem;padding:.46rem .8rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:.77rem;font-weight:500;color:var(--muted);cursor:pointer;transition:all .15s;white-space:nowrap;min-height:36px;font-family:'Sora',sans-serif;}
     .filter-btn:hover{border-color:var(--border-md);color:var(--text);}
     .filter-btn.active{background:#eff6ff;border-color:#bfdbfe;color:var(--accent);font-weight:600;}
+    .filter-icon{width:14px;height:14px;object-fit:contain;border-radius:2px;flex-shrink:0;}
 
     .count-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;}
     .count-text{font-size:.76rem;color:var(--muted);}
@@ -87,6 +88,9 @@
     .news-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);display:grid;grid-template-columns:96px 1fr auto;align-items:start;gap:1.1rem;padding:.95rem 1.1rem;transition:box-shadow .15s,border-color .15s;}
     .news-card:hover{border-color:var(--border-md);box-shadow:0 2px 8px rgba(0,0,0,.07),0 4px 20px rgba(0,0,0,.05);}
 
+    /* News18 cards get a subtle red left accent */
+    .news-card[data-channel="News18 Malayalam"]{border-left:3px solid #e53e3e;}
+
     .news-thumb{width:96px;height:68px;object-fit:cover;border-radius:7px;border:1px solid var(--border);background:var(--bg);}
     .thumb-placeholder{width:96px;height:68px;border-radius:7px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--border-md);}
 
@@ -94,6 +98,9 @@
     .news-header{display:flex;align-items:center;gap:.45rem;margin-bottom:.3rem;flex-wrap:wrap;}
     .channel-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.61rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:.1rem .4rem;color:var(--muted);flex-shrink:0;}
     .channel-icon{width:12px;height:12px;object-fit:contain;border-radius:2px;}
+    /* News18 badge highlight */
+    .channel-badge.ch-news18{background:#fff5f5;border-color:#fed7d7;color:#c53030;}
+    .news-time{font-size:.6rem;color:var(--muted);}
     .news-title{font-size:.86rem;font-weight:600;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
     .news-summary{font-size:.76rem;color:var(--muted);line-height:1.5;margin-top:.28rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 
@@ -113,6 +120,12 @@
     .post-btn.loading .btn-label{opacity:.75;}
     .post-btn.posted .btn-spin{display:none;}
     @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* Source stats strip */
+    .source-stats{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap;}
+    .stat-pill{display:flex;align-items:center;gap:.35rem;padding:.28rem .7rem;background:var(--surface);border:1px solid var(--border);border-radius:20px;font-size:.68rem;font-weight:600;color:var(--muted);white-space:nowrap;}
+    .stat-pill img{width:13px;height:13px;object-fit:contain;border-radius:2px;}
+    .stat-pill span.cnt{color:var(--text);}
 
     /* STATE CARDS */
     .state-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:3rem 2rem;text-align:center;color:var(--muted);}
@@ -166,7 +179,6 @@
       .badge{display:none;}
     }
 
-    /* Medium mobile: collapse buttons to row below */
     @media(max-width:640px){
       .news-card{grid-template-columns:72px 1fr;grid-template-rows:auto auto;gap:.75rem .85rem;padding:.85rem .9rem;}
       .news-thumb,.thumb-placeholder{width:72px;height:52px;}
@@ -177,6 +189,7 @@
       .search-box{max-width:100%;flex:1 1 100%;}
       .filters{width:100%;}
       .toast-wrap{left:1rem;right:1rem;}
+      .source-stats{display:none;}
     }
 
     @media(max-width:400px){
@@ -263,13 +276,25 @@
           <span style="color:var(--muted);font-size:.9rem;flex-shrink:0;">🔍</span>
           <input type="text" id="searchInput" placeholder="Search news…"/>
         </div>
-        <div class="filters">
+        <div class="filters" id="filterBar">
           <button class="filter-btn active" data-filter="all">All</button>
-          <button class="filter-btn" data-filter="Manorama">Manorama</button>
-          <button class="filter-btn" data-filter="Asianet">Asianet</button>
-          <button class="filter-btn" data-filter="Oneindia">Oneindia</button>
+          <button class="filter-btn" data-filter="Manorama">
+            <img class="filter-icon" src="https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/50/3f/56/503f5669-704b-5689-b68b-88ce6dd7d7e9/AppIcon4NormalUsers-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg" alt="" onerror="this.remove()"> Manorama
+          </button>
+          <button class="filter-btn" data-filter="Asianet">
+            <img class="filter-icon" src="https://play-lh.googleusercontent.com/P_-tUCKxNAhgNMwSyHF1NQBg0H27KnHiD_7SFf_y5BYFT3cMEV8FqUBiGGGJsJNMUg=w240-h480-rw" alt="" onerror="this.remove()"> Asianet
+          </button>
+          <button class="filter-btn" data-filter="Oneindia">
+            <img class="filter-icon" src="https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg" alt="" onerror="this.remove()"> Oneindia
+          </button>
+          <button class="filter-btn" data-filter="News18 Malayalam">
+            <img class="filter-icon" src="https://static.news18.com/static/img/logo-news18-favicon-32.png" alt="" onerror="this.remove()"> News18
+          </button>
         </div>
       </div>
+
+      <!-- Per-source article counts -->
+      <div class="source-stats" id="sourceStats"></div>
 
       <div class="count-bar">
         <div class="count-text" id="countText">Loading articles…</div>
@@ -288,188 +313,315 @@
   <div class="toast-wrap" id="toastWrap"></div>
 
 <script>
-  const API='https://news-channel-drab.vercel.app/api';
-  const TOKEN_KEY='mp_admin_token';
-const getToken   = () => localStorage.getItem(TOKEN_KEY);
-const setToken   = (t) => localStorage.setItem(TOKEN_KEY, t);
-const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+  const API = 'https://news-channel-drab.vercel.app/api';
+  const TOKEN_KEY = 'mp_admin_token';
+  const getToken   = () => localStorage.getItem(TOKEN_KEY);
+  const setToken   = (t) => localStorage.setItem(TOKEN_KEY, t);
+  const clearToken = () => localStorage.removeItem(TOKEN_KEY);
 
-  /* Sidebar */
-  const sidebar=document.getElementById('sidebar'),sidebarOverlay=document.getElementById('sidebarOverlay'),hamburger=document.getElementById('hamburger');
-  function openSidebar(){sidebar.classList.add('open');sidebarOverlay.classList.add('show');document.body.style.overflow='hidden';}
-  function closeSidebar(){sidebar.classList.remove('open');sidebarOverlay.classList.remove('show');document.body.style.overflow='';}
-  hamburger.addEventListener('click',openSidebar);
-  sidebarOverlay.addEventListener('click',closeSidebar);
-  sidebar.querySelectorAll('.nav-link').forEach(l=>l.addEventListener('click',closeSidebar));
+  // Channel meta for the source-stats strip
+  const CHANNEL_META = {
+    "Manorama":        { icon: "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/50/3f/56/503f5669-704b-5689-b68b-88ce6dd7d7e9/AppIcon4NormalUsers-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg" },
+    "Asianet":         { icon: "https://play-lh.googleusercontent.com/P_-tUCKxNAhgNMwSyHF1NQBg0H27KnHiD_7SFf_y5BYFT3cMEV8FqUBiGGGJsJNMUg=w240-h480-rw" },
+    "Oneindia":        { icon: "https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg" },
+    "News18 Malayalam":{ icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png" },
+  };
 
-  /* Auth chip */
-  const authChip=document.getElementById('authChip'),authChipLabel=document.getElementById('authChipLabel');
-  function updateAuthChip(){const t=getToken();authChip.classList.toggle('authed',!!t);authChipLabel.textContent=t?'Signed in · sign out':'Not signed in';}
-  authChip.addEventListener('click',()=>{if(!getToken())return;clearToken();updateAuthChip();closeSidebar();openLoginModal('Session ended. Please sign in again.');});
+  /* ── Sidebar ── */
+  const sidebar = document.getElementById('sidebar');
+  const sidebarOverlay = document.getElementById('sidebarOverlay');
+  const hamburger = document.getElementById('hamburger');
+  function openSidebar()  { sidebar.classList.add('open'); sidebarOverlay.classList.add('show'); document.body.style.overflow = 'hidden'; }
+  function closeSidebar() { sidebar.classList.remove('open'); sidebarOverlay.classList.remove('show'); document.body.style.overflow = ''; }
+  hamburger.addEventListener('click', openSidebar);
+  sidebarOverlay.addEventListener('click', closeSidebar);
+  sidebar.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', closeSidebar));
 
-  /* Modal */
-  const loginBackdrop=document.getElementById('loginBackdrop'),loginBtn=document.getElementById('loginBtn');
-  const loginUser=document.getElementById('loginUser'),loginPass=document.getElementById('loginPass');
-  const loginError=document.getElementById('loginError'),loginErrorMsg=document.getElementById('loginErrorMsg');
-  const modalSub=document.getElementById('modalSub'),togglePw=document.getElementById('togglePw');
-
-  function openLoginModal(sub){loginError.classList.remove('show');loginUser.value='';loginPass.value='';loginUser.classList.remove('input-error');loginPass.classList.remove('input-error');if(sub)modalSub.textContent=sub;loginBackdrop.classList.add('show');setTimeout(()=>loginUser.focus(),280);}
-  function closeLoginModal(){loginBackdrop.classList.remove('show');modalSub.textContent='Sign in to post news to platforms';}
-
-  async function handleLogin(){
-    const username=loginUser.value.trim(),password=loginPass.value;
-    loginUser.classList.remove('input-error');loginPass.classList.remove('input-error');loginError.classList.remove('show');
-    if(!username){loginUser.classList.add('input-error');loginUser.focus();return;}
-    if(!password){loginPass.classList.add('input-error');loginPass.focus();return;}
-    loginBtn.disabled=true;loginBtn.classList.add('loading');
-    try{
-      const res=await fetch(`${API}/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-      const data=await res.json();if(!res.ok)throw new Error(data.message||'Invalid credentials');
-      const token=data.token||data.accessToken;if(!token)throw new Error('No token returned');
-      setToken(token);updateAuthChip();closeLoginModal();
-    }catch(err){loginErrorMsg.textContent=err.message;loginError.classList.add('show');loginPass.value='';loginPass.classList.add('input-error');loginPass.focus();}
-    finally{loginBtn.disabled=false;loginBtn.classList.remove('loading');}
+  /* ── Auth chip ── */
+  const authChip = document.getElementById('authChip');
+  const authChipLabel = document.getElementById('authChipLabel');
+  function updateAuthChip() {
+    const t = getToken();
+    authChip.classList.toggle('authed', !!t);
+    authChipLabel.textContent = t ? 'Signed in · sign out' : 'Not signed in';
   }
-  loginBtn.addEventListener('click',handleLogin);
-  [loginUser,loginPass].forEach(el=>el.addEventListener('keydown',e=>{if(e.key==='Enter')handleLogin();}));
-  togglePw.addEventListener('click',()=>{const t=loginPass.type==='text';loginPass.type=t?'password':'text';togglePw.textContent=t?'👁️':'🙈';});
+  authChip.addEventListener('click', () => {
+    if (!getToken()) return;
+    clearToken(); updateAuthChip(); closeSidebar();
+    openLoginModal('Session ended. Please sign in again.');
+  });
 
-  async function authFetch(url,options={}){
-    const token=getToken();const headers={...(options.headers||{})};if(token)headers['Authorization']=`Bearer ${token}`;
-    const res=await fetch(url,{...options,headers});
-    if(res.status===401){clearToken();updateAuthChip();openLoginModal('Your session expired. Please sign in again.');throw new Error('401 Unauthorized');}
+  /* ── Modal ── */
+  const loginBackdrop = document.getElementById('loginBackdrop');
+  const loginBtn      = document.getElementById('loginBtn');
+  const loginUser     = document.getElementById('loginUser');
+  const loginPass     = document.getElementById('loginPass');
+  const loginError    = document.getElementById('loginError');
+  const loginErrorMsg = document.getElementById('loginErrorMsg');
+  const modalSub      = document.getElementById('modalSub');
+  const togglePw      = document.getElementById('togglePw');
+
+  function openLoginModal(sub) {
+    loginError.classList.remove('show');
+    loginUser.value = ''; loginPass.value = '';
+    loginUser.classList.remove('input-error'); loginPass.classList.remove('input-error');
+    if (sub) modalSub.textContent = sub;
+    loginBackdrop.classList.add('show');
+    setTimeout(() => loginUser.focus(), 280);
+  }
+  function closeLoginModal() {
+    loginBackdrop.classList.remove('show');
+    modalSub.textContent = 'Sign in to post news to platforms';
+  }
+
+  async function handleLogin() {
+    const username = loginUser.value.trim(), password = loginPass.value;
+    loginUser.classList.remove('input-error'); loginPass.classList.remove('input-error'); loginError.classList.remove('show');
+    if (!username) { loginUser.classList.add('input-error'); loginUser.focus(); return; }
+    if (!password) { loginPass.classList.add('input-error'); loginPass.focus(); return; }
+    loginBtn.disabled = true; loginBtn.classList.add('loading');
+    try {
+      const res  = await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Invalid credentials');
+      const token = data.token || data.accessToken;
+      if (!token) throw new Error('No token returned');
+      setToken(token); updateAuthChip(); closeLoginModal();
+    } catch (err) {
+      loginErrorMsg.textContent = err.message; loginError.classList.add('show');
+      loginPass.value = ''; loginPass.classList.add('input-error'); loginPass.focus();
+    } finally {
+      loginBtn.disabled = false; loginBtn.classList.remove('loading');
+    }
+  }
+  loginBtn.addEventListener('click', handleLogin);
+  [loginUser, loginPass].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); }));
+  togglePw.addEventListener('click', () => {
+    const t = loginPass.type === 'text';
+    loginPass.type = t ? 'password' : 'text';
+    togglePw.textContent = t ? '👁️' : '🙈';
+  });
+
+  async function authFetch(url, options = {}) {
+    const token = getToken();
+    const headers = { ...(options.headers || {}) };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+      clearToken(); updateAuthChip();
+      openLoginModal('Your session expired. Please sign in again.');
+      throw new Error('401 Unauthorized');
+    }
     return res;
   }
 
-  /* Toast */
-  function showToast(ok,message){
-    const wrap=document.getElementById('toastWrap');
-    const t=document.createElement('div');t.className=`toast ${ok?'ok':'fail'}`;
-    t.innerHTML=`${ok?'✅':'❌'} ${message}`;
-    wrap.appendChild(t);setTimeout(()=>t.remove(),5000);
+  /* ── Toast ── */
+  function showToast(ok, message) {
+    const wrap = document.getElementById('toastWrap');
+    const t = document.createElement('div');
+    t.className = `toast ${ok ? 'ok' : 'fail'}`;
+    t.innerHTML = `${ok ? '✅' : '❌'} ${message}`;
+    wrap.appendChild(t);
+    setTimeout(() => t.remove(), 5000);
   }
 
-  /* State */
-  let allNews=[],statusMap={},filterChan='all',searchQuery='';
+  /* ── State ── */
+  let allNews = [], statusMap = {}, filterChan = 'all', searchQuery = '';
 
-  /* Fetch news */
-  async function fetchNews(){
-    const refreshBtn=document.getElementById('refreshBtn');
-    refreshBtn.disabled=true;
-    document.getElementById('newsCountBadge').textContent='Loading…';
-    document.getElementById('countText').textContent='Loading articles…';
+  /* ── Fetch news ── */
+  async function fetchNews() {
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.disabled = true;
+    document.getElementById('newsCountBadge').textContent = 'Loading…';
+    document.getElementById('countText').textContent = 'Loading articles…';
+    document.getElementById('sourceStats').innerHTML = '';
     renderSkeletons();
-    try{
-      const res=await fetch(`${API}/news/list`),data=await res.json();
-      if(!res.ok)throw new Error(data.error||'Failed to load news');
-      allNews=data.news||[];
-      document.getElementById('newsCountBadge').textContent=`${allNews.length} articles`;
-      await fetchStatuses(allNews.map(n=>n.id));
+    try {
+      const res  = await fetch(`${API}/news/list`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to load news');
+      allNews = data.news || [];
+      document.getElementById('newsCountBadge').textContent = `${allNews.length} articles`;
+      await fetchStatuses(allNews.map(n => n.id));
+      renderSourceStats();
       renderNews();
-    }catch(err){renderError(err.message);document.getElementById('newsCountBadge').textContent='Error';}
-    finally{refreshBtn.disabled=false;}
+    } catch (err) {
+      renderError(err.message);
+      document.getElementById('newsCountBadge').textContent = 'Error';
+    } finally {
+      refreshBtn.disabled = false;
+    }
   }
 
-  async function fetchStatuses(ids){
-    if(!ids.length)return;
-    try{const res=await fetch(`${API}/news/post-status?ids=${ids.join(',')}`),data=await res.json();statusMap=data.statuses||{};}
-    catch{statusMap={};}
+  async function fetchStatuses(ids) {
+    if (!ids.length) return;
+    try {
+      const res  = await fetch(`${API}/news/post-status?ids=${ids.join(',')}`);
+      const data = await res.json();
+      statusMap = data.statuses || {};
+    } catch { statusMap = {}; }
   }
 
-  /* Render */
-  function renderSkeletons(){
-    document.getElementById('newsGrid').innerHTML=Array(4).fill('').map(()=>`
-      <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:55%"></div><div class="sk-line" style="width:90%"></div><div class="sk-line" style="width:70%"></div></div></div>`).join('');
-  }
-
-  function renderError(msg){
-    document.getElementById('newsGrid').innerHTML=`<div class="state-card"><div class="state-icon">⚠️</div><div class="state-text">Failed to load news</div><div class="state-sub">${msg}</div></div>`;
-  }
-
-  function filteredNews(){
-    return allNews.filter(n=>{
-      const matchChan=filterChan==='all'||n.channel===filterChan;
-      const matchSearch=!searchQuery||n.title.toLowerCase().includes(searchQuery)||(n.summary||'').toLowerCase().includes(searchQuery);
-      return matchChan&&matchSearch;
-    });
-  }
-
-  function renderNews(){
-    const grid=document.getElementById('newsGrid'),list=filteredNews();
-    document.getElementById('countText').innerHTML=`Showing <strong>${list.length}</strong> of <strong>${allNews.length}</strong> articles`;
-    if(!list.length){grid.innerHTML=`<div class="state-card"><div class="state-icon">🔍</div><div class="state-text">No articles match your filter</div><div class="state-sub">Try a different search term or channel</div></div>`;return;}
-    grid.innerHTML=list.map(n=>{
-      const st=statusMap[n.id]||{instagram:false,facebook:false,youtube:false};
-      return buildCard(n,st);
+  /* ── Source stats strip ── */
+  function renderSourceStats() {
+    const counts = {};
+    for (const n of allNews) {
+      counts[n.channel] = (counts[n.channel] || 0) + 1;
+    }
+    const strip = document.getElementById('sourceStats');
+    strip.innerHTML = Object.entries(counts).map(([ch, cnt]) => {
+      const meta = CHANNEL_META[ch] || {};
+      const iconHtml = meta.icon
+        ? `<img src="${escH(meta.icon)}" alt="" onerror="this.remove()">`
+        : '';
+      return `<div class="stat-pill">${iconHtml} ${escH(ch)} <span class="cnt">${cnt}</span></div>`;
     }).join('');
   }
 
-  function buildCard(n,st){
-    const thumb=n.image?`<img class="news-thumb" src="${escH(n.image)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=thumb-placeholder>🖼️</div>'">`:`<div class="thumb-placeholder">🖼️</div>`;
-    const chIcon=n.icon?`<img class="channel-icon" src="${escH(n.icon)}" alt="" onerror="this.style.display='none'">`:'';
+  /* ── Render helpers ── */
+  function renderSkeletons() {
+    document.getElementById('newsGrid').innerHTML = Array(4).fill('').map(() => `
+      <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines">
+        <div class="sk-line" style="width:55%"></div>
+        <div class="sk-line" style="width:90%"></div>
+        <div class="sk-line" style="width:70%"></div>
+      </div></div>`).join('');
+  }
+
+  function renderError(msg) {
+    document.getElementById('newsGrid').innerHTML =
+      `<div class="state-card"><div class="state-icon">⚠️</div><div class="state-text">Failed to load news</div><div class="state-sub">${msg}</div></div>`;
+  }
+
+  function filteredNews() {
+    return allNews.filter(n => {
+      const matchChan   = filterChan === 'all' || n.channel === filterChan;
+      const matchSearch = !searchQuery ||
+        n.title.toLowerCase().includes(searchQuery) ||
+        (n.summary || '').toLowerCase().includes(searchQuery);
+      return matchChan && matchSearch;
+    });
+  }
+
+  function renderNews() {
+    const grid = document.getElementById('newsGrid');
+    const list = filteredNews();
+    document.getElementById('countText').innerHTML =
+      `Showing <strong>${list.length}</strong> of <strong>${allNews.length}</strong> articles`;
+    if (!list.length) {
+      grid.innerHTML = `<div class="state-card"><div class="state-icon">🔍</div><div class="state-text">No articles match your filter</div><div class="state-sub">Try a different search term or channel</div></div>`;
+      return;
+    }
+    grid.innerHTML = list.map(n => {
+      const st = statusMap[n.id] || { instagram: false, facebook: false, youtube: false };
+      return buildCard(n, st);
+    }).join('');
+  }
+
+  function buildCard(n, st) {
+    const thumb = n.image
+      ? `<img class="news-thumb" src="${escH(n.image)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=thumb-placeholder>🖼️</div>'">`
+      : `<div class="thumb-placeholder">🖼️</div>`;
+
+    const chIcon = n.icon
+      ? `<img class="channel-icon" src="${escH(n.icon)}" alt="" onerror="this.style.display='none'">`
+      : '';
+
+    // Extra badge class for News18
+    const badgeClass = n.channel === 'News18 Malayalam' ? 'channel-badge ch-news18' : 'channel-badge';
+
+    const timeHtml = n.readableTime
+      ? `<span class="news-time">🕐 ${escH(n.readableTime)}</span>`
+      : '';
+
     return `
-      <div class="news-card" data-id="${n.id}">
+      <div class="news-card" data-id="${n.id}" data-channel="${escH(n.channel)}">
         ${thumb}
         <div class="news-meta">
-          <div class="news-header"><span class="channel-badge">${chIcon} ${escH(n.channel)}</span></div>
+          <div class="news-header">
+            <span class="${badgeClass}">${chIcon} ${escH(n.channel)}</span>
+            ${timeHtml}
+          </div>
           <div class="news-title">${escH(n.title)}</div>
-          ${n.summary?`<div class="news-summary">${escH(n.summary)}</div>`:''}
+          ${n.summary ? `<div class="news-summary">${escH(n.summary)}</div>` : ''}
         </div>
         <div class="post-btns">
-          <button class="post-btn insta${st.instagram?' posted':''}" data-platform="instagram" data-id="${n.id}" data-title="${escA(n.title)}" data-summary="${escA(n.summary||'')}" data-image="${escA(n.image||'')}" ${st.instagram?'disabled':''}>
-            <div class="btn-spin"></div><span class="btn-label">${st.instagram?'✅ Instagram':'📸 Instagram'}</span>
+          <button class="post-btn insta${st.instagram ? ' posted' : ''}"
+            data-platform="instagram" data-id="${n.id}"
+            data-title="${escA(n.title)}" data-summary="${escA(n.summary || '')}" data-image="${escA(n.image || '')}"
+            ${st.instagram ? 'disabled' : ''}>
+            <div class="btn-spin"></div>
+            <span class="btn-label">${st.instagram ? '✅ Instagram' : '📸 Instagram'}</span>
           </button>
-          <button class="post-btn fb${st.facebook?' posted':''}" data-platform="facebook" data-id="${n.id}" data-title="${escA(n.title)}" data-summary="${escA(n.summary||'')}" data-image="${escA(n.image||'')}" ${st.facebook?'disabled':''}>
-            <div class="btn-spin"></div><span class="btn-label">${st.facebook?'✅ Facebook':'👍 Facebook'}</span>
+          <button class="post-btn fb${st.facebook ? ' posted' : ''}"
+            data-platform="facebook" data-id="${n.id}"
+            data-title="${escA(n.title)}" data-summary="${escA(n.summary || '')}" data-image="${escA(n.image || '')}"
+            ${st.facebook ? 'disabled' : ''}>
+            <div class="btn-spin"></div>
+            <span class="btn-label">${st.facebook ? '✅ Facebook' : '👍 Facebook'}</span>
           </button>
-          <button class="post-btn yt${st.youtube?' posted':''}" data-platform="youtube" data-id="${n.id}" data-title="${escA(n.title)}" data-summary="${escA(n.summary||'')}" data-image="${escA(n.image||'')}" ${st.youtube?'disabled':''}>
-            <div class="btn-spin"></div><span class="btn-label">${st.youtube?'✅ YouTube':'▶️ YouTube'}</span>
+          <button class="post-btn yt${st.youtube ? ' posted' : ''}"
+            data-platform="youtube" data-id="${n.id}"
+            data-title="${escA(n.title)}" data-summary="${escA(n.summary || '')}" data-image="${escA(n.image || '')}"
+            ${st.youtube ? 'disabled' : ''}>
+            <div class="btn-spin"></div>
+            <span class="btn-label">${st.youtube ? '✅ YouTube' : '▶️ YouTube'}</span>
           </button>
         </div>
       </div>`;
   }
 
-  function escH(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-  function escA(s){return String(s||'').replace(/"/g,'&quot;');}
+  function escH(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function escA(s) { return String(s || '').replace(/"/g,'&quot;'); }
 
-  /* Post to platform */
-  document.getElementById('newsGrid').addEventListener('click',async e=>{
-    const btn=e.target.closest('.post-btn');
-    if(!btn||btn.disabled)return;
-    if(!getToken()){openLoginModal('Please sign in to post news.');return;}
-    const{platform,id,title,summary,image}=btn.dataset;
-    btn.disabled=true;btn.classList.add('loading');
-    try{
-      const res=await authFetch(`${API}/news/post-item`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({newsId:id,platform,title,summary,image})});
-      const data=await res.json();
-      if(!res.ok)throw new Error(data.error||'Post failed');
-      if(!statusMap[id])statusMap[id]={};
-      statusMap[id][platform]=true;
-      btn.classList.remove('loading');btn.classList.add('posted');
-      btn.querySelector('.btn-label').textContent=`✅ ${capitalize(platform)}`;
-      showToast(true,`Posted to ${capitalize(platform)} successfully!`);
-    }catch(err){
+  /* ── Post to platform ── */
+  document.getElementById('newsGrid').addEventListener('click', async e => {
+    const btn = e.target.closest('.post-btn');
+    if (!btn || btn.disabled) return;
+    if (!getToken()) { openLoginModal('Please sign in to post news.'); return; }
+    const { platform, id, title, summary, image } = btn.dataset;
+    btn.disabled = true; btn.classList.add('loading');
+    try {
+      const res  = await authFetch(`${API}/news/post-item`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newsId: id, platform, title, summary, image }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Post failed');
+      if (!statusMap[id]) statusMap[id] = {};
+      statusMap[id][platform] = true;
+      btn.classList.remove('loading'); btn.classList.add('posted');
+      btn.querySelector('.btn-label').textContent = `✅ ${capitalize(platform)}`;
+      showToast(true, `Posted to ${capitalize(platform)} successfully!`);
+    } catch (err) {
       btn.classList.remove('loading');
-      if(!err.message.startsWith('401')){btn.disabled=false;showToast(false,err.message);}
+      if (!err.message.startsWith('401')) { btn.disabled = false; showToast(false, err.message); }
     }
   });
 
-  function capitalize(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+  function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
-  /* Filters */
-  document.querySelectorAll('.filter-btn').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');filterChan=btn.dataset.filter;renderNews();
+  /* ── Filters ── */
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filterChan = btn.dataset.filter;
+      renderNews();
     });
   });
 
-  document.getElementById('searchInput').addEventListener('input',e=>{searchQuery=e.target.value.trim().toLowerCase();renderNews();});
-  document.getElementById('refreshBtn').addEventListener('click',fetchNews);
+  document.getElementById('searchInput').addEventListener('input', e => {
+    searchQuery = e.target.value.trim().toLowerCase();
+    renderNews();
+  });
 
-  /* Boot */
+  document.getElementById('refreshBtn').addEventListener('click', fetchNews);
+
+  /* ── Boot ── */
   updateAuthChip();
-  if(!getToken())openLoginModal('Sign in to post news to platforms');
+  if (!getToken()) openLoginModal('Sign in to post news to platforms');
   fetchNews();
 </script>
 </body>
