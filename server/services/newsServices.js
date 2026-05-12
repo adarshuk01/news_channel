@@ -31,20 +31,10 @@ const SOURCES = {
     channel: "Oneindia",
   },
 
+  // ── News18 Malayalam — RSS feed (no geo-restriction, unlike sitemaps) ──
   news18: {
-    // Primary: Google News sitemap (may be geo-restricted on Vercel)
-    sitemapUrl:
-      "https://malayalam.news18.com/commonfeeds/v1/mal/sitemap/google-news.xml",
-
-    // Fallback: standard news sitemap
-    sitemapFallback:
-      "https://malayalam.news18.com/sitemap/news-sitemap.xml",
-
-    baseUrl: "https://malayalam.news18.com",
-
-    icon:
-      "https://static.news18.com/static/img/logo-news18-favicon-32.png",
-
+    rssUrl: "https://malayalam.news18.com/commonfeeds/v1/mal/rss/text.xml",
+    icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png",
     channel: "News18 Malayalam",
   },
 };
@@ -56,10 +46,8 @@ const SOURCES = {
 const DEFAULT_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-
   Accept:
     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-
   "Accept-Language": "en-US,en;q=0.9",
 };
 
@@ -73,7 +61,6 @@ async function loadPage(url) {
       headers: DEFAULT_HEADERS,
       timeout: 15000,
     });
-
     return cheerio.load(data, {
       xmlMode: true,
       decodeEntities: true,
@@ -94,9 +81,7 @@ const resolve = (base, href = "") =>
 
 const isValidImage = (url = "") => {
   if (!url) return false;
-
   const clean = url.split("?")[0];
-
   return (
     /^https?:\/\//i.test(url) &&
     /\.(jpg|jpeg|png|webp|gif)$/i.test(clean)
@@ -104,26 +89,18 @@ const isValidImage = (url = "") => {
 };
 
 // ─────────────────────────────────────────────
-// FULL HTML CLEANER
+// HTML cleaner
 // ─────────────────────────────────────────────
 
 function cleanHtmlText(text = "") {
   if (!text) return "";
-
-  // CDATA
   text = stripCdata(text);
-
-  // remove script/style/twitter junk
   text = text
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/pic\.twitter\.com\/\S+/gi, "")
     .replace(/https?:\/\/t\.co\/\S+/gi, "");
-
-  // HTML → TEXT
   text = cheerio.load(`<div>${text}</div>`).text();
-
-  // decode entities
   text = text
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
@@ -131,167 +108,37 @@ function cleanHtmlText(text = "") {
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'");
-
-  // remove remaining tags
   text = text.replace(/<[^>]*>/g, " ");
-
-  // normalize spaces
-  text = text
-    .replace(/\s+/g, " ")
-    .replace(/\n+/g, " ")
-    .trim();
-
+  text = text.replace(/\s+/g, " ").replace(/\n+/g, " ").trim();
   return text;
 }
 
 // ─────────────────────────────────────────────
-// XML HELPERS
+// Shared XML helpers
 // ─────────────────────────────────────────────
 
-function xmlTag(xml, tag) {
+/**
+ * Extract text content of the first matching XML tag.
+ * Handles namespaced tags (e.g. "media:content") and CDATA.
+ */
+function getXmlTag(xml, tag) {
   const esc = tag.replace(":", "\\:");
-
   const re = new RegExp(
     `<${esc}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${esc}>`,
     "i"
   );
-
   const m = xml.match(re);
-
   return m ? stripCdata(m[1]).trim() : "";
 }
 
-function xmlAttr(xml, tag, attr) {
+/**
+ * Extract an attribute value from the first matching XML tag.
+ */
+function getXmlAttr(xml, tag, attr) {
   const esc = tag.replace(":", "\\:");
-
-  const re = new RegExp(
-    `<${esc}[^>]*\\s${attr}="([^"]*)"`,
-    "i"
-  );
-
+  const re = new RegExp(`<${esc}[^>]*\\s${attr}="([^"]*)"`, "i");
   const m = xml.match(re);
-
   return m ? m[1].trim() : "";
-}
-
-function splitUrlChunks(xml) {
-  const chunks = [];
-
-  let pos = 0;
-
-  while (true) {
-    const open = xml.indexOf("<url>", pos);
-
-    if (open === -1) break;
-
-    const close = xml.indexOf("</url>", open);
-
-    if (close === -1) break;
-
-    chunks.push(xml.slice(open + 5, close));
-
-    pos = close + 6;
-  }
-
-  return chunks;
-}
-
-// ─────────────────────────────────────────────
-// NEWS18 — fetch raw XML with primary + fallback
-// ─────────────────────────────────────────────
-
-async function fetchNews18RawXml() {
-  const { sitemapUrl, sitemapFallback } = SOURCES.news18;
-
-  // Try primary URL first
-  try {
-    const { data, status } = await axios.get(sitemapUrl, {
-      headers: DEFAULT_HEADERS,
-      timeout: 15000,
-    });
-
-    // Vercel may get a 200 but with an HTML error page instead of XML.
-    // Guard against that by checking for actual sitemap content.
-    if (
-      typeof data === "string" &&
-      data.includes("<url>") &&
-      data.length > 500
-    ) {
-      return data;
-    }
-
-    console.warn(
-      `[News18] Primary sitemap returned unexpected content (status ${status}), trying fallback...`
-    );
-  } catch (err) {
-    console.warn(
-      `[News18] Primary sitemap failed: ${err.message}. Trying fallback...`
-    );
-  }
-
-  // Fallback URL
-  try {
-    const { data } = await axios.get(sitemapFallback, {
-      headers: DEFAULT_HEADERS,
-      timeout: 15000,
-    });
-
-    if (typeof data === "string" && data.includes("<url>")) {
-      return data;
-    }
-
-    throw new Error("Fallback sitemap also returned unexpected content.");
-  } catch (err) {
-    throw new Error(`[News18] Both sitemaps failed: ${err.message}`);
-  }
-}
-
-async function scrapeNews18Malayalam() {
-  const { icon, channel } = SOURCES.news18;
-
-  const rawXml = await fetchNews18RawXml();
-
-  const chunks = splitUrlChunks(rawXml);
-
-  const news = [];
-
-  for (const chunk of chunks) {
-    const loc = xmlTag(chunk, "loc");
-
-    if (!loc) continue;
-
-    const title = stripLive(
-      xmlTag(chunk, "news:title") ||
-        xmlTag(chunk, "title")
-    );
-
-    const summary = cleanHtmlText(
-      xmlTag(chunk, "news:keywords") ||
-        xmlTag(chunk, "description") ||
-        ""
-    );
-
-    const image =
-      xmlTag(chunk, "image:loc") ||
-      xmlAttr(chunk, "enclosure", "url");
-
-    const pubDate =
-      xmlTag(chunk, "news:publication_date") || "";
-
-    if (!isValidImage(image)) continue;
-
-    news.push({
-      title,
-      link: loc,
-      summary,
-      image,
-      readableTime: pubDate,
-      icon,
-      channel,
-    });
-  }
-
-  return news;
 }
 
 // ─────────────────────────────────────────────
@@ -300,46 +147,26 @@ async function scrapeNews18Malayalam() {
 
 async function scrapeManorama(url, selector) {
   const { baseUrl, icon, channel } = SOURCES.manorama;
-
   const $ = await loadPage(url);
-
   const news = [];
 
   $(selector).each((_, el) => {
     const anchor = $(el).find("h2 a");
-
     const title = stripLive(anchor.text().trim());
-
     const link = resolve(baseUrl, anchor.attr("href"));
-
     const summary = cleanHtmlText(
       $(el).find(".cmp-story-list__dispn").html() || ""
     );
-
-    const imgEl = $(el).find(
-      ".cmp-story-list__image-block img"
-    );
-
+    const imgEl = $(el).find(".cmp-story-list__image-block img");
     const image =
-      imgEl.attr("data-src") ||
-      imgEl.attr("data-websrc") ||
-      "";
-
+      imgEl.attr("data-src") || imgEl.attr("data-websrc") || "";
     const readableTime = $(el)
       .find(".cmp-story-list__date")
       .text()
       .trim();
 
     if (title && link) {
-      news.push({
-        title,
-        link,
-        summary,
-        image,
-        readableTime,
-        icon,
-        channel,
-      });
+      news.push({ title, link, summary, image, readableTime, icon, channel });
     }
   });
 
@@ -350,14 +177,11 @@ async function scrapeManorama(url, selector) {
 // ASIANET
 // ─────────────────────────────────────────────
 
-// Max words shown in the Asianet description
 const ASIANET_SUMMARY_WORD_LIMIT = 40;
 
 async function scrapeAsianet(url) {
   const { icon, channel } = SOURCES.asianet;
-
   const $ = await loadPage(url);
-
   const news = [];
 
   $("item").each((_, el) => {
@@ -365,14 +189,11 @@ async function scrapeAsianet(url) {
 
     const getTag = (tag) => {
       const esc = tag.replace(":", "\\:");
-
       const re = new RegExp(
         `<${esc}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${esc}>`,
         "i"
       );
-
       const m = raw.match(re);
-
       return m ? stripCdata(m[1]).trim() : "";
     };
 
@@ -380,27 +201,21 @@ async function scrapeAsianet(url) {
       const m = raw.match(
         new RegExp(`<${tag}[^>]*${attr}="(.*?)"`, "s")
       );
-
       return m ? m[1] : "";
     };
 
     const title = stripLive(getTag("title"));
-
     const link = getTag("link");
 
     let summary = cleanHtmlText(
       getTag("content:encoded") || getTag("description")
     );
-
-    // ── FIX: cap at ASIANET_SUMMARY_WORD_LIMIT words ──
     const words = summary.split(" ").filter(Boolean);
-
     if (words.length > ASIANET_SUMMARY_WORD_LIMIT) {
       summary = words.slice(0, ASIANET_SUMMARY_WORD_LIMIT).join(" ") + "...";
     }
 
     const pubDate = getTag("pubDate");
-
     const image =
       getAttr("media:content", "url") ||
       getAttr("enclosure", "url") ||
@@ -409,15 +224,7 @@ async function scrapeAsianet(url) {
     if (!isValidImage(image)) return;
 
     if (title && link) {
-      news.push({
-        title,
-        link,
-        summary,
-        image,
-        readableTime: pubDate,
-        icon,
-        channel,
-      });
+      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
     }
   });
 
@@ -430,9 +237,7 @@ async function scrapeAsianet(url) {
 
 async function scrapeMediaOneSports(url) {
   const { baseUrl, icon, channel } = SOURCES.mediaone;
-
   const $ = await loadPage(url);
-
   const articles = [];
 
   $(".d-flex.flex-wrap").each((_, el) => {
@@ -440,37 +245,20 @@ async function scrapeMediaOneSports(url) {
       .find(".list-item-right h3.story-title")
       .text()
       .trim();
-
     const href = $(el).find("a").attr("href") || "";
-
     const link = resolve(baseUrl, href);
-
     const summary = cleanHtmlText(
       $(el).find(".list-item-right p").html() || ""
     );
-
     const rawImage =
       $(el).find(".story-img img").attr("data-src") || "";
-
     const image = rawImage.startsWith("https")
       ? rawImage
       : resolve(baseUrl, rawImage);
-
-    const readableTime = $(el)
-      .find(".time-as-duration")
-      .text()
-      .trim();
+    const readableTime = $(el).find(".time-as-duration").text().trim();
 
     if (title && link) {
-      articles.push({
-        title,
-        link,
-        summary,
-        image,
-        readableTime,
-        icon,
-        channel,
-      });
+      articles.push({ title, link, summary, image, readableTime, icon, channel });
     }
   });
 
@@ -489,50 +277,72 @@ async function scrapeOneindia() {
     timeout: 15000,
   });
 
-  const rawXml = data;
-
   const news = [];
-
-  const items = rawXml.split("<item>");
+  const items = data.split("<item>");
 
   for (const chunk of items.slice(1)) {
     const itemXml = chunk.split("</item>")[0];
 
-    const getTag = (tag) => {
-      const m = itemXml.match(
-        new RegExp(
-          `<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`,
-          "i"
-        )
-      );
-
-      return m ? stripCdata(m[1]).trim() : "";
-    };
-
-    const title = stripLive(getTag("title"));
-
-    const link = getTag("link");
-
-    const summary = cleanHtmlText(getTag("description"));
-
-    const pubDate = getTag("pubDate");
+    const title = stripLive(getXmlTag(itemXml, "title"));
+    const link = getXmlTag(itemXml, "link");
+    const summary = cleanHtmlText(getXmlTag(itemXml, "description"));
+    const pubDate = getXmlTag(itemXml, "pubDate");
 
     const imgM = itemXml.match(/url="(https?:\/\/[^"]+)"/);
-
     const image = imgM ? imgM[1] : "";
 
     if (!isValidImage(image)) continue;
-
     if (title && link) {
-      news.push({
-        title,
-        link,
-        summary,
-        image,
-        readableTime: pubDate,
-        icon,
-        channel,
-      });
+      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
+    }
+  }
+
+  return news;
+}
+
+// ─────────────────────────────────────────────
+// NEWS18 MALAYALAM — RSS feed
+//
+// Feed structure per item:
+//   <title>    CDATA
+//   <link>     CDATA
+//   <description> CDATA
+//   <pubDate>  CDATA
+//   <guid>     CDATA  (fallback for link)
+//   <media:content url="..." />   ← image
+// ─────────────────────────────────────────────
+
+async function scrapeNews18Malayalam() {
+  const { rssUrl, icon, channel } = SOURCES.news18;
+
+  const { data } = await axios.get(rssUrl, {
+    headers: DEFAULT_HEADERS,
+    timeout: 15000,
+  });
+
+  const news = [];
+  const items = data.split("<item>");
+
+  for (const chunk of items.slice(1)) {
+    const itemXml = chunk.split("</item>")[0];
+
+    const title = stripLive(getXmlTag(itemXml, "title"));
+
+    // <link> is CDATA-wrapped in this feed; getXmlTag handles it.
+    // Fall back to <guid> which carries the same URL.
+    const link =
+      getXmlTag(itemXml, "link") ||
+      getXmlTag(itemXml, "guid");
+
+    const summary = cleanHtmlText(getXmlTag(itemXml, "description"));
+    const pubDate = getXmlTag(itemXml, "pubDate");
+
+    // Image lives in <media:content url="..."/>
+    const image = getXmlAttr(itemXml, "media:content", "url");
+
+    if (!isValidImage(image)) continue;
+    if (title && link) {
+      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
     }
   }
 
@@ -557,8 +367,7 @@ exports.fetchMediaOneSportsNews = () =>
 
 exports.fetchOneindiaLatestNews = () => scrapeOneindia();
 
-exports.fetchNews18MalayalamLatestNews = () =>
-  scrapeNews18Malayalam();
+exports.fetchNews18MalayalamLatestNews = () => scrapeNews18Malayalam();
 
 // ─────────────────────────────────────────────
 // AGGREGATE
@@ -584,10 +393,7 @@ exports.fetchAllNews = async () => {
   ]);
 
   return {
-    latest:
-      latest.status === "fulfilled" ? latest.value : [],
-
-    sports:
-      sports.status === "fulfilled" ? sports.value : [],
+    latest: latest.status === "fulfilled" ? latest.value : [],
+    sports: sports.status === "fulfilled" ? sports.value : [],
   };
 };
