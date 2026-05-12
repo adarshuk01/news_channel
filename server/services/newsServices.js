@@ -316,7 +316,11 @@ async function scrapeNews18Malayalam() {
   const { rssUrl, icon, channel } = SOURCES.news18;
 
   const { data } = await axios.get(rssUrl, {
-    headers: DEFAULT_HEADERS,
+    headers: {
+      ...DEFAULT_HEADERS,
+      "X-Forwarded-For": "49.204.0.1",   // Indian IP hint
+      "Accept-Language": "ml-IN,ml;q=0.9,en-IN;q=0.8",
+    },
     timeout: 15000,
   });
 
