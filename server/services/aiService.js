@@ -1,99 +1,122 @@
-const openai = require("../config/openai");
+"use strict";
 
-const MODEL = "openai/gpt-oss-120b"; // ✅ fast + free on Groq
+const groq = require("../config/openai");
 
-/**
- * Generate Instagram hashtags
- */
-exports.generateHashtags = async (topic) => {
+const MODEL = "llama-3.3-70b-versatile";
+
+exports.generateNewsContent = async (news) => {
+
   try {
-    const res = await openai.chat.completions.create({
-      model: MODEL,
-      temperature: 0.4,
-      messages: [
-        {
-          role: "system",
-          content: "You generate Instagram hashtags for news posts.",
-        },
-        {
-          role: "user",
-          content: `
-Generate 15-20 Instagram hashtags based on this topic.
 
-Rules:
-- English hashtags only
-- Include:
-  • 2 news-related
-  • 2 if any specified names
-  • 2 topic-specific
-  • 2 Kerala/location hashtags
-- Avoid spam (#followforfollow etc)
-- Output ONLY hashtags in one line
+    const completion =
+      await groq.chat.completions.create({
 
-Topic: ${topic}
-          `.trim(),
-        },
-      ],
-    });
+        model: MODEL,
 
-    return res.choices[0].message.content.trim();
+        temperature: 0.9,
 
-  } catch (err) {
-    console.error("❌ Groq hashtag error:", err.message);
-    return "#kerala #news #india #breakingnews #malayalam";
-  }
-};
+        messages: [
 
+          {
+            role: "system",
 
-/**
- * Generate viral Malayalam hookss
- */
-exports.generateViralHook = async (text) => {
-  try {
-    const res = await openai.chat.completions.create({
-      model: MODEL,
-      temperature: 0.9, // more creative & viral
-      messages: [
-        {
-          role: "system",
-          content: `
-You are an expert viral Malayalam content creator.
-You write hooks that stop scrolling instantly.
-Hooks must trigger curiosity, shock, or emotion.
-          `.trim(),
-        },
-        {
-          role: "user",
-          content: `
-Generate EXACTLY 3 viral Malayalam hook lines.
+            content: `
+You are a professional Malayalam viral news content creator.
 
-STRICT RULES:
-- Each line must be 5–12 words
-- Use simple Malayalam (no complex words)
-- Highly emotional OR curiosity-driven
-- Use power words like:
-  "ഞെട്ടി", "വിശ്വസിക്കാനാകില്ല", "സത്യം", "ഇത് കണ്ടോ", "ഇങ്ങനെ സംഭവിച്ചു"
-- No emojis
-- No hashtags
-- No numbering
+Return ONLY valid JSON.
+
+{
+  "viralTitle": "",
+  "summary": "",
+  "hashtags": ""
+}
+            `
+          },
+
+          {
+            role: "user",
+
+            content: `
+Generate Malayalam viral news content.
+
+RULES:
+
+viralTitle:
+- Malayalam
+- Highly engaging
+- Curiosity driven
+- Emotional
+- YouTube/Facebook/Instagram style
+- Maximum 8-14 words
 - No quotes
-- Each hook on a new line
-- Avoid repeating same pattern
+- No emojis
+- Should make users click instantly
 
-GOAL:
-Make people feel "I must watch this now"
+summary:
+- Malayalam
+- 100-120 words
+- Professional Malayalam news style
+- Simple readable Malayalam
+- No fake information
+- No markdown
+
+hashtags:
+- 15 hashtags
+- English only
+- Single line
+- Kerala + news related
+- No spam hashtags
+- No comas  # must be therir in all words
 
 NEWS:
-${text.slice(0, 1000)}
-          `.trim(),
-        },
-      ],
-    });
+${news}
+            `
+          }
+        ]
+      });
 
-    return res.choices[0].message.content.trim();
+    let text =
+      completion.choices[0].message.content;
+
+    text = text
+      .replace(/```json/g, "")
+      .replace(/```/g, "")
+      .trim();
+
+    const parsed = JSON.parse(text);
+
+    return {
+
+      viralTitle:
+        parsed.viralTitle ||
+        "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും",
+
+      summary:
+        parsed.summary ||
+        "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
+
+      hashtags:
+        parsed.hashtags ||
+        "#kerala #malayalam #news"
+    };
 
   } catch (err) {
-    console.error("❌ Hook error:", err.message);
-    return "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും";
+
+    console.error(
+      "❌ Groq AI Error:",
+      err.message
+    );
+
+    return {
+
+      viralTitle:
+        "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും",
+
+      summary:
+        "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
+
+      hashtags:
+        "#kerala #malayalam #news"
+    };
   }
 };
