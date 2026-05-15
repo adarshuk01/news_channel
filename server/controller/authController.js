@@ -29,7 +29,7 @@ exports.login = (req, res) => {
   const token = jwt.sign(
     { username },
     jwtSecret,
-    { expiresIn: process.env.JWT_EXPIRES_IN || "8h" }
+    { expiresIn: process.env.JWT_EXPIRES_IN || "7d" }
   );
 
   return res.json({

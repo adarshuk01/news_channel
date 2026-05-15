@@ -23,7 +23,37 @@ function safeDelete(...filePaths) {
 
 /** Strip query-string from an image URL */
 function cleanImageUrl(url) {
-  return url ;
+  if (!url) return "";
+
+  // ASIANET FORMAT
+  // Example:
+  // https://static.asianetnews.com/images/w-1280,h-720,format-jpg,...
+  if (url.includes("asianetnews.com/images/")) {
+    return url.replace(/w-\d+,h-\d+/g, "w-500,h-300");
+  }
+
+  // MANORAMA FORMAT
+  // Example:
+  // ?w=315&h=164
+  if (url.includes("manoramaonline.com")) {
+    try {
+      const parsed = new URL(url);
+
+      parsed.searchParams.set("w", "500");
+      parsed.searchParams.set("h", "300");
+
+      return parsed.toString();
+    } catch (err) {
+      return url;
+    }
+  }
+
+  return url;
 }
 
-module.exports = { TMP, safeDelete, cleanImageUrl };
+module.exports = {
+  TMP,
+  safeDelete,
+  cleanImageUrl,
+};
+

@@ -1,102 +1,99 @@
-"use strict";
+const openai = require("../config/openai");
 
-const groq = require("../config/openai");
+const MODEL = "openai/gpt-oss-120b"; // ✅ fast + free on Groq
 
-const MODEL = "llama-3.3-70b-versatile";
-
-exports.generateNewsContent = async (news) => {
-
+/**
+ * Generate Instagram hashtags
+ */
+exports.generateHashtags = async (topic) => {
   try {
-
-    const completion = await groq.chat.completions.create({
-
+    const res = await openai.chat.completions.create({
       model: MODEL,
-      temperature: 0.9,
-
+      temperature: 0.4,
       messages: [
         {
           role: "system",
-          content: `
-You are a professional Malayalam viral news content creator for FLASH KERALAM.
-
-Return ONLY valid JSON, no markdown, no backticks, no extra text.
-
-{
-  "viralTitle": "",
-  "summary": "",
-  "caption": "",
-  "hashtags": ""
-}
-          `.trim(),
+          content: "You generate Instagram hashtags for news posts.",
         },
-
         {
           role: "user",
           content: `
-Generate Malayalam viral news content for a breaking news poster.
+Generate 15-20 Instagram hashtags based on this topic.
 
-━━━ RULES ━━━
+Rules:
+- English hashtags only
+- Include:
+  • 2 news-related
+  • 2 if any specified names
+  • 2 topic-specific
+  • 2 Kerala/location hashtags
+- Avoid spam (#followforfollow etc)
+- Output ONLY hashtags in one line
 
-viralTitle:
-- Malayalam script only (no English, no numbers written in English digits)
-- MAXIMUM 6 words — strictly enforced (poster space is limited)
-- Punchy, curiosity-driven, emotional, click-bait style
-- No quotes, no emojis, no punctuation marks
-- Make it feel urgent and shocking
-- Every word must contribute — cut filler words ruthlessly
-- Bad example (too long): "കടുത്ത അതൃപ്തി വീടിന് പുറകിലൂടെ രമേശ് ചെന്നിത്തല ഇറങ്ങിപ്പോയി"
-- Good example (6 words): "രമേശ് ചെന്നിത്തല രഹസ്യമായി ഇറങ്ങിപ്പോയി"
-
-summary:
-- Malayalam
-- 80–100 words
-- Professional news style, simple readable Malayalam
-- No fake information, no markdown
-
-caption:
-- Malayalam
-- 2 punchy lines for social media
-- Ends with a call-to-action
-
-hashtags:
-- Exactly 15 hashtags
-- English only, single line, space-separated
-- # must prefix every tag, no commas
-- Kerala + news relevant, no spam
-
-━━━ NEWS ━━━
-${news}
+Topic: ${topic}
           `.trim(),
         },
       ],
     });
 
-    let text = completion.choices[0].message.content;
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-
-    const parsed = JSON.parse(text);
-
-    // ── Safety: hard-truncate viralTitle to 6 words if AI ignores the rule ──
-    const rawTitle = parsed.viralTitle || "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും";
-    const titleWords = rawTitle.trim().split(/\s+/);
-    const viralTitle = titleWords.slice(0, 6).join(" ");
-
-    return {
-      viralTitle,
-      summary:  parsed.summary  || "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
-      caption:  parsed.caption  || "",
-      hashtags: parsed.hashtags || "#kerala #malayalam #news #keralanews #trending",
-    };
+    return res.choices[0].message.content.trim();
 
   } catch (err) {
+    console.error("❌ Groq hashtag error:", err.message);
+    return "#kerala #news #india #breakingnews #malayalam";
+  }
+};
 
-    console.error("❌ Groq AI Error:", err.message);
 
-    return {
-      viralTitle: "ഞെട്ടിക്കുന്ന വലിയ വാർത്ത",
-      summary:    "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
-      caption:    "",
-      hashtags:   "#kerala #malayalam #news #keralanews #trending",
-    };
+/**
+ * Generate viral Malayalam hookss
+ */
+exports.generateViralHook = async (text) => {
+  try {
+    const res = await openai.chat.completions.create({
+      model: MODEL,
+      temperature: 0.9, // more creative & viral
+      messages: [
+        {
+          role: "system",
+          content: `
+You are an expert viral Malayalam content creator.
+You write hooks that stop scrolling instantly.
+Hooks must trigger curiosity, shock, or emotion.
+          `.trim(),
+        },
+        {
+          role: "user",
+          content: `
+Generate EXACTLY 3 viral Malayalam hook lines.
+
+STRICT RULES:
+- Each line must be 5–12 words
+- Use simple Malayalam (no complex words)
+- Highly emotional OR curiosity-driven
+- Use power words like:
+  "ഞെട്ടി", "വിശ്വസിക്കാനാകില്ല", "സത്യം", "ഇത് കണ്ടോ", "ഇങ്ങനെ സംഭവിച്ചു"
+- No emojis
+- No hashtags
+- No numbering
+- No quotes
+- Each hook on a new line
+- Avoid repeating same pattern
+
+GOAL:
+Make people feel "I must watch this now"
+
+NEWS:
+${text.slice(0, 1000)}
+          `.trim(),
+        },
+      ],
+    });
+
+    return res.choices[0].message.content.trim();
+
+  } catch (err) {
+    console.error("❌ Hook error:", err.message);
+    return "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും";
   }
 };

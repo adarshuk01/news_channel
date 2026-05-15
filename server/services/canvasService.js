@@ -1,389 +1,565 @@
-const { createCanvas, GlobalFonts, loadImage } = require("@napi-rs/canvas");
+// ─────────────────────────────────────────────
+// STUDIO STYLE NEWS POSTER V5
+// Dynamic font sizing
+// Removed blue left line
+// Cleaner premium layout
+// ─────────────────────────────────────────────
+
+const {
+  createCanvas,
+  GlobalFonts,
+  loadImage,
+} = require("@napi-rs/canvas");
+
 const path = require("path");
 
+// ─────────────────────────────────────
+// FONT REGISTRATION
+// ─────────────────────────────────────
+
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
+  path.join(__dirname, "../fonts/RIT-tnjoy-extrabold.ttf"),
   "Malayalam"
 );
+
 GlobalFonts.registerFromPath(
   path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf"),
+  "EnglishBold"
+);
+
+GlobalFonts.registerFromPath(
+  path.join(__dirname, "../fonts/DejaVuSans.ttf"),
   "English"
 );
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DIMENSIONS
-//   Main poster : always 1080 × 1280
-//   Ad strip    : 1080 × 180  (appended below when adBannerUrl is provided)
-//   Final output: 1080 × 1280  OR  1080 × 1460
-// ─────────────────────────────────────────────────────────────────────────────
-const W    = 1080;
-const H    = 1280;
-const AD_H = 180;
+// ─────────────────────────────────────
 
-// ═══════════════════════════════════════════════════════════════════════════
+const W = 1080;
+const H = 1350;
+
+// ─────────────────────────────────────
 // HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function wrapText(ctx, text, maxWidth) {
-  const words = text.split(" ");
-  const lines = [];
-  let cur = "";
-  for (const word of words) {
-    const test = cur ? cur + " " + word : word;
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = word;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
+// ─────────────────────────────────────
 
 function roundRect(ctx, x, y, w, h, r) {
+
   ctx.beginPath();
+
   ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y,     x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x,     y + h, r);
-  ctx.arcTo(x,     y + h, x,     y,     r);
-  ctx.arcTo(x,     y,     x + w, y,     r);
+
+  ctx.lineTo(x + w - r, y);
+
+  ctx.quadraticCurveTo(
+    x + w,
+    y,
+    x + w,
+    y + r
+  );
+
+  ctx.lineTo(x + w, y + h - r);
+
+  ctx.quadraticCurveTo(
+    x + w,
+    y + h,
+    x + w - r,
+    y + h
+  );
+
+  ctx.lineTo(x + r, y + h);
+
+  ctx.quadraticCurveTo(
+    x,
+    y + h,
+    x,
+    y + h - r
+  );
+
+  ctx.lineTo(x, y + r);
+
+  ctx.quadraticCurveTo(
+    x,
+    y,
+    x + r,
+    y
+  );
+
   ctx.closePath();
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DRAW POSTER  (always at y = 0, exactly 1080 × 1280)
-// ═══════════════════════════════════════════════════════════════════════════
+function wrapText(ctx, text, maxWidth) {
 
-async function drawPoster(ctx, newsItem) {
+  const words = text.split(" ");
 
-  // ── 1. BACKGROUND ─────────────────────────────────────────────
-  ctx.fillStyle = "#0d0f14";
-  ctx.fillRect(0, 0, W, H);
+  const lines = [];
 
-  // Subtle diagonal texture lines
-  ctx.save();
-  ctx.globalAlpha = 0.03;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth   = 1;
-  for (let i = -H; i < W + H; i += 18) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i + H, H);
-    ctx.stroke();
+  let line = "";
+
+  for (const word of words) {
+
+    const test = line
+      ? line + " " + word
+      : word;
+
+    if (
+      ctx.measureText(test).width >
+        maxWidth &&
+      line
+    ) {
+
+      lines.push(line);
+
+      line = word;
+
+    } else {
+
+      line = test;
+    }
   }
-  ctx.restore();
 
-  // ── 2. IMAGE — top 58 % ───────────────────────────────────────
-  const IMG_H = Math.round(H * 0.58);
+  if (line) lines.push(line);
+
+  return lines;
+}
+
+// ─────────────────────────────────────
+// DATE
+// ─────────────────────────────────────
+
+function getTodayDate() {
+
+  return new Date().toLocaleDateString(
+    "en-US",
+    {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    }
+  );
+}
+
+// ─────────────────────────────────────
+// BACKGROUND
+// ─────────────────────────────────────
+
+async function drawBackground(
+  ctx,
+  imagePath
+) {
 
   try {
-    const img   = await loadImage(newsItem.image);
-    const scale = Math.max(W / img.width, IMG_H / img.height);
-    const dw    = img.width  * scale;
-    const dh    = img.height * scale;
-    const dx    = (W    - dw) / 2;
-    const dy    = (IMG_H - dh) / 2;
+
+    const img = await loadImage(
+      imagePath
+    );
+
+    const imgAspect =
+      img.width / img.height;
+
+    const canvasAspect = W / H;
+
+    let sx = 0;
+    let sy = 0;
+    let sw = img.width;
+    let sh = img.height;
+
+    if (imgAspect > canvasAspect) {
+
+      sw = img.height * canvasAspect;
+
+      sx = (img.width - sw) / 2;
+
+    } else {
+
+      sh = img.width / canvasAspect;
+
+      sy = (img.height - sh) / 2;
+    }
 
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, W, IMG_H);
-    ctx.clip();
-    ctx.drawImage(img, dx, dy, dw, dh);
 
-    // Bottom fade
-    const fade1 = ctx.createLinearGradient(0, IMG_H * 0.38, 0, IMG_H);
-    fade1.addColorStop(0,    "rgba(13,15,20,0)");
-    fade1.addColorStop(0.75, "rgba(13,15,20,0.85)");
-    fade1.addColorStop(1,    "rgba(13,15,20,1)");
-    ctx.fillStyle = fade1;
-    ctx.fillRect(0, 0, W, IMG_H);
+    ctx.filter =
+      "blur(6px) brightness(0.55)";
 
-    // Left vignette
-    const leftVig = ctx.createLinearGradient(0, 0, 120, 0);
-    leftVig.addColorStop(0, "rgba(0,0,0,0.55)");
-    leftVig.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = leftVig;
-    ctx.fillRect(0, 0, 120, IMG_H);
-
-    // Right vignette
-    const rightVig = ctx.createLinearGradient(W - 120, 0, W, 0);
-    rightVig.addColorStop(0, "rgba(0,0,0,0)");
-    rightVig.addColorStop(1, "rgba(0,0,0,0.55)");
-    ctx.fillStyle = rightVig;
-    ctx.fillRect(W - 120, 0, 120, IMG_H);
-
-    // Top vignette
-    const topVig = ctx.createLinearGradient(0, 0, 0, 180);
-    topVig.addColorStop(0, "rgba(0,0,0,0.60)");
-    topVig.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = topVig;
-    ctx.fillRect(0, 0, W, 180);
+    ctx.drawImage(
+      img,
+      sx,
+      sy,
+      sw,
+      sh,
+      0,
+      0,
+      W,
+      H
+    );
 
     ctx.restore();
-  } catch {
-    const fallback = ctx.createLinearGradient(0, 0, W, IMG_H);
-    fallback.addColorStop(0, "#1a1d26");
-    fallback.addColorStop(1, "#0d0f14");
-    ctx.fillStyle = fallback;
-    ctx.fillRect(0, 0, W, IMG_H);
+
+    // DARK OVERLAY
+    const overlay =
+      ctx.createLinearGradient(
+        0,
+        0,
+        0,
+        H
+      );
+
+    overlay.addColorStop(
+      0,
+      "rgba(0,0,0,0.12)"
+    );
+
+    overlay.addColorStop(
+      0.55,
+      "rgba(0,0,0,0.25)"
+    );
+
+    overlay.addColorStop(
+      1,
+      "rgba(0,0,0,0.45)"
+    );
+
+    ctx.fillStyle = overlay;
+
+    ctx.fillRect(0, 0, W, H);
+
+    return img;
+
+  } catch (err) {
+
+    ctx.fillStyle = "#1a1a1a";
+
+    ctx.fillRect(0, 0, W, H);
+
+    return null;
+  }
+}
+
+// ─────────────────────────────────────
+// LOGO
+// ─────────────────────────────────────
+
+function drawLogo(ctx) {
+
+  ctx.textAlign = "center";
+
+  ctx.font =
+    "bold 40px EnglishBold";
+
+  ctx.fillStyle = "#FFFFFF";
+
+  ctx.fillText(
+    "FLASH KERALAM",
+    W / 2,
+    105
+  );
+
+  ctx.textAlign = "left";
+}
+
+// ─────────────────────────────────────
+// MAIN CARD
+// ─────────────────────────────────────
+
+async function drawMainCard(
+  ctx,
+  img,
+  title
+) {
+
+  const cardW = 900;
+
+  const x = (W - cardW) / 2;
+
+  const y = 150;
+
+  // IMAGE
+  const imageX = x + 24;
+
+  const imageY = y + 24;
+
+  const imageW = cardW - 48;
+
+  const imageH = 640;
+
+  // TITLE AREA
+  const contentY =
+    imageY + imageH + 60;
+
+  const maxWidth = 760;
+
+  // DYNAMIC FONT SIZE
+  let fontSize = 78;
+
+  let lines = [];
+
+  while (fontSize >= 48) {
+
+    ctx.font =
+      `bold ${fontSize}px Malayalam`;
+
+    lines = wrapText(
+      ctx,
+      title,
+      maxWidth
+    );
+
+    // auto-adjust based on line count
+    if (lines.length <= 4) break;
+
+    fontSize -= 3;
   }
 
-  // ── 3. TOP BAR ────────────────────────────────────────────────
-  // Thin gold accent line at very top
-  const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
-  accentGrad.addColorStop(0,   "rgba(255,180,0,0)");
-  accentGrad.addColorStop(0.2, "rgba(255,180,0,1)");
-  accentGrad.addColorStop(0.8, "rgba(255,180,0,1)");
-  accentGrad.addColorStop(1,   "rgba(255,180,0,0)");
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, W, 3);
+  const lineHeight =
+    fontSize * 1.16;
 
-  // "FLASH" white
+  const titleHeight =
+    lines.length * lineHeight;
+
+  // DYNAMIC CARD HEIGHT
+  const cardH =
+    imageH +
+    titleHeight +
+    220;
+
+  // SHADOW
   ctx.save();
-  ctx.font          = "bold 26px English";
-  ctx.letterSpacing = "4px";
-  ctx.fillStyle     = "#ffffff";
-  ctx.globalAlpha   = 0.92;
-  ctx.textAlign     = "left";
-  ctx.textBaseline  = "middle";
-  ctx.fillText("FLASH", 48, 52);
-  ctx.restore();
 
-  // "KERALAM" gold
-  ctx.save();
-  ctx.font          = "bold 26px English";
-  ctx.letterSpacing = "4px";
-  const flashMW     = ctx.measureText("FLASH").width + 34;
-  ctx.fillStyle     = "#ffb400";
-  ctx.textAlign     = "left";
-  ctx.textBaseline  = "middle";
-  ctx.fillText("KERALAM", 48 + flashMW, 52);
-  ctx.restore();
+  ctx.shadowColor =
+    "rgba(0,0,0,0.35)";
 
-  // Date — top right
-  const now     = new Date();
-  const day     = String(now.getDate()).padStart(2, "0");
-  const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
-  const year    = now.getFullYear();
+  ctx.shadowBlur = 50;
 
-  ctx.save();
-  ctx.font         = "bold 20px English";
-  ctx.fillStyle    = "rgba(255,255,255,0.55)";
-  ctx.textAlign    = "right";
-  ctx.textBaseline = "middle";
-  ctx.fillText(`${day} ${month} ${year}`, W - 48, 52);
-  ctx.restore();
+  ctx.shadowOffsetY = 18;
 
-  // ── 4. BREAKING TAG ───────────────────────────────────────────
-  const TAG_Y    = IMG_H - 38;
-  const tagLabel = newsItem.tag || "BREAKING";
+  ctx.fillStyle = "#FFFFFF";
 
-  ctx.save();
-  ctx.font          = "bold 19px English";
-  ctx.letterSpacing = "3px";
-  const tagTW       = ctx.measureText(tagLabel).width + 22;
-  const tagW        = tagTW + 48;
-  const tagH        = 38;
-  const tagX        = W / 2 - tagW / 2;
+  roundRect(
+    ctx,
+    x,
+    y,
+    cardW,
+    cardH,
+    0
+  );
 
-  const redGrad = ctx.createLinearGradient(tagX, TAG_Y - tagH / 2, tagX, TAG_Y + tagH / 2);
-  redGrad.addColorStop(0, "#ff2d2d");
-  redGrad.addColorStop(1, "#cc0000");
-  ctx.fillStyle = redGrad;
-  roundRect(ctx, tagX, TAG_Y - tagH / 2, tagW, tagH, tagH / 2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(255,120,120,0.4)";
-  ctx.lineWidth   = 1.5;
-  roundRect(ctx, tagX + 1, TAG_Y - tagH / 2 + 1, tagW - 2, tagH - 2, tagH / 2 - 1);
-  ctx.stroke();
-
-  ctx.fillStyle    = "#ffffff";
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(tagLabel, W / 2, TAG_Y + 1);
   ctx.restore();
 
-  // ── 5. DIVIDER ────────────────────────────────────────────────
-  const DIV_Y   = IMG_H + 18;
-  const divGrad = ctx.createLinearGradient(54, 0, W - 54, 0);
-  divGrad.addColorStop(0,    "rgba(255,180,0,0)");
-  divGrad.addColorStop(0.15, "rgba(255,180,0,0.9)");
-  divGrad.addColorStop(0.85, "rgba(255,180,0,0.9)");
-  divGrad.addColorStop(1,    "rgba(255,180,0,0)");
-  ctx.fillStyle = divGrad;
-  ctx.fillRect(54, DIV_Y, W - 108, 2);
+  // CARD BG
+  ctx.fillStyle = "#F8F8F8";
 
-  // ── 6. MALAYALAM TITLE ────────────────────────────────────────
-  const PAD      = 58;
-  const TEXT_TOP = IMG_H + 44;
-  const TEXT_BOT = H - 36;
-  const TEXT_H   = TEXT_BOT - TEXT_TOP;
-  const TEXT_W   = W - PAD * 2;
-  const CX       = W / 2;
+  roundRect(
+    ctx,
+    x,
+    y,
+    cardW,
+    cardH,
+    0
+  );
 
-  let allSegments = [];
-  if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
-    allSegments = newsItem.titleLines;
-  } else if (newsItem.title) {
-    allSegments = [newsItem.title];
+  ctx.fill();
+
+  // IMAGE
+  if (img) {
+
+    const imgAspect =
+      img.width / img.height;
+
+    const frameAspect =
+      imageW / imageH;
+
+    let sx = 0;
+    let sy = 0;
+    let sw = img.width;
+    let sh = img.height;
+
+    if (imgAspect > frameAspect) {
+
+      sw =
+        img.height * frameAspect;
+
+      sx = (img.width - sw) / 2;
+
+    } else {
+
+      sh =
+        img.width / frameAspect;
+
+      sy =
+        (img.height - sh) / 2;
+    }
+
+    ctx.drawImage(
+      img,
+      sx,
+      sy,
+      sw,
+      sh,
+      imageX,
+      imageY,
+      imageW,
+      imageH
+    );
   }
-  if (newsItem.lastLine) {
-    allSegments = [
-      ...(Array.isArray(newsItem.titleLines) ? newsItem.titleLines : [newsItem.title || ""]),
-      newsItem.lastLine
-    ];
-  }
 
-  let FONT_SIZE = 72;
-  let allLines  = [];
+  // BREAKING NEWS TAG
+  ctx.fillStyle = "#2D3FAE";
 
-  while (FONT_SIZE >= 38) {
-    ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
-    ctx.letterSpacing = "0px";
-    allLines = [];
-    for (const seg of allSegments) allLines.push(...wrapText(ctx, seg, TEXT_W));
-    const LINE_H = Math.round(FONT_SIZE * 1.18);
-    if (allLines.length * LINE_H <= TEXT_H) break;
-    FONT_SIZE -= 2;
-  }
+  roundRect(
+    ctx,
+    imageX,
+    imageY + imageH - 54,
+    220,
+    54,
+    0
+  );
 
-  const LINE_H = Math.round(FONT_SIZE * 1.18);
-  const totalH = allLines.length * LINE_H;
-  let   drawY  = TEXT_TOP + Math.round((TEXT_H - totalH) / 2);
+  ctx.fill();
 
-  ctx.textAlign    = "center";
+  ctx.font =
+    "italic 28px English";
+
+  ctx.fillStyle = "#FFFFFF";
+
+  ctx.fillText(
+    "Breaking News",
+    imageX + 20,
+    imageY + imageH - 18
+  );
+
+  // TITLE
+  ctx.fillStyle = "#101010";
+
   ctx.textBaseline = "top";
 
-  for (let i = 0; i < allLines.length; i++) {
-    ctx.save();
-    ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
-    ctx.letterSpacing = "0px";
-    ctx.shadowColor   = "rgba(0,0,0,0.95)";
-    ctx.shadowBlur    = 18;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 3;
+  ctx.textAlign = "left";
 
-    const isLast       = i === allLines.length - 1;
-    const isSecondLast = i === allLines.length - 2;
+  let ty = contentY;
 
-    if (isLast) {
-      const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
-      g.addColorStop(0, "#ffe566");
-      g.addColorStop(1, "#ffaa00");
-      ctx.fillStyle = g;
-    } else if (isSecondLast && allLines.length > 2) {
-      const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
-      g.addColorStop(0, "#fff0aa");
-      g.addColorStop(1, "#ffd040");
-      ctx.fillStyle = g;
-    } else {
-      ctx.fillStyle = "#f5f5f5";
-    }
+  for (const line of lines) {
 
-    ctx.fillText(allLines[i], CX, drawY);
-    ctx.restore();
-    drawY += LINE_H;
+    ctx.font =
+      `bold ${fontSize}px Malayalam`;
+
+    ctx.fillText(
+      line,
+      x + 70,
+      ty
+    );
+
+    ty += lineHeight;
   }
 
-  // ── 7. FOOTER ─────────────────────────────────────────────────
-  const FOOT_Y = H - 34;
+  // DATE
+  ctx.font = "28px English";
 
-  ctx.save();
-  ctx.fillStyle  = "rgba(255,255,255,0.08)";
-  ctx.fillRect(0, FOOT_Y - 1, W, 1);
+  ctx.fillStyle = "#243DB8";
 
-  ctx.font          = "bold 17px English";
-  ctx.letterSpacing = "2px";
-  ctx.fillStyle     = "rgba(255,180,0,0.55)";
-  ctx.textAlign     = "center";
-  ctx.textBaseline  = "middle";
-  ctx.fillText("www.flashkeralam.com", W / 2, FOOT_Y + 17);
-  ctx.restore();
+  ctx.fillText(
+    `(${getTodayDate()})`,
+    x + 70,
+    ty + 35
+  );
 
-  // Reset
-  ctx.textAlign     = "left";
-  ctx.textBaseline  = "alphabetic";
-  ctx.letterSpacing = "0px";
-  ctx.shadowColor   = "transparent";
-  ctx.shadowBlur    = 0;
+  return {
+    cardBottom: y + cardH,
+  };
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// DRAW AD STRIP  (drawn at y = H, height = AD_H)
-// ═══════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────
+// FOOTER
+// ─────────────────────────────────────
 
-async function drawAdStrip(ctx, bannerUrl) {
-  const yOffset = H; // ad always starts right below the poster
+function drawFooter(
+  ctx,
+  cardBottom
+) {
 
-  if (bannerUrl) {
-    try {
-      const adImg = await loadImage(bannerUrl);
-      const scale = W / adImg.width;
-      const drawH = Math.min(adImg.height * scale, AD_H);
-      const drawY = yOffset + (AD_H - drawH) / 2;
-      ctx.drawImage(adImg, 0, drawY, W, drawH);
-      return;
-    } catch (e) {
-      console.warn("Ad banner load failed:", e.message);
-    }
-  }
+  const footerY = Math.min(
+    cardBottom + 80,
+    H - 80
+  );
 
-  // Fallback placeholder
-  ctx.save();
-  ctx.fillStyle = "#0d0f14";
-  ctx.fillRect(0, yOffset, W, AD_H);
+  // GLASS STRIP
+  ctx.fillStyle =
+    "rgba(255,255,255,0.07)";
 
-  // Thin separator line at top of ad strip
-  ctx.fillStyle = "rgba(255,180,0,0.25)";
-  ctx.fillRect(0, yOffset, W, 1.5);
+  ctx.fillRect(
+    0,
+    footerY - 55,
+    W,
+    110
+  );
 
-  ctx.font          = "bold 52px English";
-  ctx.letterSpacing = "6px";
-  ctx.fillStyle     = "rgba(255,255,255,0.12)";
-  ctx.textAlign     = "center";
-  ctx.textBaseline  = "middle";
-  ctx.fillText("YOUR AD HERE", W / 2, yOffset + AD_H / 2);
+  ctx.font = "30px English";
 
-  ctx.font          = "bold 20px English";
-  ctx.letterSpacing = "2px";
-  ctx.fillStyle     = "rgba(255,180,0,0.20)";
-  ctx.fillText("DM @flashkeralam to advertise", W / 2, yOffset + AD_H / 2 + 52);
+  ctx.fillStyle =
+    "rgba(255,255,255,0.92)";
 
-  ctx.restore();
+  ctx.fillText(
+    "Read More  ➜",
+    110,
+    footerY + 10
+  );
+
+  ctx.textAlign = "right";
+
+  ctx.fillText(
+    "Source : www.flashkeralam.com",
+    W - 110,
+    footerY + 10
+  );
+
+  ctx.textAlign = "left";
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN EXPORT
-//
-// newsItem shape:
-//   image        {string}    URL / local path to main photo
-//   titleLines   {string[]}  Malayalam text segments
-//   title        {string}    fallback single title string
-//   lastLine     {string}    optional extra line appended last
-//   tag          {string}    pill label e.g. "BREAKING"
-//   adBannerUrl  {string}    optional — when present, ad strip is stitched below
-//                            output: 1080 × 1280  (no ad)
-//                            output: 1080 × 1460  (with ad)
-// ═══════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────
+// MAIN FUNCTION
+// ─────────────────────────────────────
 
-async function createNewsPoster(newsItem) {
-  const hasAd  = !!(newsItem.adBannerUrl);
-  const totalH = hasAd ? H + AD_H : H;
+async function createNewsPoster(
+  newsItem
+) {
 
-  const canvas = createCanvas(W, totalH);
-  const ctx    = canvas.getContext("2d");
+  const canvas = createCanvas(
+    W,
+    H
+  );
 
-  // Draw main poster at y = 0
-  await drawPoster(ctx, newsItem);
+  const ctx =
+    canvas.getContext("2d");
 
-  // Stitch ad strip immediately below when provided
-  if (hasAd) {
-    await drawAdStrip(ctx, newsItem.adBannerUrl);
-  }
+  // BACKGROUND
+  const img =
+    await drawBackground(
+      ctx,
+      newsItem.image
+    );
 
-  return canvas.toBuffer("image/png");
+  // LOGO
+  drawLogo(ctx);
+
+  // MAIN CARD
+  const result =
+    await drawMainCard(
+      ctx,
+      img,
+      newsItem.title ||
+        "ഇവിടെ വാർത്താ തലക്കെട്ട് വരും"
+    );
+
+  // FOOTER
+  drawFooter(
+    ctx,
+    result.cardBottom
+  );
+
+  return canvas.toBuffer(
+    "image/png"
+  );
 }
 
-module.exports = { createNewsPoster };
+module.exports = {
+  createNewsPoster,
+};

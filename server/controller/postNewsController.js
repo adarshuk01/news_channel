@@ -93,16 +93,9 @@ async function preparePlatformPayload(sourceKey) {
         : "Latest Malayalam News 🔥 #Shorts";
 
     // 3 — Generate hashtags
-const aiContent = await aiService.generateNewsContent(
-  `${item.title}\n\n${item.summary?.slice(0, 500)}`
-);
+    const hashtags = await aiService.generateHashtags(`${item.title} ${item.summary}`);
 
-const summary  = aiContent.summary;
-const caption  = aiContent.caption;
-const hashtags = aiContent.hashtags;
 // const hashtags ='#gaintrick #thrissur #photooftheday #entekeralam #trivandrum #likeforfollow #keralaattraction #byelection #election #like #instadaily #tamil #keraladiaries #travel #malayalamcinema #chuvadelikes #follow #delhi #followforfollowback #mohanlal #gaintrain #naturephotography #gainparty #nilambur #keralaphotography #followtrain #bangalore #model #karnataka #travelphotography'
-
-console.log('summary',summary);
 
     // 4 — Pick ad banner (round-robin)
     const adBannerUrl = await getNextAdBannerUrl();
@@ -110,7 +103,7 @@ console.log('summary',summary);
     // 5 — Create poster
     const pngBuffer = await canvasService.createNewsPoster({
       title:        cleanTitle || item.title,
-      summary:      summary || "",
+      summary:      item.summary || "",
       image:        imageUrl,
       adBannerUrl,
     });

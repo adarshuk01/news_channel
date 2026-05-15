@@ -41,6 +41,10 @@ function sendSSEMessage(res, type, data) {
   res.write(`data: ${JSON.stringify({ type, data, timestamp })}\n\n`);
 }
 
+/**
+ * Broadcast a log entry to the connected SSE client.
+ * Returns true if delivered, false if no stream found yet.
+ */
 function broadcastLog(sessionId, type, message) {
   const stream = activeStreams.get(sessionId);
   if (stream && !stream.destroyed) {
@@ -50,11 +54,15 @@ function broadcastLog(sessionId, type, message) {
   return false;
 }
 
+/**
+ * Wait until an SSE client connects for the given sessionId,
+ * or give up after `timeoutMs` milliseconds.
+ */
 function waitForSSEClient(sessionId, timeoutMs = 8000) {
   return new Promise((resolve) => {
     if (activeStreams.has(sessionId)) return resolve(true);
 
-    const interval = 100;
+    const interval = 100; // poll every 100ms
     let elapsed = 0;
 
     const timer = setInterval(() => {
@@ -65,7 +73,7 @@ function waitForSSEClient(sessionId, timeoutMs = 8000) {
       }
       if (elapsed >= timeoutMs) {
         clearInterval(timer);
-        return resolve(false);
+        return resolve(false); // timed-out – continue anyway
       }
     }, interval);
   });
@@ -86,6 +94,7 @@ exports.streamPostLogs = (req, res) => {
   res.setHeader("Connection",    "keep-alive");
   res.setHeader("Access-Control-Allow-Origin", "*");
 
+  // Flush headers immediately so the client knows it's connected
   res.flushHeaders?.();
 
   activeStreams.set(sessionId, res);
@@ -95,7 +104,7 @@ exports.streamPostLogs = (req, res) => {
 };
 
 // ─────────────────────────────────────────────
-// Core processing logic
+// Core processing logic (shared by both routes)
 // ─────────────────────────────────────────────
 async function processPost({ sessionId, title, description, imageUrl, uploadedFile }) {
   const timestamp   = Date.now();
@@ -103,13 +112,15 @@ async function processPost({ sessionId, title, description, imageUrl, uploadedFi
   const vidFilePath = path.join(TMP, `manual-${timestamp}.mp4`);
 
   try {
-    // ── Wait for SSE client ───────────────────────────────────────────────
+    // ── Wait for the SSE client to connect ──────────────────────────────────
+    // The HTTP response carrying sessionId reaches the client first;
+    // the client then opens the SSE stream.  We poll until it's ready.
     const connected = await waitForSSEClient(sessionId);
     if (!connected) {
       console.warn(`[${sessionId}] SSE client never connected – proceeding without live logs`);
     }
 
-    // ── Validation ────────────────────────────────────────────────────────
+    // ── Validation ──────────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "📋 Validating inputs…");
 
     if (!title || !description) {
@@ -126,7 +137,7 @@ async function processPost({ sessionId, title, description, imageUrl, uploadedFi
 
     broadcastLog(sessionId, "success", `✅ Title: "${finalTitle}"`);
 
-    // ── Image source ──────────────────────────────────────────────────────
+    // ── Image source ─────────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "🖼️ Processing image…");
 
     let imageSource;
@@ -142,37 +153,23 @@ async function processPost({ sessionId, title, description, imageUrl, uploadedFi
       return;
     }
 
-    // ── AI Content (summary + hashtags) ───────────────────────────────────
-    broadcastLog(sessionId, "info", "🤖 Generating AI summary and hashtags…");
-
-    const aiContent = await aiService.generateNewsContent(
-      `${title}\n\n${description.slice(0, 500)}`
-    );
-    const viralTitle =
-  aiContent.viralTitle || title;
-
-    const summary  = aiContent.summary  || description;
-    const hashtags = aiContent.hashtags || "";
-
-    broadcastLog(sessionId, "success", `✅ Summary ready`);
+    // ── Hashtags ─────────────────────────────────────────────────────────────
+    broadcastLog(sessionId, "info", "🏷️ Generating hashtags…");
+    const hashtags = await aiService.generateHashtags(`${title} ${description}`);
     broadcastLog(sessionId, "success", `✅ Hashtags: ${hashtags}`);
 
-    // ── Poster ────────────────────────────────────────────────────────────
+    // ── Poster ───────────────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "🎨 Creating news poster…");
-
     const adBannerUrl = await getNextAdBannerUrl();
-
     const pngBuffer = await canvasService.createNewsPoster({
-      title:        viralTitle || title,
-      summary,                          // ← AI-generated summary on poster
-      image:        imageSource,
+      title:       cleanTitle || title,
+      image:       imageSource,
       adBannerUrl,
     });
-
     fs.writeFileSync(imgFilePath, pngBuffer);
     broadcastLog(sessionId, "success", "✅ Poster created");
 
-    // ── Video ─────────────────────────────────────────────────────────────
+    // ── Video ────────────────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "🎬 Converting image to video…");
     try {
       await videoService.convertImageToVideo(imgFilePath, vidFilePath);
@@ -182,21 +179,21 @@ async function processPost({ sessionId, title, description, imageUrl, uploadedFi
       throw videoErr;
     }
 
-    // ── Cloudinary ────────────────────────────────────────────────────────
+    // ── Cloudinary ───────────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "☁️ Uploading to Cloudinary…");
     const upload = await cloudinary.uploader.upload(vidFilePath, {
       resource_type: "video",
-      folder:        "manual_posts",
+      folder: "manual_posts",
     });
     const finalUrl = upload.secure_url;
     broadcastLog(sessionId, "success", "✅ Cloudinary upload complete");
 
-    // ── Captions ──────────────────────────────────────────────────────────
-    const instaCaption = `LIKE & FOLLOW  💯 \n ${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags} #kerala #malayalam #keralagoodnews #keralanews #മലയാളം`;
-    const fbCaption    = `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags}`;
-    const ytCaption    = `${summary}\n\n${hashtags} #Shorts`;
+    // ── Captions ─────────────────────────────────────────────────────────────
+    const instaCaption = `${description}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags} #kerala #malayalam #news`;
+    const fbCaption    = `${description}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags}`;
+    const ytCaption    = `${description}\n\n${hashtags} #Shorts`;
 
-    // ── Platform posting ──────────────────────────────────────────────────
+    // ── Platform posting ──────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "📱 Starting multi-platform posting…");
 
     const platforms = [
@@ -212,10 +209,11 @@ async function processPost({ sessionId, title, description, imageUrl, uploadedFi
         broadcastLog(sessionId, "success", `✅ ${platform.name} posted`);
       } catch (err) {
         broadcastLog(sessionId, "error", `❌ ${platform.name} failed: ${err.message}`);
+        // Continue to next platform – don't abort the whole job
       }
     }
 
-    // ── Cleanup ───────────────────────────────────────────────────────────
+    // ── Cleanup ───────────────────────────────────────────────────────────────
     broadcastLog(sessionId, "info", "🧹 Cleaning up temporary files…");
     safeDelete(imgFilePath);
     safeDelete(vidFilePath);
@@ -246,6 +244,9 @@ exports.manualPostNews = (req, res) => {
     return res.status(400).json({ error: "Provide an image file or imageUrl" });
   }
 
+  // ── Respond immediately with the sessionId ────────────────────────────────
+  // The client opens the SSE stream using this id; processPost() then
+  // waits until that stream is ready before emitting any log entries.
   const sessionId = generateSessionId();
 
   res.json({
@@ -253,6 +254,7 @@ exports.manualPostNews = (req, res) => {
     sessionId,
   });
 
+  // Fire-and-forget – errors are surfaced via SSE
   processPost({ sessionId, title, description, imageUrl, uploadedFile });
 };
 
