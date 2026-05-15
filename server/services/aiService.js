@@ -8,115 +8,95 @@ exports.generateNewsContent = async (news) => {
 
   try {
 
-    const completion =
-      await groq.chat.completions.create({
+    const completion = await groq.chat.completions.create({
 
-        model: MODEL,
+      model: MODEL,
+      temperature: 0.9,
 
-        temperature: 0.9,
+      messages: [
+        {
+          role: "system",
+          content: `
+You are a professional Malayalam viral news content creator for FLASH KERALAM.
 
-        messages: [
-
-          {
-            role: "system",
-
-            content: `
-You are a professional Malayalam viral news content creator.
-
-Return ONLY valid JSON.
+Return ONLY valid JSON, no markdown, no backticks, no extra text.
 
 {
   "viralTitle": "",
   "summary": "",
+  "caption": "",
   "hashtags": ""
 }
-            `
-          },
+          `.trim(),
+        },
 
-          {
-            role: "user",
+        {
+          role: "user",
+          content: `
+Generate Malayalam viral news content for a breaking news poster.
 
-            content: `
-Generate Malayalam viral news content.
-
-RULES:
+━━━ RULES ━━━
 
 viralTitle:
-- Malayalam
-- Highly engaging
-- Curiosity driven
-- Emotional
-- YouTube/Facebook/Instagram style
-- Maximum 8-14 words
-- No quotes
-- No emojis
-- Should make users click instantly
+- Malayalam script only (no English, no numbers written in English digits)
+- MAXIMUM 6 words — strictly enforced (poster space is limited)
+- Punchy, curiosity-driven, emotional, click-bait style
+- No quotes, no emojis, no punctuation marks
+- Make it feel urgent and shocking
+- Every word must contribute — cut filler words ruthlessly
+- Bad example (too long): "കടുത്ത അതൃപ്തി വീടിന് പുറകിലൂടെ രമേശ് ചെന്നിത്തല ഇറങ്ങിപ്പോയി"
+- Good example (6 words): "രമേശ് ചെന്നിത്തല രഹസ്യമായി ഇറങ്ങിപ്പോയി"
 
 summary:
 - Malayalam
-- 100-120 words
-- Professional Malayalam news style
-- Simple readable Malayalam
-- No fake information
-- No markdown
+- 80–100 words
+- Professional news style, simple readable Malayalam
+- No fake information, no markdown
+
+caption:
+- Malayalam
+- 2 punchy lines for social media
+- Ends with a call-to-action
 
 hashtags:
-- 15 hashtags
-- English only
-- Single line
-- Kerala + news related
-- No spam hashtags
-- No comas  # must be therir in all words
+- Exactly 15 hashtags
+- English only, single line, space-separated
+- # must prefix every tag, no commas
+- Kerala + news relevant, no spam
 
-NEWS:
+━━━ NEWS ━━━
 ${news}
-            `
-          }
-        ]
-      });
+          `.trim(),
+        },
+      ],
+    });
 
-    let text =
-      completion.choices[0].message.content;
-
-    text = text
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
+    let text = completion.choices[0].message.content;
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
     const parsed = JSON.parse(text);
 
+    // ── Safety: hard-truncate viralTitle to 6 words if AI ignores the rule ──
+    const rawTitle = parsed.viralTitle || "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും";
+    const titleWords = rawTitle.trim().split(/\s+/);
+    const viralTitle = titleWords.slice(0, 6).join(" ");
+
     return {
-
-      viralTitle:
-        parsed.viralTitle ||
-        "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും",
-
-      summary:
-        parsed.summary ||
-        "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
-
-      hashtags:
-        parsed.hashtags ||
-        "#kerala #malayalam #news"
+      viralTitle,
+      summary:  parsed.summary  || "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
+      caption:  parsed.caption  || "",
+      hashtags: parsed.hashtags || "#kerala #malayalam #news #keralanews #trending",
     };
 
   } catch (err) {
 
-    console.error(
-      "❌ Groq AI Error:",
-      err.message
-    );
+    console.error("❌ Groq AI Error:", err.message);
 
     return {
-
-      viralTitle:
-        "ഇത് കണ്ടാൽ നിങ്ങൾ ഞെട്ടും",
-
-      summary:
-        "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
-
-      hashtags:
-        "#kerala #malayalam #news"
+      viralTitle: "ഞെട്ടിക്കുന്ന വലിയ വാർത്ത",
+      summary:    "പ്രധാന വാർത്ത വിവരങ്ങൾ ലഭ്യമല്ല.",
+      caption:    "",
+      hashtags:   "#kerala #malayalam #news #keralanews #trending",
     };
   }
 };
