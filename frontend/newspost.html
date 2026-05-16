@@ -69,6 +69,7 @@
     .filter-btn:hover{border-color:var(--border-md);color:var(--text);}
     .filter-btn.active{background:#eff6ff;border-color:#bfdbfe;color:var(--accent);font-weight:600;}
     .filter-btn.loading-state{opacity:.55;cursor:default;pointer-events:none;}
+    .filter-btn[data-filter="News18 Malayalam"].active{background:#fff5f5;border-color:#fecaca;color:#c53030;}
     .filter-icon{width:14px;height:14px;object-fit:contain;border-radius:2px;flex-shrink:0;}
 
     .count-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;}
@@ -86,8 +87,8 @@
     /* NEWS GRID */
     .news-grid{display:flex;flex-direction:column;gap:.8rem;}
 
-    .news-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);display:grid;grid-template-columns:96px 1fr auto;align-items:start;gap:1.1rem;padding:.95rem 1.1rem;transition:box-shadow .15s,border-color .15s;}
-    .news-card:hover{border-color:var(--border-md);box-shadow:0 2px 8px rgba(0,0,0,.07),0 4px 20px rgba(0,0,0,.05);}
+    .news-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);display:grid;grid-template-columns:96px 1fr auto;align-items:start;gap:1.1rem;padding:.95rem 1.1rem;transition:box-shadow .15s,border-color .15s,transform .15s;cursor:pointer;}
+    .news-card:hover{border-color:var(--accent);box-shadow:0 2px 12px rgba(29,78,216,.1),0 4px 24px rgba(0,0,0,.07);transform:translateY(-1px);}
     .news-card[data-channel="News18 Malayalam"]{border-left:3px solid #e53e3e;}
 
     .news-thumb{width:96px;height:68px;object-fit:cover;border-radius:7px;border:1px solid var(--border);background:var(--bg);}
@@ -102,7 +103,7 @@
     .news-title{font-size:.86rem;font-weight:600;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
     .news-summary{font-size:.76rem;color:var(--muted);line-height:1.5;margin-top:.28rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
 
-    /* POST BUTTONS */
+    /* QUICK POST BUTTONS (card) */
     .post-btns{display:flex;flex-direction:column;gap:.4rem;flex-shrink:0;min-width:130px;}
     .post-btn{display:flex;align-items:center;justify-content:center;gap:.35rem;padding:.45rem .6rem;border:none;border-radius:7px;font-family:'Sora',sans-serif;font-size:.7rem;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap;min-height:36px;}
     .post-btn.insta{background:var(--insta);color:#fff;}
@@ -117,11 +118,13 @@
     .post-btn.loading .btn-spin{display:block;}
     .post-btn.loading .btn-label{opacity:.75;}
     .post-btn.posted .btn-spin{display:none;}
+    .post-btn.posted .btn-spin{border-top-color:var(--success);}
     @keyframes spin{to{transform:rotate(360deg);}}
 
     /* Source stats strip */
     .source-stats{display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap;}
-    .stat-pill{display:flex;align-items:center;gap:.35rem;padding:.28rem .7rem;background:var(--surface);border:1px solid var(--border);border-radius:20px;font-size:.68rem;font-weight:600;color:var(--muted);white-space:nowrap;}
+    .stat-pill{display:flex;align-items:center;gap:.35rem;padding:.28rem .7rem;background:var(--surface);border:1px solid var(--border);border-radius:20px;font-size:.68rem;font-weight:600;color:var(--muted);white-space:nowrap;cursor:pointer;transition:all .15s;}
+    .stat-pill:hover{border-color:var(--border-md);color:var(--text);}
     .stat-pill img{width:13px;height:13px;object-fit:contain;border-radius:2px;}
     .stat-pill span.cnt{color:var(--text);}
 
@@ -132,13 +135,13 @@
     .state-sub{font-size:.76rem;margin-top:.35rem;opacity:.75;}
 
     /* TOASTS */
-    .toast-wrap{position:fixed;bottom:1.25rem;right:1.25rem;display:flex;flex-direction:column;gap:.5rem;z-index:1000;max-width:calc(100vw - 2.5rem);}
+    .toast-wrap{position:fixed;bottom:1.25rem;right:1.25rem;display:flex;flex-direction:column;gap:.5rem;z-index:2000;max-width:calc(100vw - 2.5rem);}
     .toast{display:flex;align-items:center;gap:.6rem;padding:.7rem .95rem;border-radius:8px;font-size:.8rem;font-weight:500;animation:toastIn .25s ease;box-shadow:0 4px 16px rgba(0,0,0,.12);}
     @keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
     .toast.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;}
     .toast.fail{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;}
 
-    /* MODAL */
+    /* LOGIN MODAL */
     .modal-backdrop{position:fixed;inset:0;background:rgba(15,15,20,.55);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:999;padding:1rem;opacity:0;pointer-events:none;transition:opacity .25s ease;}
     .modal-backdrop.show{opacity:1;pointer-events:all;}
     .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,.14);width:100%;max-width:400px;transform:translateY(12px) scale(.98);transition:transform .25s ease;overflow:hidden;}
@@ -164,6 +167,161 @@
     .btn-login.loading .spin{display:block;}
     .btn-login.loading .btn-login-text{opacity:.8;}
 
+    /* ══ ARTICLE DETAIL MODAL ══ */
+    .article-backdrop{
+      position:fixed;inset:0;
+      background:rgba(10,10,15,.65);
+      backdrop-filter:blur(8px);
+      display:flex;align-items:center;justify-content:center;
+      z-index:1200;padding:1rem;
+      opacity:0;pointer-events:none;
+      transition:opacity .28s ease;
+    }
+    .article-backdrop.show{opacity:1;pointer-events:all;}
+
+    .article-modal{
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:18px;
+      box-shadow:0 32px 80px rgba(0,0,0,.18);
+      width:100%;max-width:640px;
+      max-height:90vh;
+      display:flex;flex-direction:column;
+      transform:translateY(18px) scale(.97);
+      transition:transform .3s cubic-bezier(.34,1.3,.64,1);
+      overflow:hidden;
+    }
+    .article-backdrop.show .article-modal{transform:translateY(0) scale(1);}
+
+    /* Header bar */
+    .am-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:.9rem 1.25rem;
+      border-bottom:1px solid var(--border);
+      flex-shrink:0;
+      gap:.75rem;
+    }
+    .am-channel-badge{
+      display:inline-flex;align-items:center;gap:.4rem;
+      font-size:.65rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+      background:var(--bg);border:1px solid var(--border);border-radius:5px;
+      padding:.2rem .55rem;color:var(--muted);
+    }
+    .am-channel-badge img{width:14px;height:14px;object-fit:contain;border-radius:2px;}
+    .am-channel-badge.ch-news18{background:#fff5f5;border-color:#fed7d7;color:#c53030;}
+    .am-time{font-size:.68rem;color:var(--muted);}
+    .am-close{
+      display:flex;align-items:center;justify-content:center;
+      width:32px;height:32px;flex-shrink:0;
+      background:var(--bg);border:1px solid var(--border);
+      border-radius:8px;cursor:pointer;
+      font-size:1rem;color:var(--muted);
+      transition:all .15s;
+    }
+    .am-close:hover{background:#fef2f2;border-color:#fecaca;color:#b91c1c;}
+
+    /* Scrollable body */
+    .am-body{
+      overflow-y:auto;
+      flex:1;
+      padding:0;
+      /* custom scrollbar */
+      scrollbar-width:thin;
+      scrollbar-color:var(--border-md) transparent;
+    }
+    .am-body::-webkit-scrollbar{width:5px;}
+    .am-body::-webkit-scrollbar-track{background:transparent;}
+    .am-body::-webkit-scrollbar-thumb{background:var(--border-md);border-radius:10px;}
+
+    /* Hero image */
+    .am-hero{
+      width:100%;
+      aspect-ratio:16/8;
+      object-fit:cover;
+      display:block;
+      background:var(--bg);
+    }
+    .am-hero-placeholder{
+      width:100%;aspect-ratio:16/8;
+      background:linear-gradient(135deg,var(--bg) 0%,#e8e6e0 100%);
+      display:flex;align-items:center;justify-content:center;
+      font-size:3rem;color:var(--border-md);
+    }
+
+    /* Content area */
+    .am-content{padding:1.4rem 1.5rem 1rem;}
+    .am-title{
+      font-size:1.15rem;font-weight:700;
+      line-height:1.45;color:var(--text);
+      margin-bottom:.85rem;
+    }
+    .am-title a{color:inherit;text-decoration:none;border-bottom:2px solid transparent;transition:border-color .15s;}
+    .am-title a:hover{border-bottom-color:var(--accent);}
+    .am-summary{
+      font-size:.86rem;color:var(--muted);
+      line-height:1.65;
+    }
+    .am-divider{
+      height:1px;background:var(--border);
+      margin:1.25rem 1.5rem;
+    }
+    .am-read-link{
+      display:inline-flex;align-items:center;gap:.4rem;
+      font-size:.76rem;font-weight:600;color:var(--accent);
+      text-decoration:none;
+      margin:0 1.5rem .2rem;
+      transition:opacity .15s;
+    }
+    .am-read-link:hover{opacity:.75;}
+
+    /* Footer action area */
+    .am-footer{
+      border-top:1px solid var(--border);
+      padding:1.1rem 1.5rem;
+      flex-shrink:0;
+      background:var(--surface);
+    }
+    .am-footer-label{
+      font-size:.63rem;font-weight:700;letter-spacing:.09em;
+      text-transform:uppercase;color:var(--muted);
+      margin-bottom:.7rem;
+    }
+    .am-post-btns{
+      display:grid;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:.55rem;
+    }
+    .am-post-btn{
+      display:flex;align-items:center;justify-content:center;gap:.4rem;
+      padding:.7rem .5rem;
+      border:none;border-radius:9px;
+      font-family:'Sora',sans-serif;font-size:.76rem;font-weight:600;
+      cursor:pointer;transition:all .18s;
+      min-height:44px;
+    }
+    .am-post-btn.insta{background:var(--insta);color:#fff;}
+    .am-post-btn.fb   {background:var(--fb);  color:#fff;}
+    .am-post-btn.yt   {background:var(--yt);  color:#fff;}
+    .am-post-btn.insta:hover:not(:disabled){background:var(--insta-h);transform:translateY(-2px);box-shadow:0 4px 14px rgba(225,48,108,.35);}
+    .am-post-btn.fb:hover:not(:disabled)   {background:var(--fb-h);  transform:translateY(-2px);box-shadow:0 4px 14px rgba(24,119,242,.35);}
+    .am-post-btn.yt:hover:not(:disabled)   {background:var(--yt-h);  transform:translateY(-2px);box-shadow:0 4px 14px rgba(255,0,0,.3);}
+    .am-post-btn:disabled{opacity:.55;cursor:not-allowed;transform:none!important;box-shadow:none!important;filter:saturate(.5);}
+    .am-post-btn.posted{
+      opacity:1!important;filter:none!important;
+      background:#e9f5ec!important;color:var(--success)!important;
+      border:1px solid #bbf7d0;font-weight:700;
+      box-shadow:none!important;transform:none!important;
+    }
+    .am-post-btn .btn-spin{
+      width:13px;height:13px;
+      border:2px solid rgba(255,255,255,.35);border-top-color:#fff;
+      border-radius:50%;animation:spin .7s linear infinite;
+      display:none;flex-shrink:0;
+    }
+    .am-post-btn.loading .btn-spin{display:block;}
+    .am-post-btn.loading .btn-label{opacity:.75;}
+    .am-post-btn.posted .btn-spin{display:none;}
+
     /* ══ RESPONSIVE ══ */
     @media(max-width:860px){
       .sidebar{transform:translateX(-100%);box-shadow:none;}
@@ -188,6 +346,13 @@
       .filters{width:100%;}
       .toast-wrap{left:1rem;right:1rem;}
       .source-stats{display:none;}
+      .article-modal{border-radius:14px;}
+      .am-post-btns{grid-template-columns:1fr 1fr 1fr;gap:.4rem;}
+      .am-post-btn{font-size:.7rem;padding:.65rem .35rem;}
+      .am-content{padding:1.1rem 1.1rem .85rem;}
+      .am-divider{margin:1rem 1.1rem;}
+      .am-read-link{margin:0 1.1rem .2rem;}
+      .am-footer{padding:.9rem 1.1rem;}
     }
 
     @media(max-width:400px){
@@ -196,6 +361,9 @@
       .post-btn{font-size:.66rem;padding:.48rem .3rem;}
       .modal-top{padding:1.4rem 1.25rem 1rem;}
       .modal-body{padding:1rem 1.25rem 1.5rem;}
+      .am-title{font-size:1rem;}
+      .am-post-btns{gap:.3rem;}
+      .am-post-btn{font-size:.66rem;padding:.6rem .25rem;}
     }
   </style>
 </head>
@@ -227,6 +395,55 @@
           <span class="btn-login-text">Sign In</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ARTICLE DETAIL MODAL -->
+  <div class="article-backdrop" id="articleBackdrop">
+    <div class="article-modal" id="articleModal">
+
+      <!-- Header -->
+      <div class="am-header">
+        <div style="display:flex;align-items:center;gap:.6rem;min-width:0;flex:1;">
+          <div class="am-channel-badge" id="amChannelBadge"></div>
+          <span class="am-time" id="amTime"></span>
+        </div>
+        <button class="am-close" id="amClose" aria-label="Close">✕</button>
+      </div>
+
+      <!-- Scrollable body -->
+      <div class="am-body">
+        <div id="amHeroWrap"></div>
+        <div class="am-content">
+          <div class="am-title" id="amTitle"></div>
+          <div class="am-summary" id="amSummary"></div>
+        </div>
+        <div class="am-divider"></div>
+        <a class="am-read-link" id="amReadLink" href="#" target="_blank" rel="noopener">
+          🔗 Read full article
+        </a>
+        <div style="height:1rem;"></div>
+      </div>
+
+      <!-- Footer: post buttons -->
+      <div class="am-footer">
+        <div class="am-footer-label">Publish to platforms</div>
+        <div class="am-post-btns">
+          <button class="am-post-btn insta" id="amBtnInsta" data-platform="instagram">
+            <div class="btn-spin"></div>
+            <span class="btn-label">📸 Instagram</span>
+          </button>
+          <button class="am-post-btn fb" id="amBtnFb" data-platform="facebook">
+            <div class="btn-spin"></div>
+            <span class="btn-label">👍 Facebook</span>
+          </button>
+          <button class="am-post-btn yt" id="amBtnYt" data-platform="youtube">
+            <div class="btn-spin"></div>
+            <span class="btn-label">▶️ YouTube</span>
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -288,6 +505,9 @@
           <button class="filter-btn" data-filter="MediaOne">
             <img class="filter-icon" src="https://upload.wikimedia.org/wikipedia/commons/6/62/Media_One_Logo.png" alt="" onerror="this.remove()"> MediaOne
           </button>
+          <button class="filter-btn" data-filter="News18 Malayalam">
+            <img class="filter-icon" src="https://static.news18.com/static/img/logo-news18-favicon-32.png" alt="" onerror="this.remove()"> News18
+          </button>
         </div>
       </div>
 
@@ -296,11 +516,10 @@
 
       <div class="count-bar">
         <div class="count-text" id="countText">Loading articles…</div>
-        <div class="legend">🔴 not posted &nbsp;✅ posted</div>
+        <div class="legend">Click any card to open · 🔴 not posted &nbsp;✅ posted</div>
       </div>
 
       <div class="news-grid" id="newsGrid">
-        <!-- initial skeletons -->
         <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:55%"></div><div class="sk-line" style="width:90%"></div><div class="sk-line" style="width:70%"></div></div></div>
         <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:60%"></div><div class="sk-line" style="width:85%"></div><div class="sk-line" style="width:65%"></div></div></div>
         <div class="skeleton-card"><div class="sk-img"></div><div class="sk-lines"><div class="sk-line" style="width:50%"></div><div class="sk-line" style="width:92%"></div><div class="sk-line" style="width:75%"></div></div></div>
@@ -327,11 +546,12 @@
   };
 
   /* ── State ── */
-  let allNews    = [];
-  let statusMap  = {};
-  let filterChan = 'all';
+  let allNews     = [];
+  let statusMap   = {};
+  let filterChan  = 'all';
   let searchQuery = '';
-  let isLoading  = false;
+  let isLoading   = false;
+  let activeArticle = null; // currently open article
 
   /* ── Sidebar ── */
   const sidebar        = document.getElementById('sidebar');
@@ -357,7 +577,7 @@
     openLoginModal('Session ended. Please sign in again.');
   });
 
-  /* ── Modal ── */
+  /* ── Login Modal ── */
   const loginBackdrop = document.getElementById('loginBackdrop');
   const loginBtn      = document.getElementById('loginBtn');
   const loginUser     = document.getElementById('loginUser');
@@ -436,8 +656,7 @@
     document.querySelectorAll('.filter-btn').forEach(b => {
       b.classList.toggle('loading-state', loading);
     });
-    const searchInput = document.getElementById('searchInput');
-    searchInput.disabled = loading;
+    document.getElementById('searchInput').disabled = loading;
   }
 
   /* ── Fetch news ── */
@@ -484,17 +703,21 @@
   /* ── Source stats strip ── */
   function renderSourceStats() {
     const counts = {};
-    for (const n of allNews) {
-      counts[n.channel] = (counts[n.channel] || 0) + 1;
-    }
+    for (const n of allNews) counts[n.channel] = (counts[n.channel] || 0) + 1;
     const strip = document.getElementById('sourceStats');
     strip.innerHTML = Object.entries(counts).map(([ch, cnt]) => {
       const meta = CHANNEL_META[ch] || {};
-      const iconHtml = meta.icon
-        ? `<img src="${escH(meta.icon)}" alt="" onerror="this.remove()">`
-        : '';
-      return `<div class="stat-pill">${iconHtml} ${escH(ch)} <span class="cnt">${cnt}</span></div>`;
+      const iconHtml = meta.icon ? `<img src="${escH(meta.icon)}" alt="" onerror="this.remove()">` : '';
+      return `<div class="stat-pill" data-channel="${escH(ch)}">${iconHtml} ${escH(ch)} <span class="cnt">${cnt}</span></div>`;
     }).join('');
+    strip.querySelectorAll('.stat-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        const ch = pill.dataset.channel;
+        filterChan = ch;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.filter === ch));
+        if (!isLoading) renderNews();
+      });
+    });
   }
 
   /* ── Render helpers ── */
@@ -512,11 +735,7 @@
 
   function renderError(msg) {
     document.getElementById('newsGrid').innerHTML =
-      `<div class="state-card">
-        <div class="state-icon">⚠️</div>
-        <div class="state-text">Failed to load news</div>
-        <div class="state-sub">${escH(msg)}</div>
-      </div>`;
+      `<div class="state-card"><div class="state-icon">⚠️</div><div class="state-text">Failed to load news</div><div class="state-sub">${escH(msg)}</div></div>`;
   }
 
   function filteredNews() {
@@ -553,16 +772,9 @@
     const thumb = n.image
       ? `<img class="news-thumb" src="${escH(n.image)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=thumb-placeholder>🖼️</div>'">`
       : `<div class="thumb-placeholder">🖼️</div>`;
-
-    const chIcon = n.icon
-      ? `<img class="channel-icon" src="${escH(n.icon)}" alt="" onerror="this.style.display='none'">`
-      : '';
-
+    const chIcon = n.icon ? `<img class="channel-icon" src="${escH(n.icon)}" alt="" onerror="this.style.display='none'">` : '';
     const badgeClass = n.channel === 'News18 Malayalam' ? 'channel-badge ch-news18' : 'channel-badge';
-
-    const timeHtml = n.readableTime
-      ? `<span class="news-time">🕐 ${escH(n.readableTime)}</span>`
-      : '';
+    const timeHtml = n.readableTime ? `<span class="news-time">🕐 ${escH(n.readableTime)}</span>` : '';
 
     return `
       <div class="news-card" data-id="${n.id}" data-channel="${escH(n.channel)}">
@@ -575,7 +787,7 @@
           <div class="news-title">${escH(n.title)}</div>
           ${n.summary ? `<div class="news-summary">${escH(n.summary)}</div>` : ''}
         </div>
-        <div class="post-btns">
+        <div class="post-btns" data-card-btns>
           <button class="post-btn insta${st.instagram ? ' posted' : ''}"
             data-platform="instagram" data-id="${n.id}"
             data-title="${escA(n.title)}" data-summary="${escA(n.summary || '')}" data-image="${escA(n.image || '')}"
@@ -604,7 +816,111 @@
   function escH(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function escA(s) { return String(s || '').replace(/"/g,'&quot;'); }
 
-  /* ── Post to platform ── */
+  /* ════════════════════════════════════
+     ARTICLE DETAIL MODAL
+  ════════════════════════════════════ */
+  const articleBackdrop = document.getElementById('articleBackdrop');
+  const amClose         = document.getElementById('amClose');
+
+  function openArticleModal(newsItem) {
+    activeArticle = newsItem;
+    const st = statusMap[newsItem.id] || { instagram: false, facebook: false, youtube: false };
+
+    /* Channel badge */
+    const badgeEl = document.getElementById('amChannelBadge');
+    const meta = CHANNEL_META[newsItem.channel] || {};
+    const isNews18 = newsItem.channel === 'News18 Malayalam';
+    badgeEl.className = 'am-channel-badge' + (isNews18 ? ' ch-news18' : '');
+    const iconHtml = (meta.icon || newsItem.icon)
+      ? `<img src="${escH(meta.icon || newsItem.icon)}" alt="" onerror="this.style.display='none'">`
+      : '';
+    badgeEl.innerHTML = `${iconHtml} ${escH(newsItem.channel)}`;
+
+    /* Time */
+    document.getElementById('amTime').textContent = newsItem.readableTime ? `🕐 ${newsItem.readableTime}` : '';
+
+    /* Hero image */
+    const heroWrap = document.getElementById('amHeroWrap');
+    if (newsItem.image) {
+      heroWrap.innerHTML = `<img class="am-hero" src="${escH(newsItem.image)}" alt="" onerror="this.outerHTML='<div class=am-hero-placeholder>🖼️</div>'">`;
+    } else {
+      heroWrap.innerHTML = `<div class="am-hero-placeholder">🖼️</div>`;
+    }
+
+    /* Title */
+    document.getElementById('amTitle').innerHTML =
+      `<a href="${escH(newsItem.link)}" target="_blank" rel="noopener">${escH(newsItem.title)}</a>`;
+
+    /* Summary */
+    const sumEl = document.getElementById('amSummary');
+    sumEl.textContent = newsItem.summary || '';
+    sumEl.style.display = newsItem.summary ? '' : 'none';
+
+    /* Read link */
+    document.getElementById('amReadLink').href = newsItem.link || '#';
+
+    /* Post buttons */
+    syncModalButtons(newsItem.id, st);
+
+    /* Show */
+    articleBackdrop.classList.add('show');
+    document.body.style.overflow = 'hidden';
+
+    /* Scroll body to top */
+    document.querySelector('.am-body').scrollTop = 0;
+  }
+
+  function syncModalButtons(id, st) {
+    const btnInsta = document.getElementById('amBtnInsta');
+    const btnFb    = document.getElementById('amBtnFb');
+    const btnYt    = document.getElementById('amBtnYt');
+
+    function applyState(btn, platform, posted) {
+      btn.dataset.newsId = id;
+      btn.disabled = posted;
+      btn.classList.toggle('posted', posted);
+      btn.classList.remove('loading');
+      const label = btn.querySelector('.btn-label');
+      if (platform === 'instagram') label.textContent = posted ? '✅ Instagram' : '📸 Instagram';
+      if (platform === 'facebook')  label.textContent = posted ? '✅ Facebook'  : '👍 Facebook';
+      if (platform === 'youtube')   label.textContent = posted ? '✅ YouTube'   : '▶️ YouTube';
+    }
+
+    applyState(btnInsta, 'instagram', st.instagram);
+    applyState(btnFb,    'facebook',  st.facebook);
+    applyState(btnYt,    'youtube',   st.youtube);
+  }
+
+  function closeArticleModal() {
+    articleBackdrop.classList.remove('show');
+    document.body.style.overflow = '';
+    activeArticle = null;
+  }
+
+  amClose.addEventListener('click', closeArticleModal);
+  articleBackdrop.addEventListener('click', e => {
+    if (e.target === articleBackdrop) closeArticleModal();
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (articleBackdrop.classList.contains('show')) closeArticleModal();
+    }
+  });
+
+  /* ── Card click → open modal (ignore clicks on post-btn area) ── */
+  document.getElementById('newsGrid').addEventListener('click', e => {
+    /* If clicked inside post-btns area, let the post handler deal with it */
+    if (e.target.closest('[data-card-btns]')) return;
+
+    const card = e.target.closest('.news-card');
+    if (!card) return;
+
+    const id = card.dataset.id;
+    const newsItem = allNews.find(n => n.id == id || n.id === id);
+    if (newsItem) openArticleModal(newsItem);
+  });
+
+  /* ── Post action: card quick-post buttons ── */
   document.getElementById('newsGrid').addEventListener('click', async e => {
     const btn = e.target.closest('.post-btn');
     if (!btn || btn.disabled) return;
@@ -623,11 +939,51 @@
       statusMap[id][platform] = true;
       btn.classList.remove('loading'); btn.classList.add('posted');
       btn.querySelector('.btn-label').textContent = `✅ ${capitalize(platform)}`;
+      /* Sync modal buttons if this article is open */
+      if (activeArticle && (activeArticle.id == id || activeArticle.id === id)) {
+        syncModalButtons(id, statusMap[id]);
+      }
       showToast(true, `Posted to ${capitalize(platform)} successfully!`);
     } catch (err) {
       btn.classList.remove('loading');
       if (!err.message.startsWith('401')) { btn.disabled = false; showToast(false, err.message); }
     }
+  });
+
+  /* ── Post action: modal post buttons ── */
+  ['amBtnInsta','amBtnFb','amBtnYt'].forEach(btnId => {
+    document.getElementById(btnId).addEventListener('click', async function() {
+      const btn = this;
+      if (btn.disabled || !activeArticle) return;
+      if (!getToken()) { openLoginModal('Please sign in to post news.'); return; }
+      const platform = btn.dataset.platform;
+      const n = activeArticle;
+      btn.disabled = true; btn.classList.add('loading');
+      try {
+        const res  = await authFetch(`${API}/news/post-item`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newsId: n.id, platform, title: n.title, summary: n.summary || '', image: n.image || '' }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Post failed');
+        if (!statusMap[n.id]) statusMap[n.id] = {};
+        statusMap[n.id][platform] = true;
+        /* Sync modal */
+        syncModalButtons(n.id, statusMap[n.id]);
+        /* Sync card in grid */
+        const cardBtn = document.querySelector(`.news-card[data-id="${n.id}"] .post-btn[data-platform="${platform}"]`);
+        if (cardBtn) {
+          cardBtn.disabled = true;
+          cardBtn.classList.add('posted');
+          cardBtn.querySelector('.btn-label').textContent = `✅ ${capitalize(platform)}`;
+        }
+        showToast(true, `Posted to ${capitalize(platform)} successfully!`);
+      } catch (err) {
+        btn.classList.remove('loading');
+        if (!err.message.startsWith('401')) { btn.disabled = false; showToast(false, err.message); }
+      }
+    });
   });
 
   function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
