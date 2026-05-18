@@ -196,7 +196,7 @@ async function scrapeAsianet(url) {
         getXmlTag(itemXml, "description")
     );
     const words = summary.split(" ").filter(Boolean);
-    if (words.length > 40) summary = words.slice(0, 40).join(" ") + "...";
+    if (words.length > 40) summary = words.slice(0, 100).join(" ") + "...";
 
     if (!isValidImage(image)) continue;
     if (title && link) {
