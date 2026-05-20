@@ -5,10 +5,7 @@
     "api/index.js": {
       "regions": ["bom1"],
 
-      "includeFiles": [
-        "server/node_modules/@ffmpeg-installer/linux-x64/**",
-        "server/node_modules/@ffprobe-installer/linux-x64/**"
-      ]
+      "includeFiles": "server/node_modules/**"
     }
   },
 
