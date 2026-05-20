@@ -4,7 +4,6 @@
   "functions": {
     "api/index.js": {
       "regions": ["bom1"],
-
       "includeFiles": "server/node_modules/**"
     }
   },
