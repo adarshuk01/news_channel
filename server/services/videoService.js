@@ -1,4 +1,7 @@
 const ffmpeg = require("fluent-ffmpeg");
+const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
+const ffprobeInstaller = require("@ffprobe-installer/ffprobe");
+
 const { loadImage } = require("@napi-rs/canvas");
 
 const path = require("path");
@@ -13,12 +16,26 @@ let ffmpegPath;
 let ffprobePath;
 
 try {
-  ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+
+  ffmpegPath = ffmpegInstaller.path;
 
   console.log("✅ ffmpeg loaded:");
   console.log(ffmpegPath);
 
-  ffmpeg.setFfmpegPath(ffmpegPath);
+  if (!fs.existsSync(ffmpegPath)) {
+
+    console.error("❌ ffmpeg binary missing:");
+    console.error(ffmpegPath);
+
+  } else {
+
+    ffmpeg.setFfmpegPath(ffmpegPath);
+
+    process.env.FFMPEG_PATH = ffmpegPath;
+
+    console.log("✅ ffmpeg binary exists");
+
+  }
 
 } catch (err) {
 
@@ -29,12 +46,25 @@ try {
 
 try {
 
-  ffprobePath = require("@ffprobe-installer/ffprobe").path;
+  ffprobePath = ffprobeInstaller.path;
 
   console.log("✅ ffprobe loaded:");
   console.log(ffprobePath);
 
-  ffmpeg.setFfprobePath(ffprobePath);
+  if (!fs.existsSync(ffprobePath)) {
+
+    console.error("❌ ffprobe binary missing:");
+    console.error(ffprobePath);
+
+  } else {
+
+    ffmpeg.setFfprobePath(ffprobePath);
+
+    process.env.FFPROBE_PATH = ffprobePath;
+
+    console.log("✅ ffprobe binary exists");
+
+  }
 
 } catch (err) {
 
@@ -82,7 +112,7 @@ function getMediaDuration(filePath) {
 
   return new Promise((resolve, reject) => {
 
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
+    ffmpeg(filePath).ffprobe((err, metadata) => {
 
       if (err) {
 
@@ -115,7 +145,6 @@ function renderImageClip(imgPath, vidPath, outH) {
         "-loop 1",
       ])
 
-      // silent audio
       .input("anullsrc=channel_layout=stereo:sample_rate=44100")
 
       .inputOptions([
@@ -411,7 +440,7 @@ function mixAudio(videoPath, audioPath, outPath, duration) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// MAIN
+// MAIN FUNCTION
 // ─────────────────────────────────────────────────────────────
 
 async function convertImageToVideo(imgPath, vidPath) {
@@ -428,23 +457,40 @@ async function convertImageToVideo(imgPath, vidPath) {
 
   const hasAudio = fs.existsSync(AUDIO_PATH);
 
+  if (hasAudio) {
+    console.log("🎵 Audio found");
+  } else {
+    console.log("⚠️ No audio found");
+  }
+
   const { width, height } = await getImageSize(imgPath);
 
   const rawH = (OUT_W * height) / width;
 
   const OUT_H = Math.ceil(rawH / 2) * 2;
 
-  console.log(`📐 ${width}x${height} → ${OUT_W}x${OUT_H}`);
+  console.log(
+    `📐 ${width}x${height} → ${OUT_W}x${OUT_H}`
+  );
 
   const tmpDir = os.tmpdir();
 
   const ts = Date.now();
 
-  const tmpImageClip = path.join(tmpDir, `img_${ts}.mp4`);
+  const tmpImageClip = path.join(
+    tmpDir,
+    `img_${ts}.mp4`
+  );
 
-  const tmpEndClip = path.join(tmpDir, `end_${ts}.mp4`);
+  const tmpEndClip = path.join(
+    tmpDir,
+    `end_${ts}.mp4`
+  );
 
-  const tmpConcat = path.join(tmpDir, `concat_${ts}.mp4`);
+  const tmpConcat = path.join(
+    tmpDir,
+    `concat_${ts}.mp4`
+  );
 
   try {
 
@@ -470,6 +516,10 @@ async function convertImageToVideo(imgPath, vidPath) {
 
       const totalDuration =
         await getMediaDuration(tmpConcat);
+
+      console.log(
+        `⏱️ Duration: ${totalDuration.toFixed(2)}s`
+      );
 
       await mixAudio(
         tmpConcat,
