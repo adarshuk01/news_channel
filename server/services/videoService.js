@@ -14,9 +14,7 @@ const os = require("os");
 
 try {
   const ffmpegPath = ffmpegStatic;
-
   console.log("✅ ffmpeg path:", ffmpegPath);
-
   if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
     console.error("❌ ffmpeg binary missing:", ffmpegPath);
   } else {
@@ -30,9 +28,7 @@ try {
 
 try {
   const ffprobePath = ffprobeStatic.path;
-
   console.log("✅ ffprobe path:", ffprobePath);
-
   if (!ffprobePath || !fs.existsSync(ffprobePath)) {
     console.error("❌ ffprobe binary missing:", ffprobePath);
   } else {
@@ -50,19 +46,8 @@ try {
 
 const OUT_W = 720;
 
-const END_VIDEO_PATH = path.join(
-  __dirname,
-  "..",
-  "assets",
-  "end_video.mp4"
-);
-
-const AUDIO_PATH = path.join(
-  __dirname,
-  "..",
-  "assets",
-  "audio.mp3"
-);
+const END_VIDEO_PATH = path.join(__dirname, "..", "assets", "end_video.mp4");
+const AUDIO_PATH     = path.join(__dirname, "..", "assets", "audio.mp3");
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -70,10 +55,7 @@ const AUDIO_PATH = path.join(
 
 async function getImageSize(imgPath) {
   const img = await loadImage(imgPath);
-  return {
-    width: img.width,
-    height: img.height,
-  };
+  return { width: img.width, height: img.height };
 }
 
 function getMediaDuration(filePath) {
@@ -89,15 +71,13 @@ function getMediaDuration(filePath) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// STEP 1 — IMAGE → VIDEO
+// STEP 1 — IMAGE → VIDEO (video-only, no audio)
 // ─────────────────────────────────────────────────────────────
 
 function renderImageClip(imgPath, vidPath, outH) {
   return new Promise((resolve, reject) => {
     ffmpeg(imgPath)
       .inputOptions(["-loop 1"])
-      .input("anullsrc=channel_layout=stereo:sample_rate=44100")
-      .inputOptions(["-f lavfi"])
       .outputOptions([
         "-c:v libx264",
         "-pix_fmt yuv420p",
@@ -109,10 +89,7 @@ function renderImageClip(imgPath, vidPath, outH) {
         "-threads 1",
         "-x264-params sliced-threads=0:sync-lookahead=0",
         "-movflags +faststart",
-        "-c:a aac",
-        "-ar 44100",
-        "-ac 2",
-        "-shortest",
+        "-an",                   // ← no audio track; avoids lavfi entirely
       ])
       .output(vidPath)
       .on("start", (cmd) => console.log("🎬 renderImageClip:", cmd))
@@ -129,7 +106,7 @@ function renderImageClip(imgPath, vidPath, outH) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// STEP 2 — NORMALISE END VIDEO
+// STEP 2 — NORMALISE END VIDEO (strip audio too, re-added later)
 // ─────────────────────────────────────────────────────────────
 
 function normaliseEndVideo(endVidPath, outPath, outH) {
@@ -145,9 +122,7 @@ function normaliseEndVideo(endVidPath, outPath, outH) {
         "-threads 1",
         "-x264-params sliced-threads=0:sync-lookahead=0",
         "-movflags +faststart",
-        "-c:a aac",
-        "-ar 44100",
-        "-ac 2",
+        "-an",                   // ← strip audio; background music added in step 4
       ])
       .output(outPath)
       .on("start", (cmd) => console.log("🎬 normaliseEndVideo:", cmd))
@@ -164,7 +139,7 @@ function normaliseEndVideo(endVidPath, outPath, outH) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// STEP 3 — CONCAT VIDEOS
+// STEP 3 — CONCAT VIDEOS (both video-only → safe stream copy)
 // ─────────────────────────────────────────────────────────────
 
 function concatClips(clip1, clip2, outPath) {
@@ -197,7 +172,7 @@ function concatClips(clip1, clip2, outPath) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// STEP 4 — MIX AUDIO
+// STEP 4 — MIX AUDIO (adds background track to video-only concat)
 // ─────────────────────────────────────────────────────────────
 
 function mixAudio(videoPath, audioPath, outPath, duration) {
@@ -250,14 +225,13 @@ async function convertImageToVideo(imgPath, vidPath) {
   console.log(hasAudio ? "🎵 Audio found" : "⚠️ No audio found");
 
   const { width, height } = await getImageSize(imgPath);
-  const rawH = (OUT_W * height) / width;
+  const rawH  = (OUT_W * height) / width;
   const OUT_H = Math.ceil(rawH / 2) * 2;
 
   console.log(`📐 ${width}x${height} → ${OUT_W}x${OUT_H}`);
 
-  const tmpDir = os.tmpdir();
-  const ts = Date.now();
-
+  const tmpDir       = os.tmpdir();
+  const ts           = Date.now();
   const tmpImageClip = path.join(tmpDir, `img_${ts}.mp4`);
   const tmpEndClip   = path.join(tmpDir, `end_${ts}.mp4`);
   const tmpConcat    = path.join(tmpDir, `concat_${ts}.mp4`);
@@ -284,6 +258,4 @@ async function convertImageToVideo(imgPath, vidPath) {
   }
 }
 
-module.exports = {
-  convertImageToVideo,
-};
+module.exports = { convertImageToVideo };
