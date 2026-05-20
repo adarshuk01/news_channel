@@ -1,189 +1,459 @@
 const ffmpegInstaller = require("@ffmpeg-installer/ffmpeg");
-const ffmpeg          = require("fluent-ffmpeg");
-const { createCanvas, loadImage } = require("@napi-rs/canvas");
-const path            = require("path");
-const fs              = require("fs");
-const os              = require("os");
+const ffprobeInstaller = require("@ffprobe-installer/ffprobe");
+const ffmpeg = require("fluent-ffmpeg");
+const { loadImage } = require("@napi-rs/canvas");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
 
+// ─────────────────────────────────────────────────────────────
+// SET BINARIES
+// ─────────────────────────────────────────────────────────────
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+ffmpeg.setFfprobePath(ffprobeInstaller.path);
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Output width is fixed at 720px (memory-safe for serverless).
-// Output height is derived from the actual PNG dimensions so the full canvas
-// is preserved — whether that is:
-//   poster only  →  1080 × 1280  →  scaled to  720 × 854
-//   poster + ad  →  1080 × 1460  →  scaled to  720 × 975  (975 = 720×1460/1080, rounded to even)
-//
-// Rule: OUT_H must always be an even number (x264 requirement).
-// ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// OUTPUT SETTINGS
+// ─────────────────────────────────────────────────────────────
 const OUT_W = 720;
 
-// Path to the end video in the assets folder
-const END_VIDEO_PATH = path.join(__dirname, "..", "assets", "end_video.mp4");
-/**
- * Read the pixel dimensions of a PNG without fully decoding it.
- * @param {string} imgPath
- * @returns {Promise<{ width: number, height: number }>}
- */
+const END_VIDEO_PATH = path.join(
+  __dirname,
+  "..",
+  "assets",
+  "end_video.mp4"
+);
+
+const AUDIO_PATH = path.join(
+  __dirname,
+  "..",
+  "assets",
+  "audio.mp3"
+);
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+
 async function getImageSize(imgPath) {
   const img = await loadImage(imgPath);
-  return { width: img.width, height: img.height };
+
+  return {
+    width: img.width,
+    height: img.height,
+  };
 }
 
-/**
- * Convert a PNG to a silent MP4 clip, preserving its full height.
- *
- * @param {string} imgPath   Input PNG file path
- * @param {string} vidPath   Output MP4 file path (temp or final)
- * @param {number} outH      Output height (must be even)
- * @returns {Promise<void>}
- */
+function getMediaDuration(filePath) {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(filePath, (err, metadata) => {
+      if (err) {
+        console.error("❌ ffprobe error:", err);
+        return reject(err);
+      }
+
+      resolve(metadata?.format?.duration || 0);
+    });
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// STEP 1 — IMAGE → VIDEO
+// ─────────────────────────────────────────────────────────────
+
 function renderImageClip(imgPath, vidPath, outH) {
   return new Promise((resolve, reject) => {
     ffmpeg(imgPath)
       .inputOptions(["-loop 1"])
-      .input("anullsrc=channel_layout=stereo:sample_rate=44100")  // ✅ silent audio as a second input
+
+      // silent audio
+      .input("anullsrc=channel_layout=stereo:sample_rate=44100")
       .inputOptions(["-f lavfi"])
+
       .outputOptions([
         "-c:v libx264",
-        "-t 7",
         "-pix_fmt yuv420p",
+
         `-vf scale=${OUT_W}:${outH}`,
-        "-r 25",
+
+        "-t 7",
+        "-r 30",
+
         "-preset ultrafast",
         "-crf 28",
+
         "-threads 1",
         "-x264-params sliced-threads=0:sync-lookahead=0",
+
         "-movflags +faststart",
+
         "-c:a aac",
+        "-ar 44100",
+        "-ac 2",
+
         "-shortest",
       ])
+
       .output(vidPath)
-      .on("start", (cmd) => console.log("🎬 ffmpeg (image clip) started:", cmd))
-      .on("end",   ()    => { console.log("✅ Image clip rendered"); resolve(); })
-      .on("error", (err) => { console.error("❌ ffmpeg error:", err.message); reject(err); })
+
+      .on("start", (cmd) => {
+        console.log("🎬 renderImageClip:");
+        console.log(cmd);
+      })
+
+      .on("end", () => {
+        console.log("✅ Image clip created");
+        resolve();
+      })
+
+      .on("error", (err) => {
+        console.error("❌ Image clip error:", err.message);
+        reject(err);
+      })
+
       .run();
   });
 }
 
-/**
- * Re-encode the end video to match the target resolution and codec settings,
- * ensuring stream compatibility before concatenation.
- *
- * @param {string} endVidPath   Source end video
- * @param {string} outPath      Re-encoded output path
- * @param {number} outH         Target height (must be even)
- * @returns {Promise<void>}
- */
+// ─────────────────────────────────────────────────────────────
+// STEP 2 — NORMALISE END VIDEO
+// ─────────────────────────────────────────────────────────────
+
 function normaliseEndVideo(endVidPath, outPath, outH) {
   return new Promise((resolve, reject) => {
     ffmpeg(endVidPath)
       .outputOptions([
         "-c:v libx264",
         "-pix_fmt yuv420p",
-        // Scale + pad to exact dimensions in case aspect ratio differs
+
         `-vf scale=${OUT_W}:${outH}:force_original_aspect_ratio=decrease,pad=${OUT_W}:${outH}:(ow-iw)/2:(oh-ih)/2`,
-        "-r 25",
+
+        "-r 30",
+
         "-preset ultrafast",
         "-crf 28",
+
         "-threads 1",
         "-x264-params sliced-threads=0:sync-lookahead=0",
+
         "-movflags +faststart",
+
         "-c:a aac",
         "-ar 44100",
         "-ac 2",
       ])
+
       .output(outPath)
-      .on("start", (cmd) => console.log("🎬 ffmpeg (normalise end video) started:", cmd))
-      .on("end",   ()    => { console.log("✅ End video normalised"); resolve(); })
-      .on("error", (err) => { console.error("❌ ffmpeg error:", err.message); reject(err); })
+
+      .on("start", (cmd) => {
+        console.log("🎬 normaliseEndVideo:");
+        console.log(cmd);
+      })
+
+      .on("end", () => {
+        console.log("✅ End video normalised");
+        resolve();
+      })
+
+      .on("error", (err) => {
+        console.error("❌ End video normalise error:", err.message);
+        reject(err);
+      })
+
       .run();
   });
 }
 
-/**
- * Concatenate two MP4 files using the concat demuxer.
- * Both clips MUST have identical codec / resolution / frame-rate / sample-rate.
- *
- * @param {string} clip1     First clip path
- * @param {string} clip2     Second clip path
- * @param {string} outPath   Final output path
- * @returns {Promise<void>}
- */
+// ─────────────────────────────────────────────────────────────
+// STEP 3 — CONCAT VIDEOS
+// ─────────────────────────────────────────────────────────────
+
 function concatClips(clip1, clip2, outPath) {
-  // Write a temporary concat list file
-  const listFile = path.join(os.tmpdir(), `concat_list_${Date.now()}.txt`);
-  fs.writeFileSync(listFile, `file '${clip1}'\nfile '${clip2}'\n`);
+  const listFile = path.join(
+    os.tmpdir(),
+    `concat_${Date.now()}.txt`
+  );
+
+  fs.writeFileSync(
+    listFile,
+    `file '${clip1.replace(/\\/g, "/")}'\nfile '${clip2.replace(/\\/g, "/")}'\n`
+  );
 
   return new Promise((resolve, reject) => {
     ffmpeg()
       .input(listFile)
-      .inputOptions(["-f concat", "-safe 0"])
+
+      .inputOptions([
+        "-f concat",
+        "-safe 0",
+      ])
+
       .outputOptions([
-        "-c copy",           // stream-copy — no re-encode needed (already normalised)
+        "-c copy",
         "-movflags +faststart",
       ])
+
       .output(outPath)
-      .on("start", (cmd) => console.log("🎬 ffmpeg (concat) started:", cmd))
+
+      .on("start", (cmd) => {
+        console.log("🎬 concatClips:");
+        console.log(cmd);
+      })
+
       .on("end", () => {
         console.log("✅ Videos concatenated");
-        fs.unlinkSync(listFile);   // clean up temp list
+
+        try {
+          fs.unlinkSync(listFile);
+        } catch {}
+
         resolve();
       })
+
       .on("error", (err) => {
-        console.error("❌ ffmpeg concat error:", err.message);
-        fs.unlinkSync(listFile);
+        console.error("❌ Concat error:", err.message);
+
+        try {
+          fs.unlinkSync(listFile);
+        } catch {}
+
         reject(err);
       })
+
       .run();
   });
 }
 
-/**
- * Convert a PNG file to an MP4 video with the end-video appended.
- *
- * @param {string} imgPath  Input PNG file path
- * @param {string} vidPath  Output MP4 file path
- * @returns {Promise<void>}
- */
+// ─────────────────────────────────────────────────────────────
+// STEP 4 — MIX AUDIO
+// ─────────────────────────────────────────────────────────────
+
+function mixAudio(videoPath, audioPath, outPath, duration) {
+
+  return new Promise((resolve, reject) => {
+
+    ffmpeg()
+
+      // VIDEO
+      .input(videoPath)
+
+      // AUDIO
+      .input(audioPath)
+      .inputOptions(["-stream_loop -1"])
+
+      .outputOptions([
+
+        // VIDEO
+        "-c:v copy",
+
+        // AUDIO
+        "-c:a aac",
+        "-ar 44100",
+        "-ac 2",
+
+        // shortest duration
+        `-t ${duration}`,
+
+        // use ONLY background audio
+        "-map 0:v",
+        "-map 1:a",
+
+        "-shortest",
+
+        "-movflags +faststart",
+      ])
+
+      .output(outPath)
+
+      .on("start", (cmd) => {
+        console.log("🎬 mixAudio:");
+        console.log(cmd);
+      })
+
+      .on("end", () => {
+        console.log("✅ Audio mixed");
+        resolve();
+      })
+
+      .on("error", (err) => {
+        console.error("❌ Audio mix error:", err.message);
+        reject(err);
+      })
+
+      .run();
+
+  });
+
+}
+
+// ─────────────────────────────────────────────────────────────
+// MAIN FUNCTION
+// ─────────────────────────────────────────────────────────────
+
 async function convertImageToVideo(imgPath, vidPath) {
-  // ── 1. Validate that the end video exists ──────────────────────────────────
-  if (!fs.existsSync(END_VIDEO_PATH)) {
-    throw new Error(`End video not found at: ${END_VIDEO_PATH}`);
+
+  console.log("🚀 Starting video generation...");
+
+  // ───────────────────────────────────────────────────────────
+  // CHECK FILES
+  // ───────────────────────────────────────────────────────────
+
+  if (!fs.existsSync(imgPath)) {
+    throw new Error(`Image not found: ${imgPath}`);
   }
 
-  // ── 2. Derive output height from the source image ─────────────────────────
-  const { width: srcW, height: srcH } = await getImageSize(imgPath);
-  const rawH  = OUT_W * srcH / srcW;
-  const OUT_H = Math.ceil(rawH / 2) * 2;   // always even for x264
+  if (!fs.existsSync(END_VIDEO_PATH)) {
+    throw new Error(`End video not found: ${END_VIDEO_PATH}`);
+  }
 
-  console.log(`📐 Source: ${srcW}×${srcH}  →  Output: ${OUT_W}×${OUT_H}`);
+  const hasAudio = fs.existsSync(AUDIO_PATH);
 
-  // ── 3. Temp file paths ─────────────────────────────────────────────────────
-  const tmpDir       = os.tmpdir();
-  const tmpImageClip = path.join(tmpDir, `img_clip_${Date.now()}.mp4`);
-  const tmpEndClip   = path.join(tmpDir, `end_clip_${Date.now()}.mp4`);
+  if (hasAudio) {
+    console.log("🎵 Audio found");
+  } else {
+    console.log("⚠️ No audio file found");
+  }
+
+  // ───────────────────────────────────────────────────────────
+  // CALCULATE OUTPUT SIZE
+  // ───────────────────────────────────────────────────────────
+
+  const { width, height } = await getImageSize(imgPath);
+
+  const rawH = (OUT_W * height) / width;
+
+  const OUT_H = Math.ceil(rawH / 2) * 2;
+
+  console.log(
+    `📐 ${width}x${height} → ${OUT_W}x${OUT_H}`
+  );
+
+  // ───────────────────────────────────────────────────────────
+  // TEMP FILES
+  // ───────────────────────────────────────────────────────────
+
+  const tmpDir = os.tmpdir();
+  const ts = Date.now();
+
+  const tmpImageClip = path.join(
+    tmpDir,
+    `img_${ts}.mp4`
+  );
+
+  const tmpEndClip = path.join(
+    tmpDir,
+    `end_${ts}.mp4`
+  );
+
+  const tmpConcat = path.join(
+    tmpDir,
+    `concat_${ts}.mp4`
+  );
+
+  const tmpMixed = path.join(
+    tmpDir,
+    `mixed_${ts}.mp4`
+  );
+
+  const tempFiles = [
+    tmpImageClip,
+    tmpEndClip,
+    tmpConcat,
+    tmpMixed,
+  ];
 
   try {
-    // ── 4. Render PNG → 5-second video clip ─────────────────────────────────
-    await renderImageClip(imgPath, tmpImageClip, OUT_H);
 
-    // ── 5. Normalise end video to the same spec ──────────────────────────────
-    await normaliseEndVideo(END_VIDEO_PATH, tmpEndClip, OUT_H);
+    // ─────────────────────────────────────────────────────────
+    // IMAGE CLIP
+    // ─────────────────────────────────────────────────────────
 
-    // ── 6. Concatenate both clips into the final output ──────────────────────
-    await concatClips(tmpImageClip, tmpEndClip, vidPath);
+    await renderImageClip(
+      imgPath,
+      tmpImageClip,
+      OUT_H
+    );
 
-    console.log(`🎉 Final video saved to: ${vidPath}`);
-  } finally {
-    // ── 7. Clean up temp files ───────────────────────────────────────────────
-    for (const f of [tmpImageClip, tmpEndClip]) {
-      if (fs.existsSync(f)) {
-        fs.unlinkSync(f);
-        console.log(`🗑️  Removed temp file: ${f}`);
-      }
+    // ─────────────────────────────────────────────────────────
+    // NORMALISE END VIDEO
+    // ─────────────────────────────────────────────────────────
+
+    await normaliseEndVideo(
+      END_VIDEO_PATH,
+      tmpEndClip,
+      OUT_H
+    );
+
+    // ─────────────────────────────────────────────────────────
+    // CONCAT
+    // ─────────────────────────────────────────────────────────
+
+    await concatClips(
+      tmpImageClip,
+      tmpEndClip,
+      tmpConcat
+    );
+
+    // ─────────────────────────────────────────────────────────
+    // AUDIO MIX
+    // ─────────────────────────────────────────────────────────
+
+    if (hasAudio) {
+
+      const totalDuration =
+        await getMediaDuration(tmpConcat);
+
+      console.log(
+        `⏱️ Duration: ${totalDuration.toFixed(2)}s`
+      );
+
+      await mixAudio(
+        tmpConcat,
+        AUDIO_PATH,
+        vidPath,
+        totalDuration
+      );
+
+    } else {
+
+      fs.copyFileSync(tmpConcat, vidPath);
+
     }
+
+    console.log("🎉 Final video created:");
+    console.log(vidPath);
+
+    return vidPath;
+
+  } catch (err) {
+
+    console.error("❌ convertImageToVideo ERROR:");
+    console.error(err);
+
+    throw err;
+
+  } finally {
+
+    // ─────────────────────────────────────────────────────────
+    // CLEANUP
+    // ─────────────────────────────────────────────────────────
+
+    for (const file of tempFiles) {
+
+      if (fs.existsSync(file)) {
+
+        try {
+          fs.unlinkSync(file);
+          console.log("🗑️ Removed:", file);
+        } catch {}
+
+      }
+
+    }
+
   }
 }
 
-module.exports = { convertImageToVideo };
+module.exports = {
+  convertImageToVideo,
+};
