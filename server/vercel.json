@@ -1,11 +1,21 @@
 {
   "version": 2,
+
   "functions": {
     "api/index.js": {
-      "regions": ["bom1"]
+      "regions": ["bom1"],
+
+      "includeFiles": [
+        "server/node_modules/@ffmpeg-installer/linux-x64/**",
+        "server/node_modules/@ffprobe-installer/linux-x64/**"
+      ]
     }
   },
+
   "routes": [
-    { "src": "/(.*)", "dest": "api/index.js" }
+    {
+      "src": "/(.*)",
+      "dest": "api/index.js"
+    }
   ]
 }
