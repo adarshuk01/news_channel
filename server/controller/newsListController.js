@@ -135,7 +135,7 @@ exports.postNewsItem = async (req, res) => {
     const finalTitle = `${safeTitle} 🔥 #Shorts`;
 
     const captions = {
-      instagram: `LIKE & FOLLOW 💯\n${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags} #kerala #malayalam #keralanews`,
+      instagram: `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags} #kerala #malayalam #keralanews`,
       facebook:  `${summary}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags}`,
       youtube:   `${summary}\n\n${hashtags} #Shorts`,
     };
