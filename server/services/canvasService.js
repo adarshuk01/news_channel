@@ -1,6 +1,7 @@
+//best design 
 // ─────────────────────────────────────────────────────────────
-// FLASH KERALAM — DYNAMIC COLOR GRID NEWS POSTER
-// RANDOM RED / GREEN / BLUE THEME EACH RENDER
+// FLASH KERALAM — PREMIUM RED NEWS POSTER
+// ATTRACTIVE BREAKING NEWS STYLE
 // ─────────────────────────────────────────────────────────────
 
 const {
@@ -30,53 +31,9 @@ GlobalFonts.registerFromPath(
 // ─────────────────────────────────────
 
 const W            = 1080;
-const H            = 1350;
-const DEFAULT_AD_H = 180;
-const MAX_AD_H     = 320;
-
-// ═════════════════════════════════════════════════════════════
-// COLOR THEMES
-// Each theme defines all colours used throughout the poster
-// ═════════════════════════════════════════════════════════════
-
-const THEMES = {
-  red: {
-    name:         "red",
-    gridTop:      "#c40000",
-    gridMid:      "#a80000",
-    gridBot:      "#7a0000",
-    fadeRgb:      "196, 0, 0",       // image-to-panel fade
-    imgFallback:  "#c40000",
-  },
-  green: {
-    name:         "green",
-    gridTop:      "#0a6e2e",
-    gridMid:      "#085c26",
-    gridBot:      "#054518",
-    fadeRgb:      "10, 110, 46",
-    imgFallback:  "#0a6e2e",
-  },
-  blue: {
-    name:         "blue",
-    gridTop:      "#1a3a7a",
-    gridMid:      "#142e66",
-    gridBot:      "#0d1f4a",
-    fadeRgb:      "26, 58, 122",
-    imgFallback:  "#1a3a7a",
-  },
-};
-
-// ─────────────────────────────────────
-// Pick one theme at random each call
-// ─────────────────────────────────────
-
-function pickRandomTheme() {
-  const keys  = Object.keys(THEMES);
-  const key   = keys[Math.floor(Math.random() * keys.length)];
-  const theme = THEMES[key];
-  console.log(`[Theme] Selected: ${theme.name}`);
-  return theme;
-}
+const H            = 1280;
+const DEFAULT_AD_H = 180;  // fallback height when no image / load fails
+const MAX_AD_H     = 320;  // cap so portrait/square images don't blow up
 
 // ═════════════════════════════════════════════════════════════
 // HELPERS
@@ -111,62 +68,60 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// ═════════════════════════════════════════════════════════════
+// COMPUTE AD HEIGHT
+// Works for any image dimension — caps to MAX_AD_H
+// ═════════════════════════════════════════════════════════════
+
 function computeAdHeight(adImg) {
   if (!adImg) return DEFAULT_AD_H;
+
+  // Natural height if we scale image to poster width
   const naturalH = Math.round((adImg.height / adImg.width) * W);
+
+  // Use natural height but clamp between DEFAULT_AD_H and MAX_AD_H
   return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
-}
-
-// ═════════════════════════════════════════════════════════════
-// DRAW THEMED GRID BACKGROUND
-// ═════════════════════════════════════════════════════════════
-
-function drawGridBackground(ctx, theme, yStart, height) {
-  // Gradient fill using theme colours
-  const bg = ctx.createLinearGradient(0, yStart, 0, yStart + height);
-  bg.addColorStop(0,   theme.gridTop);
-  bg.addColorStop(0.5, theme.gridMid);
-  bg.addColorStop(1,   theme.gridBot);
-
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, yStart, W, height);
-
-  // White grid overlay
-  ctx.save();
-  ctx.globalAlpha = 0.15;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth   = 1;
-
-  const gridSize = 45;
-
-  for (let x = 0; x <= W; x += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(x, yStart);
-    ctx.lineTo(x, yStart + height);
-    ctx.stroke();
-  }
-
-  for (let y = yStart; y <= yStart + height; y += gridSize) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(W, y);
-    ctx.stroke();
-  }
-
-  ctx.restore();
 }
 
 // ═════════════════════════════════════════════════════════════
 // DRAW POSTER
 // ═════════════════════════════════════════════════════════════
 
-async function drawPoster(ctx, newsItem, theme) {
+async function drawPoster(ctx, newsItem) {
 
   // ─────────────────────────────────
-  // IMAGE SECTION (top ~52%)
+  // RED BACKGROUND
   // ─────────────────────────────────
 
-  const IMG_H = Math.round(H * 0.52);
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0,    "#ff2a2a");
+  bg.addColorStop(0.25, "#e60000");
+  bg.addColorStop(0.55, "#c40000");
+  bg.addColorStop(1,    "#7a0000");
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // diagonal texture
+  ctx.save();
+  ctx.globalAlpha = 0.035;
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth   = 1;
+
+  for (let i = -H; i < W + H; i += 18) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i + H, H);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // ─────────────────────────────────
+  // NEWS IMAGE
+  // ─────────────────────────────────
+
+  const IMG_H = Math.round(H * 0.58);
 
   try {
     const img   = await loadImage(newsItem.image);
@@ -182,75 +137,204 @@ async function drawPoster(ctx, newsItem, theme) {
     ctx.clip();
     ctx.drawImage(img, dx, dy, dw, dh);
 
-    // Bottom fade — blends into the chosen theme colour
-    const { fadeRgb } = theme;
-    const fade = ctx.createLinearGradient(0, IMG_H * 0.65, 0, IMG_H);
-    fade.addColorStop(0,   `rgba(${fadeRgb}, 0)`);
-    fade.addColorStop(0.7, `rgba(${fadeRgb}, 0.6)`);
-    fade.addColorStop(1,   `rgba(${fadeRgb}, 0.95)`);
+    const fade = ctx.createLinearGradient(0, IMG_H * 0.6, 0, IMG_H);
+    fade.addColorStop(0, "rgba(0,0,0,0)");
+    fade.addColorStop(1, "rgba(0,0,0,0.45)");
     ctx.fillStyle = fade;
     ctx.fillRect(0, 0, W, IMG_H);
 
     ctx.restore();
   } catch (err) {
     console.log("[News Image Error]", err.message);
-    ctx.fillStyle = theme.imgFallback;
+    ctx.fillStyle = "#900000";
     ctx.fillRect(0, 0, W, IMG_H);
   }
 
   // ─────────────────────────────────
-  // WATERMARK ON IMAGE
+  // TOP ACCENT BAR
   // ─────────────────────────────────
 
+  const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
+  accentGrad.addColorStop(0,   "rgba(255,180,0,0)");
+  accentGrad.addColorStop(0.2, "rgba(255,180,0,1)");
+  accentGrad.addColorStop(0.8, "rgba(255,180,0,1)");
+  accentGrad.addColorStop(1,   "rgba(255,180,0,0)");
+
+  ctx.fillStyle = accentGrad;
+  ctx.fillRect(0, 0, W, 4);
+
+  // ─────────────────────────────────
+  // HEADER BAR
+  // ─────────────────────────────────
+
+  const HEADER_H  = 90;
+  const HEADER_BG = ctx.createLinearGradient(0, 0, 0, HEADER_H);
+  HEADER_BG.addColorStop(0, "rgba(0,0,0,0.55)");
+  HEADER_BG.addColorStop(1, "rgba(0,0,0,0.20)");
+
+  ctx.fillStyle = HEADER_BG;
+  ctx.fillRect(0, 0, W, HEADER_H);
+
+  // ─────────────────────────────────
+  // DATE — pill tag, top right
+  // ─────────────────────────────────
+
+  const now     = new Date();
+  const day     = String(now.getDate()).padStart(2, "0");
+  const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
+  const year    = now.getFullYear();
+  const dateStr = `${day} ${month} ${year}`;
+
+  const HEADER_CY = HEADER_H / 2;
+
   ctx.save();
-  ctx.font         = "bold 18px English";
-  ctx.fillStyle    = "rgba(255,255,255,0.55)";
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "top";
-  ctx.fillText("FLASH KERALAM", 16, IMG_H - 32);
+  ctx.font = "bold 26px English";
+
+  const DATE_TW     = ctx.measureText(dateStr).width;
+  const DATE_PAD_X  = 22;
+  const DATE_PILL_W = DATE_TW + DATE_PAD_X * 2;
+  const DATE_PILL_H = 46;
+  const DATE_PILL_X = W - 44 - DATE_PILL_W;
+  const DATE_PILL_Y = HEADER_CY - DATE_PILL_H / 2;
+
+  const pillGrad = ctx.createLinearGradient(0, DATE_PILL_Y, 0, DATE_PILL_Y + DATE_PILL_H);
+  pillGrad.addColorStop(0, "#ffe566");
+  pillGrad.addColorStop(1, "#e08800");
+
+  ctx.shadowColor   = "rgba(0,0,0,0.40)";
+  ctx.shadowBlur    = 16;
+  ctx.shadowOffsetY = 4;
+
+  roundRect(ctx, DATE_PILL_X, DATE_PILL_Y, DATE_PILL_W, DATE_PILL_H, 23);
+  ctx.fillStyle = pillGrad;
+  ctx.fill();
+
+  ctx.shadowColor = "transparent";
+  const sheen = ctx.createLinearGradient(0, DATE_PILL_Y, 0, DATE_PILL_Y + DATE_PILL_H * 0.5);
+  sheen.addColorStop(0, "rgba(255,255,255,0.30)");
+  sheen.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = sheen;
+  roundRect(ctx, DATE_PILL_X, DATE_PILL_Y, DATE_PILL_W, DATE_PILL_H, 23);
+  ctx.fill();
+
+  ctx.font         = "bold 26px English";
+  ctx.fillStyle    = "#1a0a00";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(dateStr, DATE_PILL_X + DATE_PILL_W / 2, HEADER_CY + 1);
+
   ctx.restore();
 
   // ─────────────────────────────────
-  // THEMED GRID TEXT SECTION
+  // LOGO — top left inside header
   // ─────────────────────────────────
 
-  const TEXT_TOP = IMG_H;
-  const TEXT_BOT = H - 40;
-  const TEXT_H   = TEXT_BOT - TEXT_TOP;
+  const LOGO_MAX_W   = 600;
+  const LOGO_MAX_H   = 300;
+  const LOGO_LEFT    = 10;
+  const LOGO_CENTER_Y = HEADER_H / 2 + 35;
 
-  drawGridBackground(ctx, theme, TEXT_TOP, TEXT_H);
+  try {
+    const logo  = await loadImage(path.join(__dirname, "../assets/logo.png"));
+    const scale = Math.min(LOGO_MAX_W / logo.width, LOGO_MAX_H / logo.height);
+    const lw    = logo.width  * scale;
+    const lh    = logo.height * scale;
+    const lx    = LOGO_LEFT;
+    const ly    = LOGO_CENTER_Y - lh / 2;
 
-  // ─────────────────────────────────
-  // HEADING TEXT
-  // ─────────────────────────────────
-
-  const headingText = newsItem.heading || "";
-
-  if (headingText) {
     ctx.save();
-    ctx.font          = "bold 46px Malayalam";
-    ctx.fillStyle     = "#ffe566";
-    ctx.textAlign     = "center";
-    ctx.textBaseline  = "top";
-    ctx.shadowColor   = "rgba(0,0,0,0.6)";
-    ctx.shadowBlur    = 10;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 2;
-    ctx.fillText(headingText, W / 2, TEXT_TOP + 22);
+    ctx.shadowColor   = "rgba(0,0,0,0.75)";
+    ctx.shadowBlur    = 32;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 6;
+    ctx.drawImage(logo, lx, ly, lw, lh);
+    ctx.restore();
+
+  } catch (err) {
+    console.warn("[Logo] Could not load assets/logo.png:", err.message);
+
+    ctx.save();
+    ctx.textAlign    = "left";
+    ctx.textBaseline = "middle";
+    ctx.font         = "bold 52px English";
+    ctx.fillStyle    = "#ffffff";
+    ctx.shadowColor  = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur   = 18;
+    ctx.fillText("FLASH", LOGO_LEFT, LOGO_CENTER_Y - 30);
+
+    const goldGrad = ctx.createLinearGradient(0, LOGO_CENTER_Y, 0, LOGO_CENTER_Y + 52);
+    goldGrad.addColorStop(0, "#ffe566");
+    goldGrad.addColorStop(1, "#ffaa00");
+
+    ctx.font      = "bold 52px English";
+    ctx.fillStyle = goldGrad;
+    ctx.fillText("KERALAM", LOGO_LEFT, LOGO_CENTER_Y + 30);
     ctx.restore();
   }
 
   // ─────────────────────────────────
-  // MAIN TITLE — ALL WHITE
+  // BREAKING NEWS TAG
   // ─────────────────────────────────
 
-  const PAD    = 44;
-  const TEXT_W = W - PAD * 2;
-  const CX     = W / 2;
+  const tagLabel = newsItem.tag || "BREAKING NEWS";
+  const tagW     = 420;
+  const tagH     = 72;
+  const tagX     = (W - tagW) / 2;
+  const tagY     = IMG_H - 36;
 
-  const TITLE_TOP_OFFSET = headingText ? 80 : 20;
-  const TITLE_AREA_TOP   = TEXT_TOP + TITLE_TOP_OFFSET;
-  const TITLE_AREA_H     = TEXT_H   - TITLE_TOP_OFFSET;
+  ctx.save();
+  ctx.shadowColor   = "rgba(0,0,0,0.40)";
+  ctx.shadowBlur    = 30;
+  ctx.shadowOffsetY = 10;
+
+  const tagGrad = ctx.createLinearGradient(0, tagY, 0, tagY + tagH);
+  tagGrad.addColorStop(0,    "#4c63ff");
+  tagGrad.addColorStop(0.45, "#3148d8");
+  tagGrad.addColorStop(1,    "#1e2d8f");
+
+  ctx.fillStyle = tagGrad;
+  roundRect(ctx, tagX, tagY, tagW, tagH, 10);
+  ctx.fill();
+  ctx.restore();
+
+  const gloss = ctx.createLinearGradient(0, tagY, 0, tagY + tagH);
+  gloss.addColorStop(0,   "rgba(255,255,255,0.25)");
+  gloss.addColorStop(0.4, "rgba(255,255,255,0.08)");
+  gloss.addColorStop(1,   "rgba(255,255,255,0)");
+
+  ctx.fillStyle = gloss;
+  roundRect(ctx, tagX, tagY, tagW, tagH, 10);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth   = 2;
+  roundRect(ctx, tagX, tagY, tagW, tagH, 10);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  roundRect(ctx, tagX + 8, tagY + 8, tagW - 16, 16, 8);
+  ctx.fill();
+
+  ctx.save();
+  ctx.font         = "italic bold 38px English";
+  ctx.fillStyle    = "#ffffff";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor  = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur   = 12;
+  ctx.fillText(tagLabel, W / 2, tagY + tagH / 2 + 1);
+  ctx.restore();
+
+  // ─────────────────────────────────
+  // TITLE
+  // ─────────────────────────────────
+
+  const PAD      = 58;
+  const TEXT_TOP = IMG_H + 56;
+  const TEXT_BOT = H - 36;
+  const TEXT_H   = TEXT_BOT - TEXT_TOP;
+  const TEXT_W   = W - PAD * 2;
+  const CX       = W / 2;
 
   let allSegments = [];
 
@@ -269,11 +353,10 @@ async function drawPoster(ctx, newsItem, theme) {
     ];
   }
 
-  let FONT_SIZE = 82;
+  let FONT_SIZE = 72;
   let allLines  = [];
-  let bestFit   = { size: 36, lines: [] };
 
-  while (FONT_SIZE >= 36) {
+  while (FONT_SIZE >= 38) {
     ctx.font = `bold ${FONT_SIZE}px Malayalam`;
     allLines  = [];
 
@@ -281,25 +364,14 @@ async function drawPoster(ctx, newsItem, theme) {
       allLines.push(...wrapText(ctx, seg, TEXT_W));
     }
 
-    const LINE_H     = Math.round(FONT_SIZE * 1.20);
-    const totalTextH = allLines.length * LINE_H;
-
-    if (totalTextH <= TITLE_AREA_H - 20) {
-      bestFit   = { size: FONT_SIZE, lines: allLines, lineHeight: LINE_H, totalH: totalTextH };
-      FONT_SIZE += 2;
-      break;
-    }
-
+    const LINE_H = Math.round(FONT_SIZE * 1.18);
+    if (allLines.length * LINE_H <= TEXT_H) break;
     FONT_SIZE -= 2;
   }
 
-  FONT_SIZE     = bestFit.size;
-  allLines      = bestFit.lines;
-  const LINE_H  = bestFit.lineHeight || Math.round(FONT_SIZE * 1.20);
-  const totalTH = bestFit.totalH    || (allLines.length * LINE_H);
-
-  let drawY = TITLE_AREA_TOP + Math.round((TITLE_AREA_H - totalTH) / 2) - 20;
-  if (drawY < TITLE_AREA_TOP) drawY = TITLE_AREA_TOP;
+  const LINE_H  = Math.round(FONT_SIZE * 1.18);
+  const totalTH = allLines.length * LINE_H;
+  let   drawY   = TEXT_TOP + Math.round((TEXT_H - totalTH) / 2);
 
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
@@ -307,61 +379,85 @@ async function drawPoster(ctx, newsItem, theme) {
   for (let i = 0; i < allLines.length; i++) {
     ctx.save();
     ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
-    ctx.fillStyle     = "#ffffff";
-    ctx.shadowColor   = "rgba(0,0,0,0.7)";
-    ctx.shadowBlur    = 16;
+    ctx.shadowColor   = "rgba(0,0,0,0.95)";
+    ctx.shadowBlur    = 18;
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 3;
+
+    const isLast       = i === allLines.length - 1;
+    const isSecondLast = i === allLines.length - 2;
+
+    if (isLast) {
+      const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
+      g.addColorStop(0, "#ffe566");
+      g.addColorStop(1, "#ffaa00");
+      ctx.fillStyle = g;
+    } else if (isSecondLast && allLines.length > 2) {
+      const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
+      g.addColorStop(0, "#fff0aa");
+      g.addColorStop(1, "#ffd040");
+      ctx.fillStyle = g;
+    } else {
+      ctx.fillStyle = "#ffffff";
+    }
+
     ctx.fillText(allLines[i], CX, drawY);
     ctx.restore();
     drawY += LINE_H;
   }
 
   // ─────────────────────────────────
-  // FOOTER WATERMARKS
+  // FOOTER
   // ─────────────────────────────────
 
-  const FOOT_Y = H - 28;
+  const FOOT_Y = H - 34;
 
   ctx.save();
-  ctx.font      = "bold 16px English";
-  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillStyle = "rgba(255,255,255,0.10)";
+  ctx.fillRect(0, FOOT_Y - 1, W, 1);
 
-  ctx.textAlign    = "left";
+  ctx.font         = "bold 17px English";
+  ctx.fillStyle    = "rgba(255,220,120,0.75)";
+  ctx.textAlign    = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("FLASH KERALAM", 20, FOOT_Y);
-
-  ctx.textAlign = "right";
-  ctx.fillText("FLASH KERALAM", W - 20, FOOT_Y);
+  ctx.fillText("www.flashkeralam.com", W / 2, FOOT_Y + 17);
   ctx.restore();
 }
 
 // ═════════════════════════════════════════════════════════════
-// AD STRIP
+// AD STRIP  ← COMPLETELY REWRITTEN
+// Handles ALL image dimensions using cover-scale + clip
 // ═════════════════════════════════════════════════════════════
 
 function drawAdStrip(ctx, adImg, yOffset, adH) {
 
+  // ── Black base fill ─────────────────────────────────────────
   ctx.fillStyle = "#000000";
   ctx.fillRect(0, yOffset, W, adH);
 
+  // ── Has a real image → cover-scale + clip ───────────────────
   if (adImg) {
-    const scaleW = W   / adImg.width;
-    const scaleH = adH / adImg.height;
-    const scale  = Math.max(scaleW, scaleH);
 
-    const drawW = adImg.width  * scale;
-    const drawH = adImg.height * scale;
-    const drawX = (W   - drawW) / 2;
-    const drawY = yOffset + (adH - drawH) / 2;
+    // Cover scaling: fill full W×adH, crop any overflow
+    const scaleW  = W    / adImg.width;
+    const scaleH  = adH  / adImg.height;
+    const scale   = Math.max(scaleW, scaleH);   // cover (not contain)
+
+    const drawW   = adImg.width  * scale;
+    const drawH   = adImg.height * scale;
+    const drawX   = (W   - drawW) / 2;          // centre horizontally
+    const drawY   = yOffset + (adH - drawH) / 2; // centre vertically
 
     ctx.save();
+    // Clip strictly to the ad strip area — no overflow on any side
     ctx.beginPath();
     ctx.rect(0, yOffset, W, adH);
     ctx.clip();
+
     ctx.drawImage(adImg, drawX, drawY, drawW, drawH);
     ctx.restore();
 
+    // Subtle top separator line over the image
     const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
     lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
     lineGrad.addColorStop(0.2, "rgba(255,180,0,0.8)");
@@ -374,7 +470,8 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
     return;
   }
 
-  // Fallback ad
+  // ── No image → Malayalam fallback ───────────────────────────
+
   const bg = ctx.createLinearGradient(0, yOffset, 0, yOffset + adH);
   bg.addColorStop(0, "#0d1b4b");
   bg.addColorStop(1, "#091230");
@@ -448,46 +545,35 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 
 async function createNewsPoster(newsItem) {
 
-  // ── Pick a random colour theme ──────────────────────────────
-  // Pass newsItem.theme = "red" | "green" | "blue" to force one,
-  // or leave it unset for a random pick every render.
-  const theme = newsItem.theme && THEMES[newsItem.theme]
-    ? THEMES[newsItem.theme]
-    : pickRandomTheme();
-
-  // ── Ad strip ────────────────────────────────────────────────
-  const hasAd   = Boolean(newsItem.adBannerUrl);
   let adImg     = null;
-  let actualAdH = 0;
+  let actualAdH = DEFAULT_AD_H;
 
-  if (hasAd) {
+  if (newsItem.adBannerUrl) {
     try {
       console.log("[Ad] Loading:", newsItem.adBannerUrl);
-      adImg     = await loadImage(newsItem.adBannerUrl);
+      adImg = await loadImage(newsItem.adBannerUrl);
       console.log(`[Ad] Loaded OK: ${adImg.width}x${adImg.height}px`);
+
+      // ── Compute height clamped to MAX_AD_H ─────────────────
       actualAdH = computeAdHeight(adImg);
       console.log(`[Ad] Strip height: ${actualAdH}px`);
+
     } catch (err) {
       console.error("[Ad] Failed to load image:", err.message);
       console.error("[Ad] URL was:", newsItem.adBannerUrl);
       adImg     = null;
       actualAdH = DEFAULT_AD_H;
     }
-  } else {
-    console.log("[Ad] No adBannerUrl provided — skipping ad strip entirely.");
   }
 
   const totalH = H + actualAdH;
-  console.log(`[Canvas] ${W}x${totalH} (poster ${H}${actualAdH ? ` + ad ${actualAdH}` : ", no ad"})`);
+  console.log(`[Canvas] ${W}x${totalH} (poster ${H} + ad ${actualAdH})`);
 
   const canvas = createCanvas(W, totalH);
   const ctx    = canvas.getContext("2d");
 
-  await drawPoster(ctx, newsItem, theme);
-
-  if (actualAdH > 0) {
-    drawAdStrip(ctx, adImg, H, actualAdH);
-  }
+  await drawPoster(ctx, newsItem);
+  drawAdStrip(ctx, adImg, H, actualAdH);
 
   return canvas.toBuffer("image/png");
 }
