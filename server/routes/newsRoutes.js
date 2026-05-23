@@ -19,6 +19,7 @@ const {
 const multer = require("multer");
 const { protect } = require("../middleware/authMiddleware");
 const { login, logout } = require("../controller/authController");
+const { testInstagramImage } = require("../controller/testController");
 
 const router = express.Router();
 
@@ -52,6 +53,9 @@ router.post("/news/post-item",  protect, postNewsItem);
 // ── Auth routes ───────────────────────────────────────────────────────────────
 router.post("/auth/login",  login);
 router.post("/auth/logout", logout);
+
+
+router.get("/test-instagram-image", testInstagramImage);
 
 // ── Health check ──────────────────────────────────────────────────────────────
 router.get("/test", (req, res) => res.send("✅ Route working"));

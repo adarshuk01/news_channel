@@ -26,78 +26,52 @@ async function postReelToInstagram(videoUrl, caption) {
   try {
     console.log("🚀 Starting Instagram Reel upload...");
 
-    const safeCaption = sanitizeCaption(caption);
-
-    // Step 1 — Create container
     const creationRes = await axios.post(
-      `https://graph.facebook.com/v18.0/${IG_USER_ID}/media`,
+      `https://graph.facebook.com/v23.0/${IG_USER_ID}/media`,
       {
         media_type: "REELS",
         video_url: videoUrl,
-        caption: safeCaption,
+        caption,
         share_to_feed: true,
         access_token: ACCESS_TOKEN,
       }
     );
 
     const creationId = creationRes.data.id;
-    console.log("🎬 Instagram container created:", creationId);
 
-    // Step 2 — Poll status
-    let isReady = false;
-    let attempt = 0;
+    console.log(
+      "🎬 Container created:",
+      creationId
+    );
 
-    while (!isReady && attempt < 20) {
-      attempt++;
-      await sleep(5000); // ✅ increased
+    // wait before publish
+    await sleep(30000);
 
-      const statusRes = await axios.get(
-        `https://graph.facebook.com/v18.0/${creationId}`,
-        {
-          params: {
-            fields: "status_code",
-            access_token: ACCESS_TOKEN,
-          },
-        }
-      );
-
-      const status = statusRes.data.status_code;
-      console.log(`⏳ Instagram processing attempt ${attempt}: ${status}`);
-
-      if (status === "FINISHED") {
-        isReady = true;
-      }
-
-      if (status === "ERROR") {
-        throw new Error("Instagram video processing failed");
-      }
-    }
-
-    if (!isReady) {
-      throw new Error("Instagram video not ready after attempts");
-    }
-
-    // 🔥 CRITICAL FIX — WAIT BEFORE PUBLISH
-    console.log("⏳ Waiting 8 seconds before publishing...");
-    await sleep(8000);
-
-    // Step 3 — Publish
     const publishRes = await axios.post(
-      `https://graph.facebook.com/v18.0/${IG_USER_ID}/media_publish`,
+      `https://graph.facebook.com/v23.0/${IG_USER_ID}/media_publish`,
       {
         creation_id: creationId,
         access_token: ACCESS_TOKEN,
       }
     );
 
-    console.log("✅ Instagram Reel posted:", publishRes.data);
+    console.log(
+      "✅ Reel posted:",
+      publishRes.data
+    );
+
     return publishRes.data;
 
   } catch (err) {
     console.error(
-      "❌ Instagram ERROR:",
-      err.response?.data || err.message
+      "❌ Instagram Reel ERROR:",
+      JSON.stringify(
+        err.response?.data,
+        null,
+        2
+      ) || err.message
     );
+
     throw err;
   }
 }
