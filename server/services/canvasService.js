@@ -1,49 +1,22 @@
-//best design 
-// ─────────────────────────────────────────────────────────────
-// FLASH KERALAM — PREMIUM RED NEWS POSTER
-// ATTRACTIVE BREAKING NEWS STYLE
-// ─────────────────────────────────────────────────────────────
-
-const {
-  createCanvas,
-  GlobalFonts,
-  loadImage,
-} = require("@napi-rs/canvas");
-
+const { createCanvas, GlobalFonts, loadImage } = require("@napi-rs/canvas");
 const path = require("path");
-
-// ─────────────────────────────────────
-// FONT REGISTRATION
-// ─────────────────────────────────────
 
 GlobalFonts.registerFromPath(
   path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
   "Malayalam"
 );
-
 GlobalFonts.registerFromPath(
   path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf"),
   "English"
 );
 
-// ─────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────
-
-const W            = 1080;
-const H            = 1280;
-const DEFAULT_AD_H = 180;  // fallback height when no image / load fails
-const MAX_AD_H     = 320;  // cap so portrait/square images don't blow up
-
-// ═════════════════════════════════════════════════════════════
-// HELPERS
-// ═════════════════════════════════════════════════════════════
+const W = 1080;
+const H = 1380;
 
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(" ");
   const lines = [];
   let cur = "";
-
   for (const word of words) {
     const test = cur ? cur + " " + word : word;
     if (ctx.measureText(test).width > maxWidth && cur) {
@@ -53,7 +26,6 @@ function wrapText(ctx, text, maxWidth) {
       cur = test;
     }
   }
-
   if (cur) lines.push(cur);
   return lines;
 }
@@ -68,67 +40,23 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// ═════════════════════════════════════════════════════════════
-// COMPUTE AD HEIGHT
-// Works for any image dimension — caps to MAX_AD_H
-// ═════════════════════════════════════════════════════════════
+async function createNewsPoster(newsItem) {
+  const canvas = createCanvas(W, H);
+  const ctx    = canvas.getContext("2d");
 
-function computeAdHeight(adImg) {
-  if (!adImg) return DEFAULT_AD_H;
-
-  // Natural height if we scale image to poster width
-  const naturalH = Math.round((adImg.height / adImg.width) * W);
-
-  // Use natural height but clamp between DEFAULT_AD_H and MAX_AD_H
-  return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
-}
-
-// ═════════════════════════════════════════════════════════════
-// DRAW POSTER
-// ═════════════════════════════════════════════════════════════
-
-async function drawPoster(ctx, newsItem) {
-
-  // ─────────────────────────────────
-  // RED BACKGROUND
-  // ─────────────────────────────────
-
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0,    "#ff2a2a");
-  bg.addColorStop(0.25, "#e60000");
-  bg.addColorStop(0.55, "#c40000");
-  bg.addColorStop(1,    "#7a0000");
-
-  ctx.fillStyle = bg;
+  // ── 1. Dark charcoal background ──────────────────────────
+  ctx.fillStyle = "#181818";
   ctx.fillRect(0, 0, W, H);
 
-  // diagonal texture
-  ctx.save();
-  ctx.globalAlpha = 0.035;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth   = 1;
-
-  for (let i = -H; i < W + H; i += 18) {
-    ctx.beginPath();
-    ctx.moveTo(i, 0);
-    ctx.lineTo(i + H, H);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-
-  // ─────────────────────────────────
-  // NEWS IMAGE
-  // ─────────────────────────────────
-
-  const IMG_H = Math.round(H * 0.58);
+  // ── 2. Photo — top 46% ───────────────────────────────────
+  const IMG_H = Math.round(H * 0.46);
 
   try {
     const img   = await loadImage(newsItem.image);
     const scale = Math.max(W / img.width, IMG_H / img.height);
     const dw    = img.width  * scale;
     const dh    = img.height * scale;
-    const dx    = (W     - dw) / 2;
+    const dx    = (W - dw) / 2;
     const dy    = (IMG_H - dh) / 2;
 
     ctx.save();
@@ -136,444 +64,245 @@ async function drawPoster(ctx, newsItem) {
     ctx.rect(0, 0, W, IMG_H);
     ctx.clip();
     ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
 
-    const fade = ctx.createLinearGradient(0, IMG_H * 0.6, 0, IMG_H);
-    fade.addColorStop(0, "rgba(0,0,0,0)");
-    fade.addColorStop(1, "rgba(0,0,0,0.45)");
+    // Fade photo → dark at the bottom
+    const fade = ctx.createLinearGradient(0, IMG_H * 0.52, 0, IMG_H);
+    fade.addColorStop(0, "rgba(24,24,24,0)");
+    fade.addColorStop(1, "rgba(24,24,24,1)");
     ctx.fillStyle = fade;
     ctx.fillRect(0, 0, W, IMG_H);
 
-    ctx.restore();
-  } catch (err) {
-    console.log("[News Image Error]", err.message);
-    ctx.fillStyle = "#900000";
+  } catch {
+    const fallback = ctx.createLinearGradient(0, 0, 0, IMG_H);
+    fallback.addColorStop(0, "#2a2a2a");
+    fallback.addColorStop(1, "#181818");
+    ctx.fillStyle = fallback;
     ctx.fillRect(0, 0, W, IMG_H);
   }
 
-  // ─────────────────────────────────
-  // TOP ACCENT BAR
-  // ─────────────────────────────────
-
-  const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
-  accentGrad.addColorStop(0,   "rgba(255,180,0,0)");
-  accentGrad.addColorStop(0.2, "rgba(255,180,0,1)");
-  accentGrad.addColorStop(0.8, "rgba(255,180,0,1)");
-  accentGrad.addColorStop(1,   "rgba(255,180,0,0)");
-
-  ctx.fillStyle = accentGrad;
-  ctx.fillRect(0, 0, W, 4);
-
-  // ─────────────────────────────────
-  // HEADER BAR
-  // ─────────────────────────────────
-
-  const HEADER_H  = 90;
-  const HEADER_BG = ctx.createLinearGradient(0, 0, 0, HEADER_H);
-  HEADER_BG.addColorStop(0, "rgba(0,0,0,0.55)");
-  HEADER_BG.addColorStop(1, "rgba(0,0,0,0.20)");
-
-  ctx.fillStyle = HEADER_BG;
-  ctx.fillRect(0, 0, W, HEADER_H);
-
-  // ─────────────────────────────────
-  // DATE — pill tag, top right
-  // ─────────────────────────────────
-
-  const now     = new Date();
-  const day     = String(now.getDate()).padStart(2, "0");
-  const month   = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
-  const year    = now.getFullYear();
-  const dateStr = `${day} ${month} ${year}`;
-
-  const HEADER_CY = HEADER_H / 2;
+  // ── 3. Logo — FLASH / KERALAM — centered at image bottom ─
+  //  Positioned so it straddles the image/text boundary
+  const LOGO_CY  = IMG_H - 30;   // center of FLASH text
+  const FLASH_SZ = 64;
+  const KER_SZ   = 20;
 
   ctx.save();
-  ctx.font = "bold 26px English";
+  ctx.textAlign    = "center";
+  ctx.shadowColor  = "rgba(0,0,0,0.98)";
+  ctx.shadowBlur   = 20;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
 
-  const DATE_TW     = ctx.measureText(dateStr).width;
-  const DATE_PAD_X  = 22;
-  const DATE_PILL_W = DATE_TW + DATE_PAD_X * 2;
-  const DATE_PILL_H = 46;
-  const DATE_PILL_X = W - 44 - DATE_PILL_W;
-  const DATE_PILL_Y = HEADER_CY - DATE_PILL_H / 2;
+  // "FLASH" — large bold white
+  ctx.font          = `bold ${FLASH_SZ}px English`;
+  ctx.fillStyle     = "#ffffff";
+  ctx.textBaseline  = "middle";
+  ctx.letterSpacing = "5px";
+  ctx.fillText("FLASH", W / 2, LOGO_CY);
+  ctx.letterSpacing = "0px";
 
-  const pillGrad = ctx.createLinearGradient(0, DATE_PILL_Y, 0, DATE_PILL_Y + DATE_PILL_H);
-  pillGrad.addColorStop(0, "#ffe566");
-  pillGrad.addColorStop(1, "#e08800");
+  // "KERALAM" — small spaced below
+  ctx.font          = `bold ${KER_SZ}px English`;
+  ctx.fillStyle     = "#dddddd";
+  ctx.textBaseline  = "top";
+  ctx.letterSpacing = "10px";
+  ctx.fillText("KERALAM", W / 2 + 5, LOGO_CY + FLASH_SZ / 2 + 4);
+  ctx.letterSpacing = "0px";
 
-  ctx.shadowColor   = "rgba(0,0,0,0.40)";
-  ctx.shadowBlur    = 16;
-  ctx.shadowOffsetY = 4;
+  ctx.restore();
 
-  roundRect(ctx, DATE_PILL_X, DATE_PILL_Y, DATE_PILL_W, DATE_PILL_H, 23);
-  ctx.fillStyle = pillGrad;
+  // ── 4. Date box — red 3D, centered, just below KERALAM ───
+  const now   = new Date();
+  const day   = String(now.getDate()).padStart(2, "0");
+  const month = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
+  const year  = String(now.getFullYear());
+
+  // Measure for tight box
+  ctx.font = "bold 42px English";
+  const dayW   = ctx.measureText(day).width;
+  ctx.font = "bold 24px English";
+  const monthW = ctx.measureText(month).width;
+  ctx.font = "bold 19px English";
+  const yearW  = ctx.measureText(year).width;
+
+  const D_GAP  = 10;
+  const MYW    = Math.max(monthW, yearW);
+  const D_PADX = 26;
+  const BOX_H  = 70;
+  const BOX_W  = dayW + D_GAP + MYW + D_PADX * 2;
+  const BOX_RAD = 7;
+  const BOX_X  = W / 2 - BOX_W / 2;
+  const BOX_Y  = LOGO_CY + FLASH_SZ / 2 + KER_SZ + 14;
+
+  ctx.save();
+  ctx.shadowBlur = 0;
+
+  // Dark offset (3D thickness)
+  ctx.globalAlpha = 0.65;
+  ctx.fillStyle   = "#5a0000";
+  roundRect(ctx, BOX_X + 5, BOX_Y + 5, BOX_W, BOX_H, BOX_RAD);
   ctx.fill();
 
-  ctx.shadowColor = "transparent";
-  const sheen = ctx.createLinearGradient(0, DATE_PILL_Y, 0, DATE_PILL_Y + DATE_PILL_H * 0.5);
-  sheen.addColorStop(0, "rgba(255,255,255,0.30)");
+  // Main red face — gradient
+  ctx.globalAlpha = 1;
+  const redGrad = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X, BOX_Y + BOX_H);
+  redGrad.addColorStop(0,    "#ff2828");
+  redGrad.addColorStop(0.18, "#dd0000");
+  redGrad.addColorStop(0.80, "#bb0000");
+  redGrad.addColorStop(1,    "#880000");
+  ctx.fillStyle = redGrad;
+  roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_RAD);
+  ctx.fill();
+
+  // Specular sheen top
+  const sheen = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X, BOX_Y + BOX_H * 0.45);
+  sheen.addColorStop(0, "rgba(255,255,255,0.28)");
   sheen.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = sheen;
-  roundRect(ctx, DATE_PILL_X, DATE_PILL_Y, DATE_PILL_W, DATE_PILL_H, 23);
+  roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_RAD);
   ctx.fill();
 
-  ctx.font         = "bold 26px English";
-  ctx.fillStyle    = "#1a0a00";
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(dateStr, DATE_PILL_X + DATE_PILL_W / 2, HEADER_CY + 1);
+  // Date text inside box
+  const DAY_X = BOX_X + D_PADX;
+  const MID_Y = BOX_Y + BOX_H / 2;
 
-  ctx.restore();
-
-  // ─────────────────────────────────
-  // LOGO — top left inside header
-  // ─────────────────────────────────
-
-  const LOGO_MAX_W   = 600;
-  const LOGO_MAX_H   = 300;
-  const LOGO_LEFT    = 10;
-  const LOGO_CENTER_Y = HEADER_H / 2 + 35;
-
-  try {
-    const logo  = await loadImage(path.join(__dirname, "../assets/logo.png"));
-    const scale = Math.min(LOGO_MAX_W / logo.width, LOGO_MAX_H / logo.height);
-    const lw    = logo.width  * scale;
-    const lh    = logo.height * scale;
-    const lx    = LOGO_LEFT;
-    const ly    = LOGO_CENTER_Y - lh / 2;
-
-    ctx.save();
-    ctx.shadowColor   = "rgba(0,0,0,0.75)";
-    ctx.shadowBlur    = 32;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 6;
-    ctx.drawImage(logo, lx, ly, lw, lh);
-    ctx.restore();
-
-  } catch (err) {
-    console.warn("[Logo] Could not load assets/logo.png:", err.message);
-
-    ctx.save();
-    ctx.textAlign    = "left";
-    ctx.textBaseline = "middle";
-    ctx.font         = "bold 52px English";
-    ctx.fillStyle    = "#ffffff";
-    ctx.shadowColor  = "rgba(0,0,0,0.8)";
-    ctx.shadowBlur   = 18;
-    ctx.fillText("FLASH", LOGO_LEFT, LOGO_CENTER_Y - 30);
-
-    const goldGrad = ctx.createLinearGradient(0, LOGO_CENTER_Y, 0, LOGO_CENTER_Y + 52);
-    goldGrad.addColorStop(0, "#ffe566");
-    goldGrad.addColorStop(1, "#ffaa00");
-
-    ctx.font      = "bold 52px English";
-    ctx.fillStyle = goldGrad;
-    ctx.fillText("KERALAM", LOGO_LEFT, LOGO_CENTER_Y + 30);
-    ctx.restore();
-  }
-
-  // ─────────────────────────────────
-  // BREAKING NEWS TAG
-  // ─────────────────────────────────
-
-  const tagLabel = newsItem.tag || "BREAKING NEWS";
-  const tagW     = 420;
-  const tagH     = 72;
-  const tagX     = (W - tagW) / 2;
-  const tagY     = IMG_H - 36;
-
-  ctx.save();
-  ctx.shadowColor   = "rgba(0,0,0,0.40)";
-  ctx.shadowBlur    = 30;
-  ctx.shadowOffsetY = 10;
-
-  const tagGrad = ctx.createLinearGradient(0, tagY, 0, tagY + tagH);
-  tagGrad.addColorStop(0,    "#4c63ff");
-  tagGrad.addColorStop(0.45, "#3148d8");
-  tagGrad.addColorStop(1,    "#1e2d8f");
-
-  ctx.fillStyle = tagGrad;
-  roundRect(ctx, tagX, tagY, tagW, tagH, 10);
-  ctx.fill();
-  ctx.restore();
-
-  const gloss = ctx.createLinearGradient(0, tagY, 0, tagY + tagH);
-  gloss.addColorStop(0,   "rgba(255,255,255,0.25)");
-  gloss.addColorStop(0.4, "rgba(255,255,255,0.08)");
-  gloss.addColorStop(1,   "rgba(255,255,255,0)");
-
-  ctx.fillStyle = gloss;
-  roundRect(ctx, tagX, tagY, tagW, tagH, 10);
-  ctx.fill();
-
-  ctx.strokeStyle = "rgba(255,255,255,0.22)";
-  ctx.lineWidth   = 2;
-  roundRect(ctx, tagX, tagY, tagW, tagH, 10);
-  ctx.stroke();
-
-  ctx.fillStyle = "rgba(255,255,255,0.12)";
-  roundRect(ctx, tagX + 8, tagY + 8, tagW - 16, 16, 8);
-  ctx.fill();
-
-  ctx.save();
-  ctx.font         = "italic bold 38px English";
+  ctx.font         = "bold 42px English";
   ctx.fillStyle    = "#ffffff";
-  ctx.textAlign    = "center";
+  ctx.textAlign    = "left";
   ctx.textBaseline = "middle";
-  ctx.shadowColor  = "rgba(0,0,0,0.35)";
-  ctx.shadowBlur   = 12;
-  ctx.fillText(tagLabel, W / 2, tagY + tagH / 2 + 1);
+  ctx.fillText(day, DAY_X, MID_Y);
+
+  const MY_X = DAY_X + dayW + D_GAP;
+  ctx.font         = "bold 24px English";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(month, MY_X, MID_Y - 1);
+
+  ctx.font         = "bold 19px English";
+  ctx.fillStyle    = "#ffcccc";
+  ctx.textBaseline = "top";
+  ctx.fillText(year, MY_X, MID_Y + 1);
+
   ctx.restore();
 
-  // ─────────────────────────────────
-  // TITLE
-  // ─────────────────────────────────
-
-  const PAD      = 58;
-  const TEXT_TOP = IMG_H + 56;
-  const TEXT_BOT = H - 36;
+  // ── 5. Malayalam title text ───────────────────────────────
+  //
+  //  Body lines  → white, compact line-height
+  //  2nd-to-last → golden yellow gradient
+  //  Last line   → white, ~2.2× larger (big impact line)
+  //
+  const PAD      = 52;
+  const TEXT_TOP = BOX_Y + BOX_H + 8;    // just below date box
+  const TEXT_BOT = H - 50;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const TEXT_W   = W - PAD * 2;
   const CX       = W / 2;
 
-  let allSegments = [];
-
-  if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
-    allSegments = newsItem.titleLines;
-  } else if (newsItem.title) {
-    allSegments = [newsItem.title];
-  }
+  // Resolve inputs
+  let bodyInput = [];
+  let lastInput = "";
 
   if (newsItem.lastLine) {
-    allSegments = [
-      ...(Array.isArray(newsItem.titleLines)
-        ? newsItem.titleLines
-        : [newsItem.title || ""]),
-      newsItem.lastLine,
-    ];
-  }
-
-  let FONT_SIZE = 72;
-  let allLines  = [];
-
-  while (FONT_SIZE >= 38) {
-    ctx.font = `bold ${FONT_SIZE}px Malayalam`;
-    allLines  = [];
-
-    for (const seg of allSegments) {
-      allLines.push(...wrapText(ctx, seg, TEXT_W));
+    lastInput = newsItem.lastLine;
+    bodyInput = Array.isArray(newsItem.titleLines)
+      ? newsItem.titleLines
+      : [newsItem.title || ""];
+  } else if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
+    lastInput = newsItem.titleLines[newsItem.titleLines.length - 1];
+    bodyInput  = newsItem.titleLines.slice(0, -1);
+  } else {
+    const full     = newsItem.title || "";
+    const spaceIdx = full.lastIndexOf(" ");
+    if (spaceIdx > 0) {
+      lastInput = full.slice(spaceIdx + 1);
+      bodyInput = [full.slice(0, spaceIdx)];
+    } else {
+      lastInput = full;
+      bodyInput = [];
     }
-
-    const LINE_H = Math.round(FONT_SIZE * 1.18);
-    if (allLines.length * LINE_H <= TEXT_H) break;
-    FONT_SIZE -= 2;
   }
 
-  const LINE_H  = Math.round(FONT_SIZE * 1.18);
-  const totalTH = allLines.length * LINE_H;
-  let   drawY   = TEXT_TOP + Math.round((TEXT_H - totalTH) / 2);
+  // Auto-size body font — tight line-height 1.18
+  const LINE_H_RATIO = 1.18;   // compact like reference
+  let BODY_SIZE = 82;
+  let wrappedBody = [];
+
+  while (BODY_SIZE >= 38) {
+    ctx.font = `bold ${BODY_SIZE}px Malayalam`;
+    wrappedBody = [];
+    for (const seg of bodyInput) {
+      if (seg) wrappedBody.push(...wrapText(ctx, seg, TEXT_W));
+    }
+    // Reserve 38% of text zone for the large last line
+    const bodyH = wrappedBody.length * BODY_SIZE * LINE_H_RATIO;
+    if (bodyH <= TEXT_H * 0.62) break;
+    BODY_SIZE -= 2;
+  }
+
+  // Auto-size last line — ~2.2× body
+  let LAST_SIZE = Math.round(BODY_SIZE * 1.7);
+  let wrappedLast = [];
+
+  while (LAST_SIZE >= 60) {
+    ctx.font   = `bold ${LAST_SIZE}px Malayalam`;
+    wrappedLast = lastInput ? wrapText(ctx, lastInput, TEXT_W) : [];
+    const lastH = wrappedLast.length * LAST_SIZE * 1.10;
+    if (lastH <= TEXT_H * 0.42) break;
+    LAST_SIZE -= 4;
+  }
+
+  const LINE_H_BODY = Math.round(BODY_SIZE * LINE_H_RATIO);
+  const LINE_H_LAST = Math.round(LAST_SIZE * 1.10);
+  const totalH = wrappedBody.length * LINE_H_BODY + wrappedLast.length * LINE_H_LAST;
+
+  // Vertically centre in text zone
+  let drawY = TEXT_TOP + Math.round((TEXT_H - totalH) / 2);
 
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
 
-  for (let i = 0; i < allLines.length; i++) {
+  // Body lines — white, second-to-last = yellow
+  const yellowIdx = wrappedBody.length - 1;
+
+  for (let i = 0; i < wrappedBody.length; i++) {
     ctx.save();
-    ctx.font          = `bold ${FONT_SIZE}px Malayalam`;
-    ctx.shadowColor   = "rgba(0,0,0,0.95)";
-    ctx.shadowBlur    = 18;
+    ctx.font          = `bold ${BODY_SIZE}px Malayalam`;
+    ctx.shadowColor   = "rgba(0,0,0,0.90)";
+    ctx.shadowBlur    = 10;
     ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 3;
+    ctx.shadowOffsetY = 2;
 
-    const isLast       = i === allLines.length - 1;
-    const isSecondLast = i === allLines.length - 2;
-
-    if (isLast) {
-      const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
-      g.addColorStop(0, "#ffe566");
-      g.addColorStop(1, "#ffaa00");
-      ctx.fillStyle = g;
-    } else if (isSecondLast && allLines.length > 2) {
-      const g = ctx.createLinearGradient(0, drawY, 0, drawY + FONT_SIZE);
-      g.addColorStop(0, "#fff0aa");
-      g.addColorStop(1, "#ffd040");
-      ctx.fillStyle = g;
+    if (i === yellowIdx) {
+      const yg = ctx.createLinearGradient(0, drawY, 0, drawY + BODY_SIZE);
+      yg.addColorStop(0, "#ffe033");
+      yg.addColorStop(1, "#ffaa00");
+      ctx.fillStyle = yg;
     } else {
       ctx.fillStyle = "#ffffff";
     }
 
-    ctx.fillText(allLines[i], CX, drawY);
+    ctx.fillText(wrappedBody[i], CX, drawY);
     ctx.restore();
-    drawY += LINE_H;
+    drawY += LINE_H_BODY;
   }
 
-  // ─────────────────────────────────
-  // FOOTER
-  // ─────────────────────────────────
-
-  const FOOT_Y = H - 34;
-
-  ctx.save();
-  ctx.fillStyle = "rgba(255,255,255,0.10)";
-  ctx.fillRect(0, FOOT_Y - 1, W, 1);
-
-  ctx.font         = "bold 17px English";
-  ctx.fillStyle    = "rgba(255,220,120,0.75)";
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("www.flashkeralam.com", W / 2, FOOT_Y + 17);
-  ctx.restore();
-}
-
-// ═════════════════════════════════════════════════════════════
-// AD STRIP  ← COMPLETELY REWRITTEN
-// Handles ALL image dimensions using cover-scale + clip
-// ═════════════════════════════════════════════════════════════
-
-function drawAdStrip(ctx, adImg, yOffset, adH) {
-
-  // ── Black base fill ─────────────────────────────────────────
-  ctx.fillStyle = "#000000";
-  ctx.fillRect(0, yOffset, W, adH);
-
-  // ── Has a real image → cover-scale + clip ───────────────────
-  if (adImg) {
-
-    // Cover scaling: fill full W×adH, crop any overflow
-    const scaleW  = W    / adImg.width;
-    const scaleH  = adH  / adImg.height;
-    const scale   = Math.max(scaleW, scaleH);   // cover (not contain)
-
-    const drawW   = adImg.width  * scale;
-    const drawH   = adImg.height * scale;
-    const drawX   = (W   - drawW) / 2;          // centre horizontally
-    const drawY   = yOffset + (adH - drawH) / 2; // centre vertically
-
+  // Last line — large white
+  for (const line of wrappedLast) {
     ctx.save();
-    // Clip strictly to the ad strip area — no overflow on any side
-    ctx.beginPath();
-    ctx.rect(0, yOffset, W, adH);
-    ctx.clip();
-
-    ctx.drawImage(adImg, drawX, drawY, drawW, drawH);
+    ctx.font          = `bold ${LAST_SIZE}px Malayalam`;
+    ctx.shadowColor   = "rgba(0,0,0,0.95)";
+    ctx.shadowBlur    = 18;
+    ctx.shadowOffsetX = 3;
+    ctx.shadowOffsetY = 3;
+    ctx.fillStyle     = "#ffffff";
+    ctx.fillText(line, CX, drawY);
     ctx.restore();
-
-    // Subtle top separator line over the image
-    const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
-    lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
-    lineGrad.addColorStop(0.2, "rgba(255,180,0,0.8)");
-    lineGrad.addColorStop(0.8, "rgba(255,180,0,0.8)");
-    lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
-
-    ctx.fillStyle = lineGrad;
-    ctx.fillRect(0, yOffset, W, 3);
-
-    return;
+    drawY += LINE_H_LAST;
   }
 
-  // ── No image → Malayalam fallback ───────────────────────────
-
-  const bg = ctx.createLinearGradient(0, yOffset, 0, yOffset + adH);
-  bg.addColorStop(0, "#0d1b4b");
-  bg.addColorStop(1, "#091230");
-
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, yOffset, W, adH);
-
-  const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
-  lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
-  lineGrad.addColorStop(0.2, "rgba(255,180,0,1)");
-  lineGrad.addColorStop(0.8, "rgba(255,180,0,1)");
-  lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
-
-  ctx.fillStyle = lineGrad;
-  ctx.fillRect(0, yOffset, W, 3);
-
-  ctx.save();
-  ctx.globalAlpha = 0.06;
-  ctx.fillStyle   = "#ffffff";
-
-  for (let x = 40; x < W; x += 60) {
-    for (let y = yOffset + 20; y < yOffset + adH - 20; y += 40) {
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  ctx.restore();
-
-  ctx.save();
-  ctx.font         = "bold 52px English";
-  ctx.fillStyle    = "rgba(255,200,60,0.22)";
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("📢", W / 2, yOffset + adH / 2 - 8);
-  ctx.restore();
-
-  const line1    = "പരസ്യത്തിനായി ഞങ്ങൾക്ക്";
-  const line2    = "സന്ദേശം അയയ്ക്കുക";
-  const LINE_GAP = 58;
-  const midY     = yOffset + adH / 2;
-
-  ctx.save();
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "middle";
-  ctx.shadowColor  = "rgba(0,0,0,0.8)";
-  ctx.shadowBlur   = 14;
-
-  ctx.font      = "bold 42px Malayalam";
-  ctx.fillStyle = "rgba(255,255,255,0.92)";
-  ctx.fillText(line1, W / 2, midY - LINE_GAP / 2);
-
-  const goldGrad = ctx.createLinearGradient(0, midY, 0, midY + 50);
-  goldGrad.addColorStop(0, "#ffe566");
-  goldGrad.addColorStop(1, "#ffaa00");
-
-  ctx.font      = "bold 44px Malayalam";
-  ctx.fillStyle = goldGrad;
-  ctx.fillText(line2, W / 2, midY + LINE_GAP / 2);
-
-  ctx.restore();
-
-  ctx.fillStyle = lineGrad;
-  ctx.fillRect(0, yOffset + adH - 3, W, 3);
-}
-
-// ═════════════════════════════════════════════════════════════
-// MAIN EXPORT
-// ═════════════════════════════════════════════════════════════
-
-async function createNewsPoster(newsItem) {
-
-  let adImg     = null;
-  let actualAdH = DEFAULT_AD_H;
-
-  if (newsItem.adBannerUrl) {
-    try {
-      console.log("[Ad] Loading:", newsItem.adBannerUrl);
-      adImg = await loadImage(newsItem.adBannerUrl);
-      console.log(`[Ad] Loaded OK: ${adImg.width}x${adImg.height}px`);
-
-      // ── Compute height clamped to MAX_AD_H ─────────────────
-      actualAdH = computeAdHeight(adImg);
-      console.log(`[Ad] Strip height: ${actualAdH}px`);
-
-    } catch (err) {
-      console.error("[Ad] Failed to load image:", err.message);
-      console.error("[Ad] URL was:", newsItem.adBannerUrl);
-      adImg     = null;
-      actualAdH = DEFAULT_AD_H;
-    }
-  }
-
-  const totalH = H + actualAdH;
-  console.log(`[Canvas] ${W}x${totalH} (poster ${H} + ad ${actualAdH})`);
-
-  const canvas = createCanvas(W, totalH);
-  const ctx    = canvas.getContext("2d");
-
-  await drawPoster(ctx, newsItem);
-  drawAdStrip(ctx, adImg, H, actualAdH);
+  // ── 6. Reset ──────────────────────────────────────────────
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "alphabetic";
 
   return canvas.toBuffer("image/png");
 }
