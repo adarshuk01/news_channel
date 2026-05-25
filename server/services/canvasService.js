@@ -10,8 +10,14 @@ GlobalFonts.registerFromPath(
   "English"
 );
 
-const W = 1080;
-const H = 1380;
+const W            = 1080;
+const H            = 1380;
+const DEFAULT_AD_H = 180;
+const MAX_AD_H     = 320;
+
+// ═════════════════════════════════════════════════════════════
+// HELPERS
+// ═════════════════════════════════════════════════════════════
 
 function wrapText(ctx, text, maxWidth) {
   const words = text.split(" ");
@@ -40,8 +46,157 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+function computeAdHeight(adImg) {
+  if (!adImg) return DEFAULT_AD_H;
+  const naturalH = Math.round((adImg.height / adImg.width) * W);
+  return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
+}
+
+// ═════════════════════════════════════════════════════════════
+// AD STRIP  (ported from blue matrix design)
+// ═════════════════════════════════════════════════════════════
+
+function drawAdStrip(ctx, adImg, yOffset, adH) {
+
+  // Base black background
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, yOffset, W, adH);
+
+  // ── Real ad image supplied ────────────────────────────────
+  if (adImg) {
+    const scaleW = W / adImg.width;
+    const scaleH = adH / adImg.height;
+    const scale  = Math.max(scaleW, scaleH);
+
+    const drawW = adImg.width  * scale;
+    const drawH = adImg.height * scale;
+    const drawX = (W - drawW) / 2;
+    const drawY = yOffset + (adH - drawH) / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, yOffset, W, adH);
+    ctx.clip();
+    ctx.drawImage(adImg, drawX, drawY, drawW, drawH);
+    ctx.restore();
+
+    // Gold top divider line
+    const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
+    lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
+    lineGrad.addColorStop(0.2, "rgba(255,180,0,0.8)");
+    lineGrad.addColorStop(0.8, "rgba(255,180,0,0.8)");
+    lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(0, yOffset, W, 3);
+
+    return;
+  }
+
+  // ── Fallback ad (no image) ────────────────────────────────
+
+  // Dark gradient background
+  const bg = ctx.createLinearGradient(0, yOffset, 0, yOffset + adH);
+  bg.addColorStop(0, "#0d1b4b");
+  bg.addColorStop(1, "#091230");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, yOffset, W, adH);
+
+  // Gold top + bottom divider lines
+  const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
+  lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
+  lineGrad.addColorStop(0.2, "rgba(255,180,0,1)");
+  lineGrad.addColorStop(0.8, "rgba(255,180,0,1)");
+  lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
+
+  ctx.fillStyle = lineGrad;
+  ctx.fillRect(0, yOffset, W, 3);
+
+  // Subtle dot pattern
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle   = "#ffffff";
+  for (let x = 40; x < W; x += 60) {
+    for (let y = yOffset + 20; y < yOffset + adH - 20; y += 40) {
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  // Megaphone emoji backdrop
+  ctx.save();
+  ctx.font         = "bold 52px English";
+  ctx.fillStyle    = "rgba(255,200,60,0.22)";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("📢", W / 2, yOffset + adH / 2 - 8);
+  ctx.restore();
+
+  // Malayalam fallback text
+  const line1    = "പരസ്യത്തിനായി ഞങ്ങൾക്ക്";
+  const line2    = "സന്ദേശം അയയ്ക്കുക";
+  const LINE_GAP = 58;
+  const midY     = yOffset + adH / 2;
+
+  ctx.save();
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor  = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur   = 14;
+
+  ctx.font      = "bold 42px Malayalam";
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillText(line1, W / 2, midY - LINE_GAP / 2);
+
+  const goldGrad = ctx.createLinearGradient(0, midY, 0, midY + 50);
+  goldGrad.addColorStop(0, "#ffe566");
+  goldGrad.addColorStop(1, "#ffaa00");
+
+  ctx.font      = "bold 44px Malayalam";
+  ctx.fillStyle = goldGrad;
+  ctx.fillText(line2, W / 2, midY + LINE_GAP / 2);
+
+  ctx.restore();
+
+  // Gold bottom divider line
+  ctx.fillStyle = lineGrad;
+  ctx.fillRect(0, yOffset + adH - 3, W, 3);
+}
+
+// ═════════════════════════════════════════════════════════════
+// MAIN POSTER DRAW
+// ═════════════════════════════════════════════════════════════
+
 async function createNewsPoster(newsItem) {
-  const canvas = createCanvas(W, H);
+
+  // ── Load ad image if URL supplied ────────────────────────
+  const hasAd   = Boolean(newsItem.adBannerUrl);
+  let adImg     = null;
+  let actualAdH = 0; // 0 = no ad strip at all
+
+  if (hasAd) {
+    try {
+      console.log("[Ad] Loading:", newsItem.adBannerUrl);
+      adImg     = await loadImage(newsItem.adBannerUrl);
+      console.log(`[Ad] Loaded OK: ${adImg.width}x${adImg.height}px`);
+      actualAdH = computeAdHeight(adImg);
+      console.log(`[Ad] Strip height: ${actualAdH}px`);
+    } catch (err) {
+      console.error("[Ad] Failed to load image:", err.message);
+      console.error("[Ad] URL was:", newsItem.adBannerUrl);
+      // URL was given but image failed — show fallback ad strip
+      adImg     = null;
+      actualAdH = DEFAULT_AD_H;
+    }
+  } else {
+    console.log("[Ad] No adBannerUrl provided — skipping ad strip entirely.");
+  }
+
+  const totalH = H + actualAdH;
+  console.log(`[Canvas] ${W}x${totalH} (poster ${H}${actualAdH ? ` + ad ${actualAdH}` : ", no ad"})`);
+
+  const canvas = createCanvas(W, totalH);
   const ctx    = canvas.getContext("2d");
 
   // ── 1. Dark charcoal background ──────────────────────────
@@ -81,9 +236,8 @@ async function createNewsPoster(newsItem) {
     ctx.fillRect(0, 0, W, IMG_H);
   }
 
-  // ── 3. Logo — FLASH / KERALAM — centered at image bottom ─
-  //  Positioned so it straddles the image/text boundary
-  const LOGO_CY  = IMG_H - 30;   // center of FLASH text
+  // ── 3. Logo — FLASH / KERALAM ─────────────────────────────
+  const LOGO_CY  = IMG_H - 30;
   const FLASH_SZ = 64;
   const KER_SZ   = 20;
 
@@ -94,7 +248,6 @@ async function createNewsPoster(newsItem) {
   ctx.shadowOffsetX = 2;
   ctx.shadowOffsetY = 2;
 
-  // "FLASH" — large bold white
   ctx.font          = `bold ${FLASH_SZ}px English`;
   ctx.fillStyle     = "#ffffff";
   ctx.textBaseline  = "middle";
@@ -102,7 +255,6 @@ async function createNewsPoster(newsItem) {
   ctx.fillText("FLASH", W / 2, LOGO_CY);
   ctx.letterSpacing = "0px";
 
-  // "KERALAM" — small spaced below
   ctx.font          = `bold ${KER_SZ}px English`;
   ctx.fillStyle     = "#dddddd";
   ctx.textBaseline  = "top";
@@ -112,13 +264,12 @@ async function createNewsPoster(newsItem) {
 
   ctx.restore();
 
-  // ── 4. Date box — red 3D, centered, just below KERALAM ───
+  // ── 4. Date box — red 3D ─────────────────────────────────
   const now   = new Date();
   const day   = String(now.getDate()).padStart(2, "0");
   const month = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
   const year  = String(now.getFullYear());
 
-  // Measure for tight box
   ctx.font = "bold 42px English";
   const dayW   = ctx.measureText(day).width;
   ctx.font = "bold 24px English";
@@ -144,7 +295,7 @@ async function createNewsPoster(newsItem) {
   roundRect(ctx, BOX_X + 5, BOX_Y + 5, BOX_W, BOX_H, BOX_RAD);
   ctx.fill();
 
-  // Main red face — gradient
+  // Main red face
   ctx.globalAlpha = 1;
   const redGrad = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X, BOX_Y + BOX_H);
   redGrad.addColorStop(0,    "#ff2828");
@@ -155,7 +306,7 @@ async function createNewsPoster(newsItem) {
   roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_RAD);
   ctx.fill();
 
-  // Specular sheen top
+  // Specular sheen
   const sheen = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X, BOX_Y + BOX_H * 0.45);
   sheen.addColorStop(0, "rgba(255,255,255,0.28)");
   sheen.addColorStop(1, "rgba(255,255,255,0)");
@@ -163,7 +314,7 @@ async function createNewsPoster(newsItem) {
   roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_RAD);
   ctx.fill();
 
-  // Date text inside box
+  // Date text
   const DAY_X = BOX_X + D_PADX;
   const MID_Y = BOX_Y + BOX_H / 2;
 
@@ -186,19 +337,13 @@ async function createNewsPoster(newsItem) {
   ctx.restore();
 
   // ── 5. Malayalam title text ───────────────────────────────
-  //
-  //  Body lines  → white, compact line-height
-  //  2nd-to-last → golden yellow gradient
-  //  Last line   → white, ~2.2× larger (big impact line)
-  //
   const PAD      = 52;
-  const TEXT_TOP = BOX_Y + BOX_H + 8;    // just below date box
+  const TEXT_TOP = BOX_Y + BOX_H + 4;
   const TEXT_BOT = H - 50;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const TEXT_W   = W - PAD * 2;
   const CX       = W / 2;
 
-  // Resolve inputs
   let bodyInput = [];
   let lastInput = "";
 
@@ -222,8 +367,7 @@ async function createNewsPoster(newsItem) {
     }
   }
 
-  // Auto-size body font — tight line-height 1.18
-  const LINE_H_RATIO = 1.18;   // compact like reference
+  const LINE_H_RATIO = 1.18;
   let BODY_SIZE = 82;
   let wrappedBody = [];
 
@@ -233,13 +377,11 @@ async function createNewsPoster(newsItem) {
     for (const seg of bodyInput) {
       if (seg) wrappedBody.push(...wrapText(ctx, seg, TEXT_W));
     }
-    // Reserve 38% of text zone for the large last line
     const bodyH = wrappedBody.length * BODY_SIZE * LINE_H_RATIO;
     if (bodyH <= TEXT_H * 0.62) break;
     BODY_SIZE -= 2;
   }
 
-  // Auto-size last line — ~2.2× body
   let LAST_SIZE = Math.round(BODY_SIZE * 1.7);
   let wrappedLast = [];
 
@@ -253,15 +395,13 @@ async function createNewsPoster(newsItem) {
 
   const LINE_H_BODY = Math.round(BODY_SIZE * LINE_H_RATIO);
   const LINE_H_LAST = Math.round(LAST_SIZE * 1.10);
-  const totalH = wrappedBody.length * LINE_H_BODY + wrappedLast.length * LINE_H_LAST;
+  const totalH2 = wrappedBody.length * LINE_H_BODY + wrappedLast.length * LINE_H_LAST;
 
-  // Vertically centre in text zone
-  let drawY = TEXT_TOP + Math.round((TEXT_H - totalH) / 2);
+  let drawY = TEXT_TOP + Math.round((TEXT_H - totalH2) / 2);
 
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
 
-  // Body lines — white, second-to-last = yellow
   const yellowIdx = wrappedBody.length - 1;
 
   for (let i = 0; i < wrappedBody.length; i++) {
@@ -286,7 +426,6 @@ async function createNewsPoster(newsItem) {
     drawY += LINE_H_BODY;
   }
 
-  // Last line — large white
   for (const line of wrappedLast) {
     ctx.save();
     ctx.font          = `bold ${LAST_SIZE}px Malayalam`;
@@ -300,9 +439,14 @@ async function createNewsPoster(newsItem) {
     drawY += LINE_H_LAST;
   }
 
-  // ── 6. Reset ──────────────────────────────────────────────
+  // ── 6. Reset ─────────────────────────────────────────────
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
+
+  // ── 7. Ad strip (only when adBannerUrl supplied) ─────────
+  if (actualAdH > 0) {
+    drawAdStrip(ctx, adImg, H, actualAdH);
+  }
 
   return canvas.toBuffer("image/png");
 }
