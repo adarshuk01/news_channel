@@ -4,13 +4,25 @@ const cloudinary = require("../config/cloudinary");
 const redis      = require("../config/redis");
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const REDIS_KEY_PREFIX = "ad-banner:";          // ad-banner:0, ad-banner:1, …
-const REDIS_COUNT_KEY  = "ad-banner-count";     // total banners stored
-const REDIS_INDEX_KEY  = "ad-banner-index";     // round-robin pointer
+const REDIS_KEY_PREFIX = "ad-banner:";
+const REDIS_COUNT_KEY  = "ad-banner-count";
+const REDIS_INDEX_KEY  = "ad-banner-index";
 
-// Minimum dimensions required (matches the reference banner image)
-const MIN_WIDTH  = 1944;
-const MIN_HEIGHT = 528;
+// ─── Helper: detect real mimetype from buffer magic bytes ─────────────────────
+// multer memoryStorage passes the browser-reported Content-Type, which is based
+// on file extension — NOT the actual file content. A JPEG file named .png will
+// be reported as "image/png". If we pass that wrong mimetype to Cloudinary, it
+// re-encodes the file as PNG, which can produce corrupt or unloadable output.
+// This function reads the first 4 magic bytes to get the TRUE format.
+function detectMimeType(buffer) {
+  const b = buffer;
+  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return "image/jpeg";
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return "image/png";
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return "image/gif";
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return "image/webp";
+  // Default to JPEG if unrecognised
+  return "image/jpeg";
+}
 
 // ─── Helper: get total count ──────────────────────────────────────────────────
 async function getBannerCount() {
@@ -19,64 +31,40 @@ async function getBannerCount() {
 }
 
 // ─── POST /api/ad-banner/upload ───────────────────────────────────────────────
-// Accepts a multipart image, validates dimensions, uploads to Cloudinary,
-// stores the secure_url in Redis.
 exports.uploadAdBanner = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "No image file provided." });
     }
 
-    // ── Dimension check via Cloudinary eager transformation ──────────────────
-    // Upload first to a temp public_id so we can inspect dimensions.
-    // We use the image's buffer (memory storage).
-    const b64   = req.file.buffer.toString("base64");
-    const dataUri = `data:${req.file.mimetype};base64,${b64}`;
+    // Detect real format from magic bytes — ignore browser-reported mimetype
+    const realMime = detectMimeType(req.file.buffer);
+    const b64      = req.file.buffer.toString("base64");
+    const dataUri  = `data:${realMime};base64,${b64}`;
 
-    // Upload to a staging folder first to read dimensions
-    const probe = await cloudinary.uploader.upload(dataUri, {
-      resource_type: "image",
-      folder:        "ad_banners_staging",
-    });
+    console.log(`[Ad Upload] Browser mime: ${req.file.mimetype} | Detected mime: ${realMime}`);
 
-    const { width, height, secure_url, public_id } = probe;
-
-    if (width < MIN_WIDTH || height < MIN_HEIGHT) {
-      // Delete the staging upload immediately
-      await cloudinary.uploader.destroy(public_id, { resource_type: "image" });
-
-      return res.status(400).json({
-        error: `Image too small. Minimum dimensions: ${MIN_WIDTH}×${MIN_HEIGHT}px. ` +
-               `Uploaded image is ${width}×${height}px.`,
-        required: { width: MIN_WIDTH, height: MIN_HEIGHT },
-        uploaded: { width, height },
-      });
-    }
-
-    // ── Move to the real folder ───────────────────────────────────────────────
     const final = await cloudinary.uploader.upload(dataUri, {
       resource_type: "image",
       folder:        "ad_banners",
       overwrite:     false,
     });
 
-    // Delete staging copy
-    await cloudinary.uploader.destroy(public_id, { resource_type: "image" });
+    const { width, height, secure_url } = final;
 
-    // ── Persist URL in Redis ──────────────────────────────────────────────────
     const count = await getBannerCount();
-    const slot  = count; // append at end
+    const slot  = count;
 
-    await redis.set(`${REDIS_KEY_PREFIX}${slot}`, final.secure_url);
+    await redis.set(`${REDIS_KEY_PREFIX}${slot}`, secure_url);
     await redis.set(REDIS_COUNT_KEY, String(count + 1));
 
-    console.log(`🖼️  Ad banner saved to slot ${slot}: ${final.secure_url}`);
+    console.log(`🖼️  Ad banner saved to slot ${slot}: ${secure_url} (${width}x${height})`);
 
     return res.json({
       message:    "✅ Ad banner uploaded successfully.",
       slot,
-      url:        final.secure_url,
-      dimensions: { width: final.width, height: final.height },
+      url:        secure_url,
+      dimensions: { width, height },
     });
 
   } catch (err) {
@@ -87,7 +75,6 @@ exports.uploadAdBanner = async (req, res) => {
 
 
 // ─── GET /api/ad-banner/current ───────────────────────────────────────────────
-// Returns the current ad banner URL (for frontend preview / status).
 exports.getCurrentAdBanner = async (req, res) => {
   try {
     const count = await getBannerCount();
@@ -109,7 +96,6 @@ exports.getCurrentAdBanner = async (req, res) => {
 
 
 // ─── GET /api/ad-banner/list ──────────────────────────────────────────────────
-// Returns all stored ad banners.
 exports.listAdBanners = async (req, res) => {
   try {
     const count = await getBannerCount();
@@ -133,7 +119,6 @@ exports.listAdBanners = async (req, res) => {
 
 
 // ─── DELETE /api/ad-banner/:slot ─────────────────────────────────────────────
-// Removes a specific banner slot (shifts remaining slots down).
 exports.deleteAdBanner = async (req, res) => {
   try {
     const slot  = parseInt(req.params.slot, 10);
@@ -143,17 +128,14 @@ exports.deleteAdBanner = async (req, res) => {
       return res.status(400).json({ error: `Invalid slot. Must be 0–${count - 1}.` });
     }
 
-    // Shift all banners above this slot down by one
     for (let i = slot; i < count - 1; i++) {
       const next = await redis.get(`${REDIS_KEY_PREFIX}${i + 1}`);
       await redis.set(`${REDIS_KEY_PREFIX}${i}`, next);
     }
 
-    // Remove the last slot and decrement count
     await redis.del(`${REDIS_KEY_PREFIX}${count - 1}`);
     await redis.set(REDIS_COUNT_KEY, String(count - 1));
 
-    // Reset index if it would be out-of-range
     const newCount = count - 1;
     if (newCount === 0) {
       await redis.del(REDIS_INDEX_KEY);
@@ -173,8 +155,7 @@ exports.deleteAdBanner = async (req, res) => {
 };
 
 
-// ─── Shared helper used by postNewsController & manualPostController ──────────
-// Returns the next ad banner URL (round-robin) or null if none.
+// ─── Shared helper: round-robin URL for poster generation ────────────────────
 exports.getNextAdBannerUrl = async function () {
   const count = await getBannerCount();
 

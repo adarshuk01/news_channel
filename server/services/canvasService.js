@@ -1,5 +1,6 @@
 const { createCanvas, GlobalFonts, loadImage } = require("@napi-rs/canvas");
-const path = require("path");
+const path  = require("path");
+const sharp = require("sharp");
 
 GlobalFonts.registerFromPath(
   path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
@@ -50,6 +51,26 @@ function computeAdHeight(adImg) {
   if (!adImg) return DEFAULT_AD_H;
   const naturalH = Math.round((adImg.height / adImg.width) * W);
   return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
+}
+
+/**
+ * Fetch a URL and return its raw bytes as a Buffer.
+ */
+async function fetchBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/**
+ * Fetch a URL, transcode to JPEG via sharp, and return the JPEG Buffer.
+ * This normalises WebP, PNG, AVIF, etc. into a format @napi-rs/canvas
+ * can always decode, and strips any alpha channel that would cause issues
+ * when drawing onto an opaque canvas.
+ */
+async function fetchAsJpegBuffer(url) {
+  const raw = await fetchBuffer(url);
+  return sharp(raw).jpeg().toBuffer();
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -178,7 +199,8 @@ async function createNewsPoster(newsItem) {
   if (hasAd) {
     try {
       console.log("[Ad] Loading:", newsItem.adBannerUrl);
-      adImg     = await loadImage(newsItem.adBannerUrl);
+      const jpegBuf = await fetchAsJpegBuffer(newsItem.adBannerUrl); // fetch → sharp → JPEG buffer
+      adImg         = await loadImage(jpegBuf);                      // loadImage from buffer
       console.log(`[Ad] Loaded OK: ${adImg.width}x${adImg.height}px`);
       actualAdH = computeAdHeight(adImg);
       console.log(`[Ad] Strip height: ${actualAdH}px`);
@@ -187,7 +209,7 @@ async function createNewsPoster(newsItem) {
       console.error("[Ad] URL was:", newsItem.adBannerUrl);
       // URL was given but image failed — show fallback ad strip
       adImg     = null;
-      actualAdH = DEFAULT_AD_H;
+      actualAdH = 0;
     }
   } else {
     console.log("[Ad] No adBannerUrl provided — skipping ad strip entirely.");
