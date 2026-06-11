@@ -38,6 +38,14 @@ const SOURCES = {
     icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png",
     channel: "News18 Malayalam",
   },
+
+  mathrubhumi: {
+    apiUrl: "https://www.mathrubhumi.com/263/api/home-api-1",
+    baseUrl: "https://www.mathrubhumi.com",
+    imageBaseUrl: "https://img.mathrubhumi.com",
+    icon: "https://www.mathrubhumi.com/favicon.ico",
+    channel: "Mathrubhumi",
+  },
 };
 
 // ─────────────────────────────────────────────
@@ -84,6 +92,17 @@ async function loadPage(url) {
 async function fetchRaw(url) {
   const { data } = await axios.get(url, {
     headers: DEFAULT_HEADERS,
+    timeout: 15000,
+  });
+  return data;
+}
+
+async function fetchJson(url) {
+  const { data } = await axios.get(url, {
+    headers: {
+      ...DEFAULT_HEADERS,
+      Accept: "application/json, text/plain, */*",
+    },
     timeout: 15000,
   });
   return data;
@@ -269,29 +288,24 @@ async function scrapeNews18() {
   const data = await fetchRaw(sitemapUrl);
   const news = [];
 
-  // Split on <url> entries
   const urlBlocks = data.split("<url>");
 
   for (const block of urlBlocks.slice(1)) {
     const chunk = block.split("</url>")[0];
 
-    // loc → article URL
     const loc = getXmlTag(chunk, "loc");
     if (!loc || !loc.includes("malayalam.news18.com")) continue;
 
-    // news:title
     const rawTitle =
       getXmlTag(chunk, "news:title") || getXmlTag(chunk, "title");
     const title = stripLive(stripCdata(rawTitle).trim());
     if (!title) continue;
 
-    // news:publication_date or lastmod
     const pubDate =
       getXmlTag(chunk, "news:publication_date") ||
       getXmlTag(chunk, "lastmod") ||
       "";
 
-    // Format date to readable string
     let readableTime = pubDate;
     if (pubDate) {
       try {
@@ -308,11 +322,9 @@ async function scrapeNews18() {
       }
     }
 
-    // image:loc
     const rawImageLoc = getXmlTag(chunk, "image:loc");
     const image = stripCdata(rawImageLoc).trim();
 
-    // keywords → use full keyword string as summary
     const rawKeywords = getXmlTag(chunk, "news:keywords");
     const summary = stripCdata(rawKeywords).trim();
 
@@ -327,6 +339,81 @@ async function scrapeNews18() {
         channel,
       });
     }
+  }
+
+  return news;
+}
+
+// ─────────────────────────────────────────────
+// MATHRUBHUMI — JSON API
+// ─────────────────────────────────────────────
+async function scrapeMathrubhumi() {
+  const { apiUrl, baseUrl, imageBaseUrl, icon, channel } = SOURCES.mathrubhumi;
+  const news = [];
+
+  const data = await fetchJson(apiUrl);
+
+  // The API returns { home: { data: [ ...items ] } }
+  const items = data?.home?.data || [];
+
+  for (const item of items) {
+    // Skip non-article element types:
+    // elementType 0 = standard article
+    // elementType 1 = article with lead text
+    // elementType 11 = trending topics / sliders (skip)
+    // elementType 12 = ad units (skip)
+    const elementType = item.elementType;
+    if (elementType === 12) continue; // ads
+    if (elementType === 11) continue; // trending topic chips
+
+    const title = (item.itemTitle || "").trim();
+    if (!title) continue;
+
+    // Build full article URL
+    const detailPath = item.itemDetailURL || "";
+    let link = "";
+    if (detailPath.startsWith("http")) {
+      link = detailPath;
+    } else if (detailPath) {
+      // detailPath is like "/263/news/india/some-slug"
+      // strip the leading /263 prefix that is app-internal routing
+      link = resolve(baseUrl, detailPath.replace(/^\/263/, ""));
+    }
+    if (!link) continue;
+
+    // Also use shareURL if available and looks like a real URL
+    if (item.shareURL && item.shareURL.startsWith("http")) {
+      link = item.shareURL;
+    }
+
+    // Build full image URL — strip query string (e.g. ?f=1:1&w=172&q=0.8)
+    let image = "";
+    const rawImage = item.itemImageURL || "";
+    if (rawImage) {
+      const cleanPath = rawImage.split("?")[0];
+      if (cleanPath.startsWith("http")) {
+        image = cleanPath;
+      } else {
+        image = imageBaseUrl + cleanPath;
+      }
+    }
+
+    const summary = (item.itemTitleLead || "").trim();
+    const readableTime = (item.publishedTime || "").trim();
+
+    // Determine section label for context (optional, used as subSectionTitle)
+    const section = item.subSectionTitle || item.sectionTitle || "";
+
+    news.push({
+      title,
+      link,
+      summary,
+      image,
+      readableTime,
+      icon,
+      channel,
+      section, // bonus metadata
+    });
   }
 
   return news;
@@ -351,6 +438,8 @@ exports.fetchOneindiaLatestNews = () => scrapeOneindia();
 
 exports.fetchNews18LatestNews = () => scrapeNews18();
 
+exports.fetchMathrubhumiLatestNews = () => scrapeMathrubhumi();
+
 // ─────────────────────────────────────────────
 // AGGREGATE
 // ─────────────────────────────────────────────
@@ -362,6 +451,7 @@ exports.fetchAllLatestNews = async () => {
     exports.fetchMediaOneLatestNews(),
     exports.fetchOneindiaLatestNews(),
     exports.fetchNews18LatestNews(),
+    exports.fetchMathrubhumiLatestNews(),
   ]);
 
   return results

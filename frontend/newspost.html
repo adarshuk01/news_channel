@@ -70,6 +70,7 @@
     .filter-btn.active{background:#eff6ff;border-color:#bfdbfe;color:var(--accent);font-weight:600;}
     .filter-btn.loading-state{opacity:.55;cursor:default;pointer-events:none;}
     .filter-btn[data-filter="News18 Malayalam"].active{background:#fff5f5;border-color:#fecaca;color:#c53030;}
+    .filter-btn[data-filter="Mathrubhumi"].active{background:#fff7ed;border-color:#fed7aa;color:#c2410c;}
     .filter-icon{width:14px;height:14px;object-fit:contain;border-radius:2px;flex-shrink:0;}
 
     .count-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;}
@@ -90,6 +91,7 @@
     .news-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);display:grid;grid-template-columns:96px 1fr auto;align-items:start;gap:1.1rem;padding:.95rem 1.1rem;transition:box-shadow .15s,border-color .15s,transform .15s;cursor:pointer;}
     .news-card:hover{border-color:var(--accent);box-shadow:0 2px 12px rgba(29,78,216,.1),0 4px 24px rgba(0,0,0,.07);transform:translateY(-1px);}
     .news-card[data-channel="News18 Malayalam"]{border-left:3px solid #e53e3e;}
+    .news-card[data-channel="Mathrubhumi"]{border-left:3px solid #c2410c;}
 
     .news-thumb{width:96px;height:68px;object-fit:cover;border-radius:7px;border:1px solid var(--border);background:var(--bg);}
     .thumb-placeholder{width:96px;height:68px;border-radius:7px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--border-md);}
@@ -99,6 +101,7 @@
     .channel-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.61rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:.1rem .4rem;color:var(--muted);flex-shrink:0;}
     .channel-icon{width:12px;height:12px;object-fit:contain;border-radius:2px;}
     .channel-badge.ch-news18{background:#fff5f5;border-color:#fed7d7;color:#c53030;}
+    .channel-badge.ch-mathrubhumi{background:#fff7ed;border-color:#fed7aa;color:#c2410c;}
     .news-time{font-size:.6rem;color:var(--muted);}
     .news-title{font-size:.86rem;font-weight:600;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
     .news-summary{font-size:.76rem;color:var(--muted);line-height:1.5;margin-top:.28rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
@@ -118,7 +121,6 @@
     .post-btn.loading .btn-spin{display:block;}
     .post-btn.loading .btn-label{opacity:.75;}
     .post-btn.posted .btn-spin{display:none;}
-    .post-btn.posted .btn-spin{border-top-color:var(--success);}
     @keyframes spin{to{transform:rotate(360deg);}}
 
     /* Source stats strip */
@@ -193,7 +195,6 @@
     }
     .article-backdrop.show .article-modal{transform:translateY(0) scale(1);}
 
-    /* Header bar */
     .am-header{
       display:flex;align-items:center;justify-content:space-between;
       padding:.9rem 1.25rem;
@@ -209,6 +210,7 @@
     }
     .am-channel-badge img{width:14px;height:14px;object-fit:contain;border-radius:2px;}
     .am-channel-badge.ch-news18{background:#fff5f5;border-color:#fed7d7;color:#c53030;}
+    .am-channel-badge.ch-mathrubhumi{background:#fff7ed;border-color:#fed7aa;color:#c2410c;}
     .am-time{font-size:.68rem;color:var(--muted);}
     .am-close{
       display:flex;align-items:center;justify-content:center;
@@ -220,12 +222,10 @@
     }
     .am-close:hover{background:#fef2f2;border-color:#fecaca;color:#b91c1c;}
 
-    /* Scrollable body */
     .am-body{
       overflow-y:auto;
       flex:1;
       padding:0;
-      /* custom scrollbar */
       scrollbar-width:thin;
       scrollbar-color:var(--border-md) transparent;
     }
@@ -233,7 +233,6 @@
     .am-body::-webkit-scrollbar-track{background:transparent;}
     .am-body::-webkit-scrollbar-thumb{background:var(--border-md);border-radius:10px;}
 
-    /* Hero image */
     .am-hero{
       width:100%;
       aspect-ratio:16/8;
@@ -248,7 +247,6 @@
       font-size:3rem;color:var(--border-md);
     }
 
-    /* Content area */
     .am-content{padding:1.4rem 1.5rem 1rem;}
     .am-title{
       font-size:1.15rem;font-weight:700;
@@ -274,7 +272,6 @@
     }
     .am-read-link:hover{opacity:.75;}
 
-    /* Footer action area */
     .am-footer{
       border-top:1px solid var(--border);
       padding:1.1rem 1.5rem;
@@ -402,7 +399,6 @@
   <div class="article-backdrop" id="articleBackdrop">
     <div class="article-modal" id="articleModal">
 
-      <!-- Header -->
       <div class="am-header">
         <div style="display:flex;align-items:center;gap:.6rem;min-width:0;flex:1;">
           <div class="am-channel-badge" id="amChannelBadge"></div>
@@ -411,7 +407,6 @@
         <button class="am-close" id="amClose" aria-label="Close">✕</button>
       </div>
 
-      <!-- Scrollable body -->
       <div class="am-body">
         <div id="amHeroWrap"></div>
         <div class="am-content">
@@ -425,7 +420,6 @@
         <div style="height:1rem;"></div>
       </div>
 
-      <!-- Footer: post buttons -->
       <div class="am-footer">
         <div class="am-footer-label">Publish to platforms</div>
         <div class="am-post-btns">
@@ -508,6 +502,9 @@
           <button class="filter-btn" data-filter="News18 Malayalam">
             <img class="filter-icon" src="https://static.news18.com/static/img/logo-news18-favicon-32.png" alt="" onerror="this.remove()"> News18
           </button>
+          <button class="filter-btn" data-filter="Mathrubhumi">
+            <img class="filter-icon" src="https://www.mathrubhumi.com/favicon.ico" alt="" onerror="this.remove()"> Mathrubhumi
+          </button>
         </div>
       </div>
 
@@ -543,6 +540,7 @@
     "Oneindia":         { icon: "https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg" },
     "MediaOne":         { icon: "https://upload.wikimedia.org/wikipedia/commons/6/62/Media_One_Logo.png" },
     "News18 Malayalam": { icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png" },
+    "Mathrubhumi":      { icon: "https://www.mathrubhumi.com/favicon.ico" },
   };
 
   /* ── State ── */
@@ -551,7 +549,7 @@
   let filterChan  = 'all';
   let searchQuery = '';
   let isLoading   = false;
-  let activeArticle = null; // currently open article
+  let activeArticle = null;
 
   /* ── Sidebar ── */
   const sidebar        = document.getElementById('sidebar');
@@ -768,12 +766,18 @@
     }).join('');
   }
 
+  function getChannelBadgeClass(channel) {
+    if (channel === 'News18 Malayalam') return 'channel-badge ch-news18';
+    if (channel === 'Mathrubhumi')      return 'channel-badge ch-mathrubhumi';
+    return 'channel-badge';
+  }
+
   function buildCard(n, st) {
     const thumb = n.image
       ? `<img class="news-thumb" src="${escH(n.image)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=thumb-placeholder>🖼️</div>'">`
       : `<div class="thumb-placeholder">🖼️</div>`;
     const chIcon = n.icon ? `<img class="channel-icon" src="${escH(n.icon)}" alt="" onerror="this.style.display='none'">` : '';
-    const badgeClass = n.channel === 'News18 Malayalam' ? 'channel-badge ch-news18' : 'channel-badge';
+    const badgeClass = getChannelBadgeClass(n.channel);
     const timeHtml = n.readableTime ? `<span class="news-time">🕐 ${escH(n.readableTime)}</span>` : '';
 
     return `
@@ -822,6 +826,12 @@
   const articleBackdrop = document.getElementById('articleBackdrop');
   const amClose         = document.getElementById('amClose');
 
+  function getModalBadgeClass(channel) {
+    if (channel === 'News18 Malayalam') return 'am-channel-badge ch-news18';
+    if (channel === 'Mathrubhumi')      return 'am-channel-badge ch-mathrubhumi';
+    return 'am-channel-badge';
+  }
+
   function openArticleModal(newsItem) {
     activeArticle = newsItem;
     const st = statusMap[newsItem.id] || { instagram: false, facebook: false, youtube: false };
@@ -829,8 +839,7 @@
     /* Channel badge */
     const badgeEl = document.getElementById('amChannelBadge');
     const meta = CHANNEL_META[newsItem.channel] || {};
-    const isNews18 = newsItem.channel === 'News18 Malayalam';
-    badgeEl.className = 'am-channel-badge' + (isNews18 ? ' ch-news18' : '');
+    badgeEl.className = getModalBadgeClass(newsItem.channel);
     const iconHtml = (meta.icon || newsItem.icon)
       ? `<img src="${escH(meta.icon || newsItem.icon)}" alt="" onerror="this.style.display='none'">`
       : '';
@@ -865,8 +874,6 @@
     /* Show */
     articleBackdrop.classList.add('show');
     document.body.style.overflow = 'hidden';
-
-    /* Scroll body to top */
     document.querySelector('.am-body').scrollTop = 0;
   }
 
@@ -909,12 +916,9 @@
 
   /* ── Card click → open modal (ignore clicks on post-btn area) ── */
   document.getElementById('newsGrid').addEventListener('click', e => {
-    /* If clicked inside post-btns area, let the post handler deal with it */
     if (e.target.closest('[data-card-btns]')) return;
-
     const card = e.target.closest('.news-card');
     if (!card) return;
-
     const id = card.dataset.id;
     const newsItem = allNews.find(n => n.id == id || n.id === id);
     if (newsItem) openArticleModal(newsItem);
@@ -939,7 +943,6 @@
       statusMap[id][platform] = true;
       btn.classList.remove('loading'); btn.classList.add('posted');
       btn.querySelector('.btn-label').textContent = `✅ ${capitalize(platform)}`;
-      /* Sync modal buttons if this article is open */
       if (activeArticle && (activeArticle.id == id || activeArticle.id === id)) {
         syncModalButtons(id, statusMap[id]);
       }
@@ -969,9 +972,7 @@
         if (!res.ok) throw new Error(data.error || 'Post failed');
         if (!statusMap[n.id]) statusMap[n.id] = {};
         statusMap[n.id][platform] = true;
-        /* Sync modal */
         syncModalButtons(n.id, statusMap[n.id]);
-        /* Sync card in grid */
         const cardBtn = document.querySelector(`.news-card[data-id="${n.id}"] .post-btn[data-platform="${platform}"]`);
         if (cardBtn) {
           cardBtn.disabled = true;
