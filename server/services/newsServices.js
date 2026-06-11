@@ -48,11 +48,9 @@ const SOURCES = {
   },
 
   twentyfour: {
-    apiUrl: "https://www.twentyfournews.com/wp-json/wp/v2/posts",
-    mediaApiUrl: "https://www.twentyfournews.com/wp-json/wp/v2/media",
-    icon: "https://www.twentyfournews.com/wp-content/uploads/2017/08/24-news-logo.png",
+    rssUrl: "https://www.twentyfournews.com/feed",
+    icon: "https://www.twentyfournews.com/wp-content/uploads/2019/03/cropped-24-logo-fav-32x32.jpg",
     channel: "24 News",
-    perPage: 20,
   },
 };
 
@@ -361,9 +359,15 @@ async function scrapeMathrubhumi() {
 
   const data = await fetchJson(apiUrl);
 
+  // The API returns { home: { data: [ ...items ] } }
   const items = data?.home?.data || [];
 
   for (const item of items) {
+    // Skip non-article element types:
+    // elementType 0 = standard article
+    // elementType 1 = article with lead text
+    // elementType 11 = trending topics / sliders (skip)
+    // elementType 12 = ad units (skip)
     const elementType = item.elementType;
     if (elementType === 12) continue; // ads
     if (elementType === 11) continue; // trending topic chips
@@ -371,19 +375,24 @@ async function scrapeMathrubhumi() {
     const title = (item.itemTitle || "").trim();
     if (!title) continue;
 
+    // Build full article URL
     const detailPath = item.itemDetailURL || "";
     let link = "";
     if (detailPath.startsWith("http")) {
       link = detailPath;
     } else if (detailPath) {
+      // detailPath is like "/263/news/india/some-slug"
+      // strip the leading /263 prefix that is app-internal routing
       link = resolve(baseUrl, detailPath.replace(/^\/263/, ""));
     }
     if (!link) continue;
 
+    // Also use shareURL if available and looks like a real URL
     if (item.shareURL && item.shareURL.startsWith("http")) {
       link = item.shareURL;
     }
 
+    // Build full image URL — strip query string (e.g. ?f=1:1&w=172&q=0.8)
     let image = "";
     const rawImage = item.itemImageURL || "";
     if (rawImage) {
@@ -397,6 +406,8 @@ async function scrapeMathrubhumi() {
 
     const summary = (item.itemTitleLead || "").trim();
     const readableTime = (item.publishedTime || "").trim();
+
+    // Determine section label for context (optional, used as subSectionTitle)
     const section = item.subSectionTitle || item.sectionTitle || "";
 
     news.push({
@@ -407,68 +418,76 @@ async function scrapeMathrubhumi() {
       readableTime,
       icon,
       channel,
-      section,
+      section, // bonus metadata
     });
   }
 
   return news;
 }
 
+
 // ─────────────────────────────────────────────
-// TWENTYFOUR NEWS — WordPress REST API
-// NOTE: Images are returned as plain URLs.
-//       The controller proxies them server-side when posting,
-//       to bypass WordPress hotlink protection.
+// TWENTYFOUR NEWS — RSS feed + article page image scrape
+// The RSS feed has no images, so we scrape the post-thumbnail
+// from each article page in parallel after parsing the feed.
 // ─────────────────────────────────────────────
+
+/**
+ * Scrape the featured (post-thumbnail) image from a 24 News article page.
+ * Returns the clean src URL (no query string) or "" on failure.
+ */
+async function fetchTwentyFourArticleImage(articleUrl) {
+  try {
+    const $ = await loadPage(articleUrl);
+
+    // Primary: WP post-thumbnail class
+    const thumbEl = $("img.attachment-post-thumbnail, img.size-post-thumbnail").first();
+    let src = thumbEl.attr("src") || thumbEl.attr("data-src") || "";
+
+    // Fallback: any large wp-content uploads image in article
+    if (!src) {
+      $("img[src*='twentyfournews.com/wp-content/uploads']").each((_, el) => {
+        const s = $(el).attr("src") || "";
+        // Prefer the largest variant — skip -300x, -150x, etc. thumbnail crops
+        if (s && !/-\d+x\d+\./.test(s.split("?")[0])) {
+          src = s;
+          return false; // break
+        }
+      });
+    }
+
+    // Strip query string (e.g. ?x11600)
+    return src ? src.split("?")[0] : "";
+  } catch (_) {
+    return "";
+  }
+}
+
 async function scrapeTwentyFour() {
-  const { apiUrl, mediaApiUrl, icon, channel, perPage } = SOURCES.twentyfour;
+  const { rssUrl, icon, channel } = SOURCES.twentyfour;
   const news = [];
 
-  const posts = await fetchJson(
-    `${apiUrl}?_embed&per_page=20&page=1&_fields=id,title,excerpt,link,featured_media,date`
-  );
-  if (!Array.isArray(posts) || !posts.length) return news;
+  // 1 — Fetch and parse the RSS feed
+  const xml = await fetchRaw(rssUrl);
+  const items = xml.split("<item>");
 
-  // Collect unique featured_media IDs (skip falsy/zero)
-  const mediaIds = [...new Set(posts.map((p) => p.featured_media).filter(Boolean))];
+  const parsed = [];
+  for (const chunk of items.slice(1)) {
+    const itemXml = chunk.split("</item>")[0];
 
-  // Single batch request instead of N individual requests
-  const mediaMap = {};
-  if (mediaIds.length) {
-    try {
-      const mediaItems = await fetchJson(
-        `${mediaApiUrl}?include=${mediaIds.join(",")}&per_page=${mediaIds.length}&page=1&_fields=id,source_url`
-      );
-      if (Array.isArray(mediaItems)) {
-        for (const m of mediaItems) {
-          if (m?.id && m?.source_url) {
-            mediaMap[m.id] = m.source_url;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("⚠️ 24 News media batch fetch failed:", err.message);
-    }
-  }
-
-  for (const post of posts) {
-    const title = stripLive(cleanHtmlText(post.title?.rendered || ""));
+    const title = stripLive(cleanHtmlText(getXmlTag(itemXml, "title")));
     if (!title) continue;
 
-    const link = post.link || "";
+    const link = cleanHtmlText(getXmlTag(itemXml, "link"));
     if (!link) continue;
 
-    const rawSummary = post.excerpt?.rendered || "";
-    const summary = cleanHtmlText(rawSummary);
-
-    // Strip query strings from WP media URLs
-    const rawImage = (post.featured_media && mediaMap[post.featured_media]) || "";
-    const image = rawImage ? rawImage.split("?")[0] : "";
+    const summary = cleanHtmlText(getXmlTag(itemXml, "description"));
+    const pubDate = getXmlTag(itemXml, "pubDate");
 
     let readableTime = "";
-    if (post.date) {
+    if (pubDate) {
       try {
-        readableTime = new Date(post.date).toLocaleString("en-IN", {
+        readableTime = new Date(pubDate).toLocaleString("en-IN", {
           timeZone: "Asia/Kolkata",
           day: "2-digit",
           month: "short",
@@ -477,12 +496,26 @@ async function scrapeTwentyFour() {
           minute: "2-digit",
         });
       } catch (_) {
-        readableTime = post.date;
+        readableTime = pubDate;
       }
     }
 
-    // Plain URL — no base64 conversion here (would bloat API response
-    // and cause PayloadTooLargeError). The controller handles proxying.
+    parsed.push({ title, link, summary, readableTime });
+  }
+
+  if (!parsed.length) return news;
+
+  // 2 — Scrape all article pages in parallel to get images
+  const imageResults = await Promise.allSettled(
+    parsed.map((item) => fetchTwentyFourArticleImage(item.link))
+  );
+
+  // 3 — Merge images back into parsed items
+  for (let i = 0; i < parsed.length; i++) {
+    const { title, link, summary, readableTime } = parsed[i];
+    const image =
+      imageResults[i].status === "fulfilled" ? imageResults[i].value : "";
+
     news.push({ title, link, summary, image, readableTime, icon, channel });
   }
 
