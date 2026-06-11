@@ -425,7 +425,7 @@ async function scrapeTwentyFour() {
   const news = [];
 
   const posts = await fetchJson(
-    `${apiUrl}?_embed&per_page=${perPage}&_fields=id,title,excerpt,link,featured_media,date`
+    `${apiUrl}?_embed&per_page=20&page=1&_fields=id,title,excerpt,link,featured_media,date`
   );
   if (!Array.isArray(posts) || !posts.length) return news;
 
@@ -437,7 +437,7 @@ async function scrapeTwentyFour() {
   if (mediaIds.length) {
     try {
       const mediaItems = await fetchJson(
-        `${mediaApiUrl}?include=${mediaIds.join(",")}&per_page=${mediaIds.length}&_fields=id,source_url`
+        `${mediaApiUrl}?include=${mediaIds.join(",")}&per_page=${mediaIds.length}&page=1&_fields=id,source_url`
       );
       if (Array.isArray(mediaItems)) {
         for (const m of mediaItems) {
