@@ -71,6 +71,7 @@
     .filter-btn.loading-state{opacity:.55;cursor:default;pointer-events:none;}
     .filter-btn[data-filter="News18 Malayalam"].active{background:#fff5f5;border-color:#fecaca;color:#c53030;}
     .filter-btn[data-filter="Mathrubhumi"].active{background:#fff7ed;border-color:#fed7aa;color:#c2410c;}
+    .filter-btn[data-filter="24 News"].active{background:#fff0f0;border-color:#ffb3b3;color:#b91c1c;}
     .filter-icon{width:14px;height:14px;object-fit:contain;border-radius:2px;flex-shrink:0;}
 
     .count-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;}
@@ -92,6 +93,7 @@
     .news-card:hover{border-color:var(--accent);box-shadow:0 2px 12px rgba(29,78,216,.1),0 4px 24px rgba(0,0,0,.07);transform:translateY(-1px);}
     .news-card[data-channel="News18 Malayalam"]{border-left:3px solid #e53e3e;}
     .news-card[data-channel="Mathrubhumi"]{border-left:3px solid #c2410c;}
+    .news-card[data-channel="24 News"]{border-left:3px solid #b91c1c;}
 
     .news-thumb{width:96px;height:68px;object-fit:cover;border-radius:7px;border:1px solid var(--border);background:var(--bg);}
     .thumb-placeholder{width:96px;height:68px;border-radius:7px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.5rem;color:var(--border-md);}
@@ -102,6 +104,7 @@
     .channel-icon{width:12px;height:12px;object-fit:contain;border-radius:2px;}
     .channel-badge.ch-news18{background:#fff5f5;border-color:#fed7d7;color:#c53030;}
     .channel-badge.ch-mathrubhumi{background:#fff7ed;border-color:#fed7aa;color:#c2410c;}
+    .channel-badge.ch-24news{background:#fff0f0;border-color:#ffb3b3;color:#b91c1c;}
     .news-time{font-size:.6rem;color:var(--muted);}
     .news-title{font-size:.86rem;font-weight:600;color:var(--text);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
     .news-summary{font-size:.76rem;color:var(--muted);line-height:1.5;margin-top:.28rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
@@ -211,6 +214,7 @@
     .am-channel-badge img{width:14px;height:14px;object-fit:contain;border-radius:2px;}
     .am-channel-badge.ch-news18{background:#fff5f5;border-color:#fed7d7;color:#c53030;}
     .am-channel-badge.ch-mathrubhumi{background:#fff7ed;border-color:#fed7aa;color:#c2410c;}
+    .am-channel-badge.ch-24news{background:#fff0f0;border-color:#ffb3b3;color:#b91c1c;}
     .am-time{font-size:.68rem;color:var(--muted);}
     .am-close{
       display:flex;align-items:center;justify-content:center;
@@ -505,6 +509,9 @@
           <button class="filter-btn" data-filter="Mathrubhumi">
             <img class="filter-icon" src="https://www.mathrubhumi.com/favicon.ico" alt="" onerror="this.remove()"> Mathrubhumi
           </button>
+          <button class="filter-btn" data-filter="24 News">
+            <img class="filter-icon" src="https://www.twentyfournews.com/wp-content/uploads/2017/08/24-news-logo.png" alt="" onerror="this.remove()"> 24 News
+          </button>
         </div>
       </div>
 
@@ -541,6 +548,7 @@
     "MediaOne":         { icon: "https://upload.wikimedia.org/wikipedia/commons/6/62/Media_One_Logo.png" },
     "News18 Malayalam": { icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png" },
     "Mathrubhumi":      { icon: "https://www.mathrubhumi.com/favicon.ico" },
+    "24 News":          { icon: "https://www.twentyfournews.com/wp-content/uploads/2017/08/24-news-logo.png" },
   };
 
   /* ── State ── */
@@ -769,9 +777,18 @@
   function getChannelBadgeClass(channel) {
     if (channel === 'News18 Malayalam') return 'channel-badge ch-news18';
     if (channel === 'Mathrubhumi')      return 'channel-badge ch-mathrubhumi';
+    if (channel === '24 News')          return 'channel-badge ch-24news';
     return 'channel-badge';
   }
 
+  function getModalBadgeClass(channel) {
+    if (channel === 'News18 Malayalam') return 'am-channel-badge ch-news18';
+    if (channel === 'Mathrubhumi')      return 'am-channel-badge ch-mathrubhumi';
+    if (channel === '24 News')          return 'am-channel-badge ch-24news';
+    return 'am-channel-badge';
+  }
+
+  /* ── buildCard: data-channel on every post button ── */
   function buildCard(n, st) {
     const thumb = n.image
       ? `<img class="news-thumb" src="${escH(n.image)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=thumb-placeholder>🖼️</div>'">`
@@ -793,21 +810,21 @@
         </div>
         <div class="post-btns" data-card-btns>
           <button class="post-btn insta${st.instagram ? ' posted' : ''}"
-            data-platform="instagram" data-id="${n.id}"
+            data-platform="instagram" data-id="${n.id}" data-channel="${escA(n.channel || '')}"
             data-title="${escA(n.title)}" data-summary="${escA(n.summary || '')}" data-image="${escA(n.image || '')}"
             ${st.instagram ? 'disabled' : ''}>
             <div class="btn-spin"></div>
             <span class="btn-label">${st.instagram ? '✅ Instagram' : '📸 Instagram'}</span>
           </button>
           <button class="post-btn fb${st.facebook ? ' posted' : ''}"
-            data-platform="facebook" data-id="${n.id}"
+            data-platform="facebook" data-id="${n.id}" data-channel="${escA(n.channel || '')}"
             data-title="${escA(n.title)}" data-summary="${escA(n.summary || '')}" data-image="${escA(n.image || '')}"
             ${st.facebook ? 'disabled' : ''}>
             <div class="btn-spin"></div>
             <span class="btn-label">${st.facebook ? '✅ Facebook' : '👍 Facebook'}</span>
           </button>
           <button class="post-btn yt${st.youtube ? ' posted' : ''}"
-            data-platform="youtube" data-id="${n.id}"
+            data-platform="youtube" data-id="${n.id}" data-channel="${escA(n.channel || '')}"
             data-title="${escA(n.title)}" data-summary="${escA(n.summary || '')}" data-image="${escA(n.image || '')}"
             ${st.youtube ? 'disabled' : ''}>
             <div class="btn-spin"></div>
@@ -825,12 +842,6 @@
   ════════════════════════════════════ */
   const articleBackdrop = document.getElementById('articleBackdrop');
   const amClose         = document.getElementById('amClose');
-
-  function getModalBadgeClass(channel) {
-    if (channel === 'News18 Malayalam') return 'am-channel-badge ch-news18';
-    if (channel === 'Mathrubhumi')      return 'am-channel-badge ch-mathrubhumi';
-    return 'am-channel-badge';
-  }
 
   function openArticleModal(newsItem) {
     activeArticle = newsItem;
@@ -929,13 +940,17 @@
     const btn = e.target.closest('.post-btn');
     if (!btn || btn.disabled) return;
     if (!getToken()) { openLoginModal('Please sign in to post news.'); return; }
-    const { platform, id, title, summary, image } = btn.dataset;
+
+    // ✅ channel is now destructured from btn.dataset
+    const { platform, id, title, summary, image, channel } = btn.dataset;
     btn.disabled = true; btn.classList.add('loading');
+
     try {
-      const res  = await authFetch(`${API}/news/post-item`, {
+      const res = await authFetch(`${API}/news/post-item`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ newsId: id, platform, title, summary, image }),
+        // ✅ channel is now included in the POST body
+        body: JSON.stringify({ newsId: id, platform, title, summary, image, channel }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Post failed');
@@ -959,14 +974,24 @@
       const btn = this;
       if (btn.disabled || !activeArticle) return;
       if (!getToken()) { openLoginModal('Please sign in to post news.'); return; }
+
       const platform = btn.dataset.platform;
       const n = activeArticle;
       btn.disabled = true; btn.classList.add('loading');
+
       try {
-        const res  = await authFetch(`${API}/news/post-item`, {
+        const res = await authFetch(`${API}/news/post-item`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ newsId: n.id, platform, title: n.title, summary: n.summary || '', image: n.image || '' }),
+          // ✅ channel is now included from activeArticle
+          body: JSON.stringify({
+            newsId:   n.id,
+            platform,
+            title:    n.title,
+            summary:  n.summary  || '',
+            image:    n.image    || '',
+            channel:  n.channel  || '',
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Post failed');

@@ -1,5 +1,6 @@
 "use strict";
 
+const axios        = require("axios");
 const crypto       = require("crypto");
 const path         = require("path");
 const fs           = require("fs");
@@ -24,8 +25,50 @@ function makeNewsId(title) {
   return crypto.createHash("md5").update(title || "").digest("hex").slice(0, 12);
 }
 
+// ─── Proxy an image URL → base64 data URI ────────────────────────────────────
+// Used for sources (like 24 News / WordPress) that block direct server fetches
+// due to hotlink protection or missing CORS / Referer checks.
+async function proxyImageToBase64(imageUrl) {
+  if (!imageUrl) return "";
+  try {
+    // Derive the origin to send as Referer so hotlink checks pass
+    const origin = new URL(imageUrl).origin;
+    const response = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+      timeout: 15000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        Referer: `${origin}/`,
+        Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      },
+    });
+    const mime = response.headers["content-type"] || "image/jpeg";
+    const b64  = Buffer.from(response.data).toString("base64");
+    return `data:${mime};base64,${b64}`;
+  } catch (err) {
+    console.warn("⚠️ proxyImageToBase64 failed for", imageUrl, "→", err.message);
+    return "";
+  }
+}
+
+// ─── Channels whose images need server-side proxying ─────────────────────────
+const PROXY_REQUIRED_CHANNELS = ["24 News"];
+
+// ─── Resolve image for canvas: proxy if needed, otherwise clean URL ───────────
+async function resolveImageForCanvas(imageUrl, channel) {
+  const clean = cleanImageUrl(imageUrl);
+  if (!clean) return "";
+
+  if (PROXY_REQUIRED_CHANNELS.includes(channel)) {
+    console.log(`🔄 Proxying image for [${channel}]:`, clean);
+    return await proxyImageToBase64(clean);
+  }
+
+  return clean;
+}
+
 // ─── GET /api/news/list ───────────────────────────────────────────────────────
-// Returns latest news from Manorama + Asianet.
 exports.getNewsList = async (req, res) => {
   try {
     const allNews = await newsService.fetchAllLatestNews();
@@ -38,6 +81,7 @@ exports.getNewsList = async (req, res) => {
       link:    item.link    || "",
       channel: item.channel || "",
       icon:    item.icon    || "",
+      readableTime: item.readableTime || "",
     }));
 
     return res.json({ news, total: news.length });
@@ -49,7 +93,6 @@ exports.getNewsList = async (req, res) => {
 
 // ─── GET /api/news/post-status ────────────────────────────────────────────────
 // Query: ?ids=abc,def,ghi
-// Returns per-id per-platform posted flags.
 exports.getPostStatus = async (req, res) => {
   try {
     const ids = (req.query.ids || "").split(",").filter(Boolean);
@@ -76,10 +119,9 @@ exports.getPostStatus = async (req, res) => {
 };
 
 // ─── POST /api/news/post-item ─────────────────────────────────────────────────
-// Body: { newsId, platform, title, summary, image }
-// Builds poster → video → Cloudinary → posts → marks Redis.
+// Body: { newsId, platform, title, summary, image, channel }
 exports.postNewsItem = async (req, res) => {
-  const { newsId, platform, title, summary, image } = req.body;
+  const { newsId, platform, title, summary, image, channel } = req.body;
 
   if (!newsId || !platform || !title) {
     return res.status(400).json({ error: "newsId, platform and title are required." });
@@ -95,12 +137,12 @@ exports.postNewsItem = async (req, res) => {
     return res.status(409).json({ error: `Already posted to ${platform}.`, posted: true });
   }
 
-  const timestamp  = Date.now();
-  const imgFile    = path.join(TMP, `newsitem-${newsId}-${timestamp}.png`);
-  const vidFile    = path.join(TMP, `newsitem-${newsId}-${timestamp}.mp4`);
+  const timestamp = Date.now();
+  const imgFile   = path.join(TMP, `newsitem-${newsId}-${timestamp}.png`);
+  const vidFile   = path.join(TMP, `newsitem-${newsId}-${timestamp}.mp4`);
 
   try {
-    console.log(`🚀 Posting [${platform}] news: ${title.slice(0, 60)}`);
+    console.log(`🚀 Posting [${platform}] | channel: ${channel} | ${title.slice(0, 60)}`);
 
     // 1 — Hashtags
     const hashtags = await aiService.generateHashtags(`${title} ${summary || ""}`);
@@ -108,19 +150,22 @@ exports.postNewsItem = async (req, res) => {
     // 2 — Ad banner (round-robin)
     const adBannerUrl = await getNextAdBannerUrl();
 
-    // 3 — Create poster
+    // 3 — Resolve image (proxy for channels that need it, e.g. 24 News)
+    const resolvedImage = await resolveImageForCanvas(image, channel);
+
+    // 4 — Create poster
     const pngBuffer = await canvasService.createNewsPoster({
       title,
       summary:    summary || "",
-      image:      cleanImageUrl(image),
+      image:      resolvedImage,
       adBannerUrl,
     });
     fs.writeFileSync(imgFile, pngBuffer);
 
-    // 4 — Convert to video
+    // 5 — Convert to video
     await videoService.convertImageToVideo(imgFile, vidFile);
 
-    // 5 — Upload to Cloudinary
+    // 6 — Upload to Cloudinary
     const upload = await cloudinary.uploader.upload(vidFile, {
       resource_type: "video",
       folder:        "news_posters",
@@ -130,7 +175,7 @@ exports.postNewsItem = async (req, res) => {
 
     safeDelete(imgFile, vidFile);
 
-    // 6 — Build captions
+    // 7 — Build captions
     const safeTitle  = (title || "").replace(/\s+/g, " ").trim().slice(0, 90);
     const finalTitle = `${safeTitle} 🔥 #Shorts`;
 
@@ -140,12 +185,12 @@ exports.postNewsItem = async (req, res) => {
       youtube:   `${summary}\n\n${hashtags} #Shorts`,
     };
 
-    // 7 — Post to platform
+    // 8 — Post to platform
     if (platform === "instagram") await postReelToInstagram(finalUrl, captions.instagram);
     if (platform === "facebook")  await postReelToFacebook(finalUrl, captions.facebook);
     if (platform === "youtube")   await uploadShort(finalUrl, finalTitle, captions.youtube);
 
-    // 8 — Mark in Redis (30-day TTL)
+    // 9 — Mark in Redis (30-day TTL)
     await redis.set(`posted:${platform}:${newsId}`, "1", { ex: 60 * 60 * 24 * 30 });
 
     console.log(`✅ Posted [${platform}] for news ${newsId}`);

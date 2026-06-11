@@ -3,7 +3,7 @@ const path  = require("path");
 const sharp = require("sharp");
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/BalooChettan2-VariableFont_wght.ttf"),
+  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
