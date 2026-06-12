@@ -16,14 +16,6 @@ const H            = 1380;
 const DEFAULT_AD_H = 180;
 const MAX_AD_H     = 320;
 
-// ── Palette ───────────────────────────────────────────────────
-const BG_TOP      = "#ffffff";   // pure white
-const BG_BOTTOM   = "#fff5f5";   // very faint warm-red tint
-const TEXT_FILL   = "#ffe033";   // yellow fill (matches image)
-const TEXT_STROKE = "#cc0000";   // red outline stroke (matches image)
-const LOGO_MAIN   = "#cc0000";   // red logo
-const LOGO_SUB    = "#e03030";   // lighter for KERALAM
-
 // ═════════════════════════════════════════════════════════════
 // HELPERS
 // ═════════════════════════════════════════════════════════════
@@ -61,25 +53,34 @@ function computeAdHeight(adImg) {
   return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
 }
 
+/**
+ * Fetch a URL and return its raw bytes as a Buffer.
+ */
 async function fetchBuffer(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
   return Buffer.from(await res.arrayBuffer());
 }
 
+/**
+ * Fetch a URL, transcode to JPEG via sharp, and return the JPEG Buffer.
+ * This normalises WebP, PNG, AVIF, etc. into a format @napi-rs/canvas
+ * can always decode, and strips any alpha channel that would cause issues
+ * when drawing onto an opaque canvas.
+ */
 async function fetchAsJpegBuffer(url) {
   const raw = await fetchBuffer(url);
   return sharp(raw).jpeg().toBuffer();
 }
 
 // ═════════════════════════════════════════════════════════════
-// AD STRIP
+// AD STRIP  (ported from blue matrix design)
 // ═════════════════════════════════════════════════════════════
 
 function drawAdStrip(ctx, adImg, yOffset, adH) {
 
-  // Base white background
-  ctx.fillStyle = "#ffffff";
+  // Base black background
+  ctx.fillStyle = "#000000";
   ctx.fillRect(0, yOffset, W, adH);
 
   // ── Real ad image supplied ────────────────────────────────
@@ -100,12 +101,12 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
     ctx.drawImage(adImg, drawX, drawY, drawW, drawH);
     ctx.restore();
 
-    // Red top divider line
+    // Gold top divider line
     const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
-    lineGrad.addColorStop(0,   "rgba(204,0,0,0)");
-    lineGrad.addColorStop(0.2, "rgba(204,0,0,0.8)");
-    lineGrad.addColorStop(0.8, "rgba(204,0,0,0.8)");
-    lineGrad.addColorStop(1,   "rgba(204,0,0,0)");
+    lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
+    lineGrad.addColorStop(0.2, "rgba(255,180,0,0.8)");
+    lineGrad.addColorStop(0.8, "rgba(255,180,0,0.8)");
+    lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
     ctx.fillStyle = lineGrad;
     ctx.fillRect(0, yOffset, W, 3);
 
@@ -114,27 +115,27 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 
   // ── Fallback ad (no image) ────────────────────────────────
 
-  // Soft warm-white gradient background
+  // Dark gradient background
   const bg = ctx.createLinearGradient(0, yOffset, 0, yOffset + adH);
-  bg.addColorStop(0, "#fff8f8");
-  bg.addColorStop(1, "#ffe8e8");
+  bg.addColorStop(0, "#0d1b4b");
+  bg.addColorStop(1, "#091230");
   ctx.fillStyle = bg;
   ctx.fillRect(0, yOffset, W, adH);
 
-  // Red top + bottom divider lines
+  // Gold top + bottom divider lines
   const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
-  lineGrad.addColorStop(0,   "rgba(204,0,0,0)");
-  lineGrad.addColorStop(0.2, "rgba(204,0,0,1)");
-  lineGrad.addColorStop(0.8, "rgba(204,0,0,1)");
-  lineGrad.addColorStop(1,   "rgba(204,0,0,0)");
+  lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
+  lineGrad.addColorStop(0.2, "rgba(255,180,0,1)");
+  lineGrad.addColorStop(0.8, "rgba(255,180,0,1)");
+  lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
 
   ctx.fillStyle = lineGrad;
   ctx.fillRect(0, yOffset, W, 3);
 
   // Subtle dot pattern
   ctx.save();
-  ctx.globalAlpha = 0.08;
-  ctx.fillStyle   = "#cc0000";
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle   = "#ffffff";
   for (let x = 40; x < W; x += 60) {
     for (let y = yOffset + 20; y < yOffset + adH - 20; y += 40) {
       ctx.beginPath();
@@ -147,7 +148,7 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
   // Megaphone emoji backdrop
   ctx.save();
   ctx.font         = "bold 52px English";
-  ctx.fillStyle    = "rgba(204,0,0,0.12)";
+  ctx.fillStyle    = "rgba(255,200,60,0.22)";
   ctx.textAlign    = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("📢", W / 2, yOffset + adH / 2 - 8);
@@ -162,24 +163,24 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
   ctx.save();
   ctx.textAlign    = "center";
   ctx.textBaseline = "middle";
-  ctx.shadowColor  = "rgba(255,255,255,0.9)";
-  ctx.shadowBlur   = 8;
+  ctx.shadowColor  = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur   = 14;
 
   ctx.font      = "bold 42px Malayalam";
-  ctx.fillStyle = TEXT_BODY;
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
   ctx.fillText(line1, W / 2, midY - LINE_GAP / 2);
 
-  const accentGrad = ctx.createLinearGradient(0, midY, 0, midY + 50);
-  accentGrad.addColorStop(0, TEXT_ACCENT);
-  accentGrad.addColorStop(1, "#cc0000");
+  const goldGrad = ctx.createLinearGradient(0, midY, 0, midY + 50);
+  goldGrad.addColorStop(0, "#ffe566");
+  goldGrad.addColorStop(1, "#ffaa00");
 
   ctx.font      = "bold 44px Malayalam";
-  ctx.fillStyle = accentGrad;
+  ctx.fillStyle = goldGrad;
   ctx.fillText(line2, W / 2, midY + LINE_GAP / 2);
 
   ctx.restore();
 
-  // Red bottom divider line
+  // Gold bottom divider line
   ctx.fillStyle = lineGrad;
   ctx.fillRect(0, yOffset + adH - 3, W, 3);
 }
@@ -193,19 +194,20 @@ async function createNewsPoster(newsItem) {
   // ── Load ad image if URL supplied ────────────────────────
   const hasAd   = Boolean(newsItem.adBannerUrl);
   let adImg     = null;
-  let actualAdH = 0;
+  let actualAdH = 0; // 0 = no ad strip at all
 
   if (hasAd) {
     try {
       console.log("[Ad] Loading:", newsItem.adBannerUrl);
-      const jpegBuf = await fetchAsJpegBuffer(newsItem.adBannerUrl);
-      adImg         = await loadImage(jpegBuf);
+      const jpegBuf = await fetchAsJpegBuffer(newsItem.adBannerUrl); // fetch → sharp → JPEG buffer
+      adImg         = await loadImage(jpegBuf);                      // loadImage from buffer
       console.log(`[Ad] Loaded OK: ${adImg.width}x${adImg.height}px`);
       actualAdH = computeAdHeight(adImg);
       console.log(`[Ad] Strip height: ${actualAdH}px`);
     } catch (err) {
       console.error("[Ad] Failed to load image:", err.message);
       console.error("[Ad] URL was:", newsItem.adBannerUrl);
+      // URL was given but image failed — show fallback ad strip
       adImg     = null;
       actualAdH = 0;
     }
@@ -219,12 +221,8 @@ async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, totalH);
   const ctx    = canvas.getContext("2d");
 
-  // ── 1. White → faint warm-red gradient background ─────────
-  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
-  bgGrad.addColorStop(0,   BG_TOP);
-  bgGrad.addColorStop(0.7, "#fff8f8");
-  bgGrad.addColorStop(1,   BG_BOTTOM);
-  ctx.fillStyle = bgGrad;
+  // ── 1. Dark charcoal background ──────────────────────────
+  ctx.fillStyle = "#181818";
   ctx.fillRect(0, 0, W, H);
 
   // ── 2. Photo — top 46% ───────────────────────────────────
@@ -245,17 +243,17 @@ async function createNewsPoster(newsItem) {
     ctx.drawImage(img, dx, dy, dw, dh);
     ctx.restore();
 
-    // Fade photo → white at the bottom
+    // Fade photo → dark at the bottom
     const fade = ctx.createLinearGradient(0, IMG_H * 0.52, 0, IMG_H);
-    fade.addColorStop(0, "rgba(255,255,255,0)");
-    fade.addColorStop(1, "rgba(255,255,255,1)");
+    fade.addColorStop(0, "rgba(24,24,24,0)");
+    fade.addColorStop(1, "rgba(24,24,24,1)");
     ctx.fillStyle = fade;
     ctx.fillRect(0, 0, W, IMG_H);
 
   } catch {
     const fallback = ctx.createLinearGradient(0, 0, 0, IMG_H);
-    fallback.addColorStop(0, "#ffe8e8");
-    fallback.addColorStop(1, "#ffffff");
+    fallback.addColorStop(0, "#2a2a2a");
+    fallback.addColorStop(1, "#181818");
     ctx.fillStyle = fallback;
     ctx.fillRect(0, 0, W, IMG_H);
   }
@@ -266,21 +264,21 @@ async function createNewsPoster(newsItem) {
   const KER_SZ   = 20;
 
   ctx.save();
-  ctx.textAlign     = "center";
-  ctx.shadowColor   = "rgba(255,255,255,0.9)";
-  ctx.shadowBlur    = 12;
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 1;
+  ctx.textAlign    = "center";
+  ctx.shadowColor  = "rgba(0,0,0,0.98)";
+  ctx.shadowBlur   = 20;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
 
   ctx.font          = `bold ${FLASH_SZ}px English`;
-  ctx.fillStyle     = LOGO_MAIN;
+  ctx.fillStyle     = "#ffffff";
   ctx.textBaseline  = "middle";
   ctx.letterSpacing = "5px";
   ctx.fillText("FLASH", W / 2, LOGO_CY);
   ctx.letterSpacing = "0px";
 
   ctx.font          = `bold ${KER_SZ}px English`;
-  ctx.fillStyle     = LOGO_SUB;
+  ctx.fillStyle     = "#dddddd";
   ctx.textBaseline  = "top";
   ctx.letterSpacing = "10px";
   ctx.fillText("KERALAM", W / 2 + 5, LOGO_CY + FLASH_SZ / 2 + 4);
@@ -314,8 +312,8 @@ async function createNewsPoster(newsItem) {
   ctx.shadowBlur = 0;
 
   // Dark offset (3D thickness)
-  ctx.globalAlpha = 0.35;
-  ctx.fillStyle   = "#660000";
+  ctx.globalAlpha = 0.65;
+  ctx.fillStyle   = "#5a0000";
   roundRect(ctx, BOX_X + 5, BOX_Y + 5, BOX_W, BOX_H, BOX_RAD);
   ctx.fill();
 
@@ -338,7 +336,7 @@ async function createNewsPoster(newsItem) {
   roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_RAD);
   ctx.fill();
 
-  // Date text (white on red box — kept for contrast)
+  // Date text
   const DAY_X = BOX_X + D_PADX;
   const MID_Y = BOX_Y + BOX_H / 2;
 
@@ -428,40 +426,37 @@ async function createNewsPoster(newsItem) {
 
   const yellowIdx = wrappedBody.length - 1;
 
-  // Helper: draw one line with yellow fill + red stroke (like the reference image)
-  function drawOutlinedText(text, x, y, fontSize) {
-    const strokeW = Math.round(fontSize * 0.09); // ~9% of font size for bold stroke
-    ctx.font          = `bold ${fontSize}px Malayalam`;
-    ctx.textAlign     = "center";
-    ctx.textBaseline  = "top";
-    ctx.shadowColor   = "rgba(0,0,0,0.55)";
-    ctx.shadowBlur    = 10;
-    ctx.shadowOffsetX = 3;
-    ctx.shadowOffsetY = 3;
-    // Red stroke pass
-    ctx.lineJoin      = "round";
-    ctx.lineWidth     = strokeW * 2;
-    ctx.strokeStyle   = TEXT_STROKE;
-    ctx.strokeText(text, x, y);
-    // Yellow fill pass (no shadow on fill so it stays crisp)
-    ctx.shadowColor   = "transparent";
-    ctx.shadowBlur    = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-    ctx.fillStyle     = TEXT_FILL;
-    ctx.fillText(text, x, y);
-  }
-
   for (let i = 0; i < wrappedBody.length; i++) {
     ctx.save();
-    drawOutlinedText(wrappedBody[i], CX, drawY, BODY_SIZE);
+    ctx.font          = `bold ${BODY_SIZE}px Malayalam`;
+    ctx.shadowColor   = "rgba(0,0,0,0.90)";
+    ctx.shadowBlur    = 10;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 2;
+
+    if (i === yellowIdx) {
+      const yg = ctx.createLinearGradient(0, drawY, 0, drawY + BODY_SIZE);
+      yg.addColorStop(0, "#ffe033");
+      yg.addColorStop(1, "#ffaa00");
+      ctx.fillStyle = yg;
+    } else {
+      ctx.fillStyle = "#ffffff";
+    }
+
+    ctx.fillText(wrappedBody[i], CX, drawY);
     ctx.restore();
     drawY += LINE_H_BODY;
   }
 
   for (const line of wrappedLast) {
     ctx.save();
-    drawOutlinedText(line, CX, drawY, LAST_SIZE);
+    ctx.font          = `bold ${LAST_SIZE}px Malayalam`;
+    ctx.shadowColor   = "rgba(0,0,0,0.95)";
+    ctx.shadowBlur    = 18;
+    ctx.shadowOffsetX = 3;
+    ctx.shadowOffsetY = 3;
+    ctx.fillStyle     = "#ffffff";
+    ctx.fillText(line, CX, drawY);
     ctx.restore();
     drawY += LINE_H_LAST;
   }
