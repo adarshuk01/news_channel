@@ -57,6 +57,12 @@
     .panel-title{font-size:.75rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
     .panel-body{padding:1.25rem;}
 
+    /* TYPE TOGGLE */
+    .type-toggle{display:flex;gap:.4rem;margin-bottom:1rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.25rem;}
+    .type-btn{flex:1;padding:.55rem .75rem;border:none;border-radius:6px;font-family:'Sora',sans-serif;font-size:.78rem;font-weight:600;cursor:pointer;transition:all .18s;color:var(--muted);background:transparent;display:flex;align-items:center;justify-content:center;gap:.4rem;min-height:36px;}
+    .type-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 4px rgba(0,0,0,.08),0 0 0 1px var(--border);}
+    .type-btn:hover:not(.active){color:var(--text);}
+
     /* AD COMPONENTS */
     .ad-info-bar{display:flex;align-items:center;flex-wrap:wrap;gap:.5rem;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:.65rem .9rem;margin-bottom:1rem;font-size:.76rem;color:#92400e;}
     .ad-dim-note{font-size:.71rem;color:var(--muted);margin-bottom:.75rem;display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;}
@@ -67,10 +73,20 @@
     .ad-drop-icon{font-size:1.5rem;margin-bottom:.35rem;}
     .ad-drop-text{font-size:.78rem;color:#92400e;}
     .ad-drop-text strong{color:#d97706;}
+
+    /* VIDEO-SPECIFIC */
+    .video-info-bar{display:flex;align-items:flex-start;flex-wrap:wrap;gap:.5rem;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:.65rem .9rem;margin-bottom:1rem;font-size:.76rem;color:#0369a1;}
+    .video-spec-grid{display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-top:.4rem;width:100%;}
+    .video-spec-item{display:flex;flex-direction:column;gap:.15rem;}
+    .video-spec-label{font-size:.63rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#0284c7;opacity:.75;}
+
     .preview-wrap{margin-top:.9rem;border-radius:8px;overflow:hidden;border:1px solid var(--border);display:none;position:relative;}
     .preview-wrap.show{display:block;}
     .preview-wrap img{width:100%;height:80px;object-fit:cover;display:block;}
+    .preview-wrap video{width:100%;height:100px;object-fit:cover;display:block;background:#000;}
     .preview-label{position:absolute;top:.5rem;left:.5rem;background:rgba(0,0,0,.55);color:#fff;font-size:.62rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.2rem .55rem;border-radius:4px;}
+    .preview-badge{position:absolute;top:.5rem;right:.5rem;background:rgba(0,0,0,.55);color:#fff;font-size:.62rem;font-weight:600;letter-spacing:.04em;padding:.2rem .55rem;border-radius:4px;font-family:'IBM Plex Mono',monospace;}
+
     .btn-upload{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;padding:.9rem 1rem;background:#f59e0b;color:#fff;font-family:'Sora',sans-serif;font-size:.9rem;font-weight:600;border:none;border-radius:8px;cursor:pointer;transition:background .2s,transform .15s,box-shadow .2s;margin-top:1rem;min-height:48px;}
     .btn-upload:hover:not(:disabled){background:#d97706;box-shadow:0 4px 14px rgba(245,158,11,.35);transform:translateY(-1px);}
     .btn-upload:disabled{opacity:.6;cursor:not-allowed;}
@@ -78,6 +94,14 @@
     .btn-upload.loading .btn-text{opacity:.8;}
     .spin-u{width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;flex-shrink:0;}
     @keyframes spin{to{transform:rotate(360deg);}}
+
+    /* Upload progress */
+    .upload-progress{display:none;margin-top:.75rem;}
+    .upload-progress.show{display:block;}
+    .progress-bar-wrap{background:var(--bg);border:1px solid var(--border);border-radius:6px;height:6px;overflow:hidden;margin-top:.4rem;}
+    .progress-bar-fill{height:100%;background:var(--accent);border-radius:6px;transition:width .3s ease;width:0%;}
+    .progress-label{font-size:.69rem;color:var(--muted);display:flex;justify-content:space-between;margin-top:.3rem;}
+
     .ad-status{display:none;margin-top:.75rem;border-radius:7px;padding:.65rem .9rem;font-size:.77rem;align-items:center;gap:.5rem;}
     .ad-status.show{display:flex;}
     .ad-status.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;}
@@ -87,7 +111,9 @@
     .current-banner-card{border-radius:8px;overflow:hidden;border:1px solid var(--border);margin-bottom:1rem;display:none;position:relative;}
     .current-banner-card.show{display:block;}
     .current-banner-card img{width:100%;height:auto;display:block;}
+    .current-banner-card video{width:100%;height:auto;display:block;}
     .current-banner-label{position:absolute;top:.5rem;left:.5rem;background:rgba(0,0,0,.6);color:#fff;font-size:.61rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.2rem .55rem;border-radius:4px;}
+    .current-type-badge{position:absolute;top:.5rem;right:.5rem;background:rgba(29,78,216,.75);color:#fff;font-size:.61rem;font-weight:600;letter-spacing:.04em;padding:.2rem .55rem;border-radius:4px;}
     .no-banner-note{font-size:.79rem;color:var(--muted);margin-bottom:.75rem;display:none;background:var(--bg);border:1px dashed var(--border-md);border-radius:8px;padding:1rem;text-align:center;}
 
     /* Stats */
@@ -100,7 +126,11 @@
     .banner-list{display:flex;flex-direction:column;gap:.5rem;}
     .banner-item{display:flex;align-items:center;gap:.75rem;padding:.65rem .85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;}
     .banner-thumb{width:76px;height:26px;object-fit:cover;border-radius:4px;flex-shrink:0;border:1px solid var(--border);}
+    .banner-thumb-video{width:76px;height:26px;border-radius:4px;flex-shrink:0;border:1px solid var(--border);background:#0f172a;display:flex;align-items:center;justify-content:center;font-size:.7rem;color:#94a3b8;flex-shrink:0;}
     .banner-slot{font-family:'IBM Plex Mono',monospace;font-size:.66rem;color:var(--muted);background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:.1rem .45rem;flex-shrink:0;}
+    .banner-type-pill{font-size:.6rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:.1rem .4rem;border-radius:4px;flex-shrink:0;}
+    .banner-type-pill.image{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;}
+    .banner-type-pill.video{background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;}
     .banner-url{flex:1;font-size:.71rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;}
     .btn-del{background:none;border:1px solid #fecaca;color:#dc2626;border-radius:6px;padding:.3rem .6rem;font-size:.71rem;cursor:pointer;transition:background .15s;flex-shrink:0;min-height:34px;}
     .btn-del:hover{background:#fef2f2;}
@@ -155,6 +185,7 @@
       .banner-url{width:100%;order:1;}
       .modal-top{padding:1.4rem 1.25rem 1rem;}
       .modal-body{padding:1rem 1.25rem 1.5rem;}
+      .video-spec-grid{grid-template-columns:1fr;}
     }
   </style>
 </head>
@@ -215,7 +246,7 @@
       <button class="hamburger" id="hamburger" aria-label="Open menu">☰</button>
       <div class="topbar-info">
         <div class="topbar-title">Ad Banner Manager</div>
-        <div class="topbar-subtitle">Upload and manage ad banners shown on news posters</div>
+        <div class="topbar-subtitle">Upload and manage image &amp; video ad banners shown on news posters</div>
       </div>
     </div>
     <span class="badge-yellow">☁️ Cloudinary</span>
@@ -230,20 +261,78 @@
         <div class="panel">
           <div class="panel-head"><span class="panel-title">⬆️ Upload Banner</span></div>
           <div class="panel-body">
-            <div class="ad-info-bar">⚠️ Minimum size: <span class="ad-dim-badge">1944 × 528 px</span></div>
-            <div class="ad-dim-note">📐 Required: <span class="ad-dim-badge">1944 × 528 px</span></div>
-            <div class="ad-drop-zone" id="adDropZone">
-              <input type="file" id="adBannerFile" accept="image/jpeg,image/png,image/webp"/>
-              <div class="ad-drop-icon">🖼️</div>
-              <div class="ad-drop-text"><strong>Tap to upload</strong> or drag & drop<br>JPEG / PNG / WEBP · min 1944 × 528 px</div>
+
+            <!-- Type toggle -->
+            <div class="type-toggle">
+              <button class="type-btn active" id="btnTypeImage" onclick="switchType('image')">🖼️ Image</button>
+              <button class="type-btn" id="btnTypeVideo" onclick="switchType('video')">🎬 Video</button>
             </div>
-            <div class="preview-wrap" id="adUploadPreview">
-              <span class="preview-label">Preview</span>
-              <img id="adUploadPreviewImg" alt="ad preview"/>
+
+            <!-- IMAGE section -->
+            <div id="imageSection">
+              <div class="ad-info-bar">⚠️ Minimum size: <span class="ad-dim-badge">1944 × 528 px</span></div>
+              <div class="ad-dim-note">📐 Required: <span class="ad-dim-badge">1944 × 528 px</span></div>
+              <div class="ad-drop-zone" id="adDropZone">
+                <input type="file" id="adBannerFile" accept="image/jpeg,image/png,image/webp"/>
+                <div class="ad-drop-icon">🖼️</div>
+                <div class="ad-drop-text"><strong>Tap to upload</strong> or drag &amp; drop<br>JPEG / PNG / WEBP · min 1944 × 528 px</div>
+              </div>
+              <div class="preview-wrap" id="adUploadPreview">
+                <span class="preview-label">Preview</span>
+                <img id="adUploadPreviewImg" alt="ad preview"/>
+              </div>
             </div>
+
+            <!-- VIDEO section -->
+            <div id="videoSection" style="display:none;">
+              <div class="video-info-bar">
+                🎬 Video banner specs
+                <div class="video-spec-grid">
+                  <div class="video-spec-item">
+                    <span class="video-spec-label">Min Resolution</span>
+                    <span class="ad-dim-badge">1944 × 528 px</span>
+                  </div>
+                  <div class="video-spec-item">
+                    <span class="video-spec-label">Formats</span>
+                    <span class="ad-dim-badge">MP4 · MOV · WEBM</span>
+                  </div>
+                  <div class="video-spec-item">
+                    <span class="video-spec-label">Max Duration</span>
+                    <span class="ad-dim-badge">30 sec</span>
+                  </div>
+                  <div class="video-spec-item">
+                    <span class="video-spec-label">Max File Size</span>
+                    <span class="ad-dim-badge">100 MB</span>
+                  </div>
+                </div>
+              </div>
+              <div class="ad-drop-zone" id="adVideoDropZone">
+                <input type="file" id="adBannerVideo" accept="video/mp4,video/mov,video/quicktime,video/webm"/>
+                <div class="ad-drop-icon">🎬</div>
+                <div class="ad-drop-text"><strong>Tap to upload</strong> or drag &amp; drop<br>MP4 / MOV / WEBM · min 1944 × 528 · max 30s · 100 MB</div>
+              </div>
+              <div class="preview-wrap" id="adVideoPreview">
+                <span class="preview-label">Preview</span>
+                <video id="adVideoPreviewEl" muted playsinline controls></video>
+                <span class="preview-badge" id="adVideoDimBadge"></span>
+              </div>
+            </div>
+
+            <!-- Upload progress -->
+            <div class="upload-progress" id="uploadProgress">
+              <div style="font-size:.72rem;color:var(--muted);font-weight:500;" id="progressText">Uploading…</div>
+              <div class="progress-bar-wrap">
+                <div class="progress-bar-fill" id="progressFill"></div>
+              </div>
+              <div class="progress-label">
+                <span id="progressLoaded">0 MB</span>
+                <span id="progressPct">0%</span>
+              </div>
+            </div>
+
             <button class="btn-upload" id="adUploadBtn" disabled>
               <div class="spin-u"></div>
-              <span class="btn-text">⬆️ Upload to Cloudinary</span>
+              <span class="btn-text" id="uploadBtnText">⬆️ Upload to Cloudinary</span>
             </button>
             <div class="ad-status" id="adStatus"></div>
           </div>
@@ -267,7 +356,9 @@
           <div class="panel-body">
             <div class="current-banner-card" id="adCurrentPreview">
               <span class="current-banner-label">Active</span>
-              <img id="adCurrentImg" alt="current banner"/>
+              <span class="current-type-badge" id="currentTypeBadge"></span>
+              <img id="adCurrentImg" alt="current banner" style="display:none;"/>
+              <video id="adCurrentVideo" muted autoplay loop playsinline style="display:none;"></video>
             </div>
             <div class="no-banner-note" id="adNoBanner">📭 No banners uploaded yet.<br>Posts will show placeholder text.</div>
           </div>
@@ -291,13 +382,34 @@
 
 <script>
   const API='https://news-channel-drab.vercel.app/api', AD_API=`${API}/ad-banner`;
-  const TOKEN_KEY='mp_admin_token', MIN_AD_W=1944, MIN_AD_H=528;
-const getToken   = () => localStorage.getItem(TOKEN_KEY);
-const setToken   = (t) => localStorage.setItem(TOKEN_KEY, t);
-const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+  const TOKEN_KEY='mp_admin_token', MIN_AD_W=1944, MIN_AD_H=528, MAX_VIDEO_MB=100, MAX_VIDEO_SEC=30;
+  const ACCEPTED_VIDEO_TYPES=['video/mp4','video/quicktime','video/webm'];
+
+  const getToken   = () => localStorage.getItem(TOKEN_KEY);
+  const setToken   = (t) => localStorage.setItem(TOKEN_KEY, t);
+  const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+
+  /* ── Media type toggle ── */
+  let currentType = 'image'; // 'image' | 'video'
+
+  function switchType(t) {
+    currentType = t;
+    document.getElementById('imageSection').style.display = t==='image' ? '' : 'none';
+    document.getElementById('videoSection').style.display = t==='video' ? '' : 'none';
+    document.getElementById('btnTypeImage').classList.toggle('active', t==='image');
+    document.getElementById('btnTypeVideo').classList.toggle('active', t==='video');
+    document.getElementById('uploadBtnText').textContent = t==='image' ? '⬆️ Upload to Cloudinary' : '⬆️ Upload Video to Cloudinary';
+    // reset state
+    adSelectedFile = null; adSelectedVideo = null;
+    adUploadBtn.disabled = true;
+    adUploadPreview.classList.remove('show');
+    adVideoPreview.classList.remove('show');
+    adStatus.classList.remove('show');
+    uploadProgress.classList.remove('show');
+  }
 
   /* Sidebar */
-  const sidebar=document.getElementById('sidebar'), sidebarOverlay=document.getElementById('sidebarOverlay'), hamburger=document.getElementById('hamburger');
+  const sidebar=document.getElementById('sidebar'),sidebarOverlay=document.getElementById('sidebarOverlay'),hamburger=document.getElementById('hamburger');
   function openSidebar(){sidebar.classList.add('open');sidebarOverlay.classList.add('show');document.body.style.overflow='hidden';}
   function closeSidebar(){sidebar.classList.remove('open');sidebarOverlay.classList.remove('show');document.body.style.overflow='';}
   hamburger.addEventListener('click',openSidebar);
@@ -305,7 +417,7 @@ const clearToken = () => localStorage.removeItem(TOKEN_KEY);
   sidebar.querySelectorAll('.nav-link').forEach(l=>l.addEventListener('click',closeSidebar));
 
   /* Auth chip */
-  const authChip=document.getElementById('authChip'), authChipLabel=document.getElementById('authChipLabel');
+  const authChip=document.getElementById('authChip'),authChipLabel=document.getElementById('authChipLabel');
   function updateAuthChip(){const t=getToken();authChip.classList.toggle('authed',!!t);authChipLabel.textContent=t?'Signed in · sign out':'Not signed in';}
   authChip.addEventListener('click',()=>{if(!getToken())return;clearToken();updateAuthChip();closeSidebar();openLoginModal('Session ended. Please sign in again.');});
 
@@ -348,13 +460,47 @@ const clearToken = () => localStorage.removeItem(TOKEN_KEY);
   const adStatus=document.getElementById('adStatus');
   function showStatus(ok,msg){adStatus.className='ad-status show '+(ok?'ok':'fail');adStatus.innerHTML=(ok?'✅ ':'❌ ')+msg;setTimeout(()=>adStatus.classList.remove('show'),8000);}
 
+  /* Progress */
+  const uploadProgress=document.getElementById('uploadProgress');
+  function showProgress(loaded,total){
+    uploadProgress.classList.add('show');
+    const pct=total?Math.round(loaded/total*100):0;
+    document.getElementById('progressFill').style.width=pct+'%';
+    document.getElementById('progressPct').textContent=pct+'%';
+    document.getElementById('progressLoaded').textContent=(loaded/1048576).toFixed(1)+' MB';
+    document.getElementById('progressText').textContent=pct<100?'Uploading…':'Processing…';
+  }
+  function hideProgress(){uploadProgress.classList.remove('show');document.getElementById('progressFill').style.width='0%';}
+
   /* Load current banner */
   async function loadCurrentBanner(){
     try{
       const res=await fetch(`${AD_API}/current`),data=await res.json();
-      const preview=document.getElementById('adCurrentPreview'),img=document.getElementById('adCurrentImg'),noBanner=document.getElementById('adNoBanner');
-      if(data.url){img.src=data.url;preview.classList.add('show');noBanner.style.display='none';document.getElementById('statSlot').textContent=`Slot ${data.slot}`;document.getElementById('statTotal').textContent=data.total||'–';}
-      else{preview.classList.remove('show');noBanner.style.display='block';document.getElementById('statSlot').textContent='None';document.getElementById('statTotal').textContent='0';}
+      const preview=document.getElementById('adCurrentPreview');
+      const img=document.getElementById('adCurrentImg');
+      const vid=document.getElementById('adCurrentVideo');
+      const badge=document.getElementById('currentTypeBadge');
+      const noBanner=document.getElementById('adNoBanner');
+      if(data.url){
+        const isVideo=/\.(mp4|mov|webm)/i.test(data.url)||(data.resourceType==='video')||(data.type==='video');
+        img.style.display='none'; vid.style.display='none';
+        if(isVideo){
+          vid.src=data.url; vid.style.display='block';
+          badge.textContent='🎬 Video'; badge.style.display='';
+        } else {
+          img.src=data.url; img.style.display='block';
+          badge.textContent='🖼️ Image'; badge.style.display='';
+        }
+        preview.classList.add('show');
+        noBanner.style.display='none';
+        document.getElementById('statSlot').textContent=`Slot ${data.slot}`;
+        document.getElementById('statTotal').textContent=data.total||'–';
+      } else {
+        preview.classList.remove('show');
+        noBanner.style.display='block';
+        document.getElementById('statSlot').textContent='None';
+        document.getElementById('statTotal').textContent='0';
+      }
     }catch{}
   }
 
@@ -364,12 +510,18 @@ const clearToken = () => localStorage.removeItem(TOKEN_KEY);
     if(!getToken()){list.innerHTML='<div class="empty-banners">Sign in to view banners</div>';return;}
     try{
       const res=await authFetch(`${AD_API}/list`),data=await res.json();
-      const banners=data.banners||[];document.getElementById('statTotal').textContent=banners.length;
+      const banners=data.banners||[];
+      document.getElementById('statTotal').textContent=banners.length;
       if(!banners.length){list.innerHTML='<div class="empty-banners">No banners uploaded yet</div>';return;}
       list.innerHTML='';
       banners.forEach(b=>{
+        const isVideo=/\.(mp4|mov|webm)/i.test(b.url)||(b.resourceType==='video')||(b.type==='video');
         const item=document.createElement('div');item.className='banner-item';
-        item.innerHTML=`<img class="banner-thumb" src="${b.url}" onerror="this.style.display='none'"/><span class="banner-slot">Slot ${b.slot}</span><span class="banner-url" title="${b.url}">${b.url.split('/').pop()}</span><button class="btn-del" data-slot="${b.slot}">🗑</button>`;
+        const thumb=isVideo
+          ? `<div class="banner-thumb-video">🎬</div>`
+          : `<img class="banner-thumb" src="${b.url}" onerror="this.style.display='none'"/>`;
+        const typePill=`<span class="banner-type-pill ${isVideo?'video':'image'}">${isVideo?'video':'image'}</span>`;
+        item.innerHTML=`${thumb}<span class="banner-slot">Slot ${b.slot}</span>${typePill}<span class="banner-url" title="${b.url}">${b.url.split('/').pop()}</span><button class="btn-del" data-slot="${b.slot}">🗑</button>`;
         list.appendChild(item);
       });
     }catch(err){if(!err.message.startsWith('401'))list.innerHTML='<div class="empty-banners">Failed to load banners</div>';}
@@ -385,9 +537,11 @@ const clearToken = () => localStorage.removeItem(TOKEN_KEY);
   });
   document.getElementById('refreshBtn').addEventListener('click',loadAll);
 
-  /* Upload */
-  const adBannerFile=document.getElementById('adBannerFile'),adDropZone=document.getElementById('adDropZone');
-  const adUploadBtn=document.getElementById('adUploadBtn'),adUploadPreview=document.getElementById('adUploadPreview'),adUploadPreviewImg=document.getElementById('adUploadPreviewImg');
+  /* ── IMAGE upload logic ── */
+  const adBannerFile=document.getElementById('adBannerFile');
+  const adUploadPreview=document.getElementById('adUploadPreview');
+  const adUploadPreviewImg=document.getElementById('adUploadPreviewImg');
+  const adDropZone=document.getElementById('adDropZone');
   let adSelectedFile=null;
 
   function validateAdImage(file){return new Promise(r=>{const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{URL.revokeObjectURL(url);r({w:img.naturalWidth,h:img.naturalHeight});};img.onerror=()=>{URL.revokeObjectURL(url);r(null);};img.src=url;});}
@@ -399,22 +553,123 @@ const clearToken = () => localStorage.removeItem(TOKEN_KEY);
     if(dims.w<MIN_AD_W||dims.h<MIN_AD_H){showStatus(false,`Image too small: ${dims.w}×${dims.h}px. Min: ${MIN_AD_W}×${MIN_AD_H}px.`);adUploadBtn.disabled=true;adSelectedFile=null;adUploadPreview.classList.remove('show');return;}
     adUploadPreviewImg.src=URL.createObjectURL(f);adUploadPreview.classList.add('show');adSelectedFile=f;adUploadBtn.disabled=false;adStatus.classList.remove('show');
   });
+
   adDropZone.addEventListener('dragover',e=>{e.preventDefault();adDropZone.classList.add('drag-over');});
   adDropZone.addEventListener('dragleave',()=>adDropZone.classList.remove('drag-over'));
   adDropZone.addEventListener('drop',()=>adDropZone.classList.remove('drag-over'));
 
-  adUploadBtn.addEventListener('click',async()=>{
-    if(!adSelectedFile)return;
-    if(!getToken()){openLoginModal('Please sign in to upload.');return;}
-    adUploadBtn.disabled=true;adUploadBtn.classList.add('loading');
+  /* ── VIDEO upload logic ── */
+  const adBannerVideo=document.getElementById('adBannerVideo');
+  const adVideoPreview=document.getElementById('adVideoPreview');
+  const adVideoPreviewEl=document.getElementById('adVideoPreviewEl');
+  const adVideoDropZone=document.getElementById('adVideoDropZone');
+  let adSelectedVideo=null;
+
+  function validateVideoFile(file){
+    return new Promise((resolve,reject)=>{
+      // type check
+      if(!ACCEPTED_VIDEO_TYPES.includes(file.type)&&!file.name.match(/\.(mp4|mov|webm)$/i)){
+        return reject(new Error('Unsupported format. Use MP4, MOV, or WEBM.'));
+      }
+      // size check
+      if(file.size>MAX_VIDEO_MB*1024*1024){
+        return reject(new Error(`File too large: ${(file.size/1048576).toFixed(1)} MB. Max: ${MAX_VIDEO_MB} MB.`));
+      }
+      // dimension + duration check via a hidden video element
+      const url=URL.createObjectURL(file);
+      const vid=document.createElement('video');
+      vid.preload='metadata';
+      vid.onloadedmetadata=()=>{
+        URL.revokeObjectURL(url);
+        const w=vid.videoWidth,h=vid.videoHeight,dur=vid.duration;
+        if(w<MIN_AD_W||h<MIN_AD_H){
+          return reject(new Error(`Video too small: ${w}×${h}px. Min: ${MIN_AD_W}×${MIN_AD_H}px.`));
+        }
+        if(dur>MAX_VIDEO_SEC){
+          return reject(new Error(`Video too long: ${dur.toFixed(1)}s. Max: ${MAX_VIDEO_SEC}s.`));
+        }
+        resolve({w,h,dur:dur.toFixed(1)});
+      };
+      vid.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Could not read video metadata.'));};
+      vid.src=url;
+    });
+  }
+
+  adBannerVideo.addEventListener('change',async()=>{
+    const f=adBannerVideo.files[0];if(!f)return;
+    adStatus.classList.remove('show');adUploadBtn.disabled=true;adSelectedVideo=null;adVideoPreview.classList.remove('show');
     try{
-      const fd=new FormData();fd.append('adBanner',adSelectedFile);
-      const res=await authFetch(`${AD_API}/upload`,{method:'POST',body:fd}),data=await res.json();
-      if(!res.ok)throw new Error(data.error||'Upload failed');
-      showStatus(true,`Uploaded! Slot ${data.slot} · ${data.dimensions.width}×${data.dimensions.height}px`);
-      adSelectedFile=null;adUploadBtn.disabled=true;adUploadPreview.classList.remove('show');adBannerFile.value='';await loadAll();
-    }catch(err){showStatus(false,err.message);adUploadBtn.disabled=false;}
-    finally{adUploadBtn.classList.remove('loading');}
+      const info=await validateVideoFile(f);
+      adVideoPreviewEl.src=URL.createObjectURL(f);
+      document.getElementById('adVideoDimBadge').textContent=`${info.w}×${info.h} · ${info.dur}s`;
+      adVideoPreview.classList.add('show');
+      adSelectedVideo=f;adUploadBtn.disabled=false;
+    }catch(err){showStatus(false,err.message);}
+  });
+
+  adVideoDropZone.addEventListener('dragover',e=>{e.preventDefault();adVideoDropZone.classList.add('drag-over');});
+  adVideoDropZone.addEventListener('dragleave',()=>adVideoDropZone.classList.remove('drag-over'));
+  adVideoDropZone.addEventListener('drop',()=>adVideoDropZone.classList.remove('drag-over'));
+
+  /* ── Upload handler (image + video) ── */
+  const adUploadBtn=document.getElementById('adUploadBtn');
+
+  adUploadBtn.addEventListener('click',async()=>{
+    const isVideo=currentType==='video';
+    const file=isVideo?adSelectedVideo:adSelectedFile;
+    if(!file)return;
+    if(!getToken()){openLoginModal('Please sign in to upload.');return;}
+
+    adUploadBtn.disabled=true;adUploadBtn.classList.add('loading');hideProgress();
+    try{
+      const fd=new FormData();
+      if(isVideo){
+        fd.append('adBanner',file);
+        fd.append('resourceType','video');
+      } else {
+        fd.append('adBanner',file);
+      }
+
+      // Use XMLHttpRequest for progress tracking
+      const result=await new Promise((resolve,reject)=>{
+        const xhr=new XMLHttpRequest();
+        const token=getToken();
+
+        xhr.upload.addEventListener('progress',e=>{
+          if(e.lengthComputable)showProgress(e.loaded,e.total);
+        });
+        xhr.addEventListener('load',()=>{
+          hideProgress();
+          if(xhr.status===401){
+            clearToken();updateAuthChip();
+            openLoginModal('Your session expired. Please sign in again.');
+            reject(new Error('401 Unauthorized'));return;
+          }
+          try{
+            const data=JSON.parse(xhr.responseText);
+            if(xhr.status>=400)reject(new Error(data.error||'Upload failed'));
+            else resolve(data);
+          }catch{reject(new Error('Invalid server response'));}
+        });
+        xhr.addEventListener('error',()=>{hideProgress();reject(new Error('Network error during upload.'));});
+        xhr.addEventListener('abort',()=>{hideProgress();reject(new Error('Upload cancelled.'));});
+
+        xhr.open('POST',`${AD_API}/upload`);
+        if(token)xhr.setRequestHeader('Authorization',`Bearer ${token}`);
+        xhr.send(fd);
+      });
+
+      const typeLabel=isVideo?'Video':'Image';
+      const dimStr=result.dimensions?`${result.dimensions.width}×${result.dimensions.height}px`:'';
+      showStatus(true,`${typeLabel} uploaded! Slot ${result.slot}${dimStr?' · '+dimStr:''}`);
+      adSelectedFile=null;adSelectedVideo=null;adUploadBtn.disabled=true;
+      adUploadPreview.classList.remove('show');adVideoPreview.classList.remove('show');
+      adBannerFile.value='';adBannerVideo.value='';
+      await loadAll();
+    }catch(err){
+      if(!err.message.startsWith('401'))showStatus(false,err.message);
+      adUploadBtn.disabled=false;
+    }finally{adUploadBtn.classList.remove('loading');}
   });
 
   /* Boot */

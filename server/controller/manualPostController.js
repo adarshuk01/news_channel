@@ -159,34 +159,57 @@ async function processPost({ sessionId, title, description, imageUrl, uploadedFi
     broadcastLog(sessionId, "success", `✅ Hashtags: ${hashtags}`);
 
     // ── Poster ───────────────────────────────────────────────────────────────
-    broadcastLog(sessionId, "info", "🎨 Creating news poster…");
-    const adBannerUrl = await getNextAdBannerUrl();
-    const pngBuffer = await canvasService.createNewsPoster({
-      title:       cleanTitle || title,
-      image:       imageSource,
-      adBannerUrl,
-    });
-    fs.writeFileSync(imgFilePath, pngBuffer);
-    broadcastLog(sessionId, "success", "✅ Poster created");
+  // AFTER — handles { type, buffer } from canvasService
+broadcastLog(sessionId, "info", "🎨 Creating news poster…");
+const adBanner       = await getNextAdBannerUrl(); // { url, resourceType } | null
+const adBannerUrl    = adBanner?.url    || null;
+const adResourceType = adBanner?.resourceType || null;
+const posterResult = await canvasService.createNewsPoster({
+  title:       cleanTitle || title,
+  image:       imageSource,
+  adBannerUrl,
+  adResourceType,
+});
+// posterResult is { type: "image"|"video", buffer, liveAdVideoUrl, adH }
+broadcastLog(sessionId, "success", `✅ Poster created (type: ${posterResult.type})`);
 
-    // ── Video ────────────────────────────────────────────────────────────────
-    broadcastLog(sessionId, "info", "🎬 Converting image to video…");
-    try {
-      await videoService.convertImageToVideo(imgFilePath, vidFilePath);
-      broadcastLog(sessionId, "success", "✅ Video conversion complete");
-    } catch (videoErr) {
-      broadcastLog(sessionId, "error", `❌ Video conversion failed: ${videoErr.message}`);
-      throw videoErr;
-    }
+let finalUrl;
 
-    // ── Cloudinary ───────────────────────────────────────────────────────────
-    broadcastLog(sessionId, "info", "☁️ Uploading to Cloudinary…");
-    const upload = await cloudinary.uploader.upload(vidFilePath, {
-      resource_type: "video",
-      folder: "manual_posts",
+if (posterResult.type === "video") {
+  // Canvas already composited the MP4 via FFmpeg — upload it directly
+  broadcastLog(sessionId, "info", "☁️ Uploading video poster to Cloudinary…");
+  fs.writeFileSync(vidFilePath, posterResult.buffer);
+  const upload = await cloudinary.uploader.upload(vidFilePath, {
+    resource_type: "video",
+    folder:        "manual_posts",
+  });
+  finalUrl = upload.secure_url;
+  broadcastLog(sessionId, "success", "✅ Cloudinary upload complete");
+
+} else {
+  // PNG poster — run through videoService to produce MP4 (with live ad composite), then upload
+  fs.writeFileSync(imgFilePath, posterResult.buffer);
+
+  broadcastLog(sessionId, "info", "🎬 Converting image to video…");
+  try {
+    await videoService.convertImageToVideo(imgFilePath, vidFilePath, {
+      adVideoInput: posterResult.liveAdVideoUrl || null,
+      adH:          posterResult.adH            || null,
     });
-    const finalUrl = upload.secure_url;
-    broadcastLog(sessionId, "success", "✅ Cloudinary upload complete");
+    broadcastLog(sessionId, "success", "✅ Video conversion complete");
+  } catch (videoErr) {
+    broadcastLog(sessionId, "error", `❌ Video conversion failed: ${videoErr.message}`);
+    throw videoErr;
+  }
+
+  broadcastLog(sessionId, "info", "☁️ Uploading to Cloudinary…");
+  const upload = await cloudinary.uploader.upload(vidFilePath, {
+    resource_type: "video",
+    folder:        "manual_posts",
+  });
+  finalUrl = upload.secure_url;
+  broadcastLog(sessionId, "success", "✅ Cloudinary upload complete");
+}
 
     // ── Captions ─────────────────────────────────────────────────────────────
     const instaCaption = `${description}\nകൂടുതൽ അറിയാൻ 👉 ബയോയിലെ ലിങ്ക് ക്ലിക്ക് ചെയ്യൂ\n\n${hashtags} #kerala #malayalam #news`;

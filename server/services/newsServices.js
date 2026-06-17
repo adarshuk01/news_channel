@@ -26,10 +26,11 @@ const SOURCES = {
     channel: "MediaOne",
   },
 
-  oneindia: {
-    rssUrl: "https://malayalam.oneindia.com/rss/feeds/malayalam-news-fb.xml",
-    icon: "https://imagesvs.oneindia.com/images/oneindia-lm-logo-1721304500709.svg",
-    channel: "Oneindia",
+  keralakaumudi: {
+    baseUrl: "https://keralakaumudi.com",
+    loadMoreUrl: "https://keralakaumudi.com/news/mobile/inc/load-more-latest.php",
+    icon: "https://keralakaumudi.com/favicon.ico",
+    channel: "Kerala Kaumudi",
   },
 
   news18: {
@@ -260,28 +261,53 @@ async function scrapeMediaOne() {
 }
 
 // ─────────────────────────────────────────────
-// ONEINDIA
+// KERALA KAUMUDI
+// Same load-more endpoint the article page itself uses.
+// Calling it directly from the server avoids the 500/CORS
+// you saw, because that error only happens when fetch()
+// runs from a foreign origin without a Referer header.
 // ─────────────────────────────────────────────
-async function scrapeOneindia() {
-  const { rssUrl, icon, channel } = SOURCES.oneindia;
-  const data = await fetchRaw(rssUrl);
+async function scrapeKeralaKaumudi() {
+  const { baseUrl, loadMoreUrl, icon, channel } = SOURCES.keralakaumudi;
   const news = [];
-  const items = data.split("<item>");
 
-  for (const chunk of items.slice(1)) {
-    const itemXml = chunk.split("</item>")[0];
-    const title = stripLive(getXmlTag(itemXml, "title"));
-    const link = getXmlTag(itemXml, "link");
-    const summary = cleanHtmlText(getXmlTag(itemXml, "description"));
-    const pubDate = getXmlTag(itemXml, "pubDate");
-    const imgM = itemXml.match(/url="(https?:\/\/[^"]+)"/);
-    const image = imgM ? imgM[1] : "";
-
-    if (!isValidImage(image)) continue;
-    if (title && link) {
-      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
+  const { data: html } = await axios.post(
+    loadMoreUrl,
+    new URLSearchParams({ offset: "0", tag: "" }).toString(),
+    {
+      timeout: 15000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+        Accept: "text/html, */*; q=0.01",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Content-Type": "application/x-www-form-urlencoded",
+        "X-Requested-With": "XMLHttpRequest",
+        Referer: `${baseUrl}/latest`,
+        Origin: baseUrl,
+      },
     }
-  }
+  );
+
+  const $ = cheerio.load(html);
+
+  $(".cat-news").each((_, el) => {
+    const title = stripLive($(el).find("h5").text().trim());
+
+    const href = $(el).find("a").attr("href");
+    const link = resolve(baseUrl, href);
+
+    const summary = cleanHtmlText($(el).find(".cat-text span").text().trim());
+    const readableTime = $(el).find(".dt-info").text().trim();
+
+    let image = $(el).find("img").attr("src") || "";
+    image = image.replace(/^(\.\.\/)+/, "");
+    image = resolve(baseUrl + "/", image);
+
+    if (title && link) {
+      news.push({ title, link, summary, image, readableTime, icon, channel });
+    }
+  });
 
   return news;
 }
@@ -537,7 +563,7 @@ exports.fetchAsianetLatestNews = () =>
 
 exports.fetchMediaOneLatestNews = () => scrapeMediaOne();
 
-exports.fetchOneindiaLatestNews = () => scrapeOneindia();
+exports.fetchKeralaKaumudiLatestNews = () => scrapeKeralaKaumudi();
 
 exports.fetchNews18LatestNews = () => scrapeNews18();
 
@@ -554,7 +580,7 @@ exports.fetchAllLatestNews = async () => {
     exports.fetchManoramaLatestNews(),
     exports.fetchAsianetLatestNews(),
     exports.fetchMediaOneLatestNews(),
-    exports.fetchOneindiaLatestNews(),
+    exports.fetchKeralaKaumudiLatestNews(),
     exports.fetchNews18LatestNews(),
     exports.fetchMathrubhumiLatestNews(),
     exports.fetchTwentyFourLatestNews(),

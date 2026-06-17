@@ -148,31 +148,50 @@ exports.postNewsItem = async (req, res) => {
     const hashtags = await aiService.generateHashtags(`${title} ${summary || ""}`);
 
     // 2 — Ad banner (round-robin)
-    const adBannerUrl = await getNextAdBannerUrl();
+    const adBanner       = await getNextAdBannerUrl(); // { url, resourceType } | null
+    const adBannerUrl    = adBanner?.url    || null;
+    const adResourceType = adBanner?.resourceType || null;
 
     // 3 — Resolve image (proxy for channels that need it, e.g. 24 News)
     const resolvedImage = await resolveImageForCanvas(image, channel);
 
     // 4 — Create poster
-    const pngBuffer = await canvasService.createNewsPoster({
+    const posterResult = await canvasService.createNewsPoster({
       title,
       summary:    summary || "",
       image:      resolvedImage,
       adBannerUrl,
+      adResourceType,
     });
-    fs.writeFileSync(imgFile, pngBuffer);
+    // posterResult is { type: "image"|"video", buffer, liveAdVideoUrl, adH }
 
-    // 5 — Convert to video
-    await videoService.convertImageToVideo(imgFile, vidFile);
+    let finalUrl;
 
-    // 6 — Upload to Cloudinary
-    const upload = await cloudinary.uploader.upload(vidFile, {
-      resource_type: "video",
-      folder:        "news_posters",
-    });
-    const finalUrl = upload.secure_url;
+    if (posterResult.type === "video") {
+      // FFmpeg already composited the MP4 inside canvasService — upload directly
+      fs.writeFileSync(vidFile, posterResult.buffer);
+      const upload = await cloudinary.uploader.upload(vidFile, {
+        resource_type: "video",
+        folder:        "news_posters",
+      });
+      finalUrl = upload.secure_url;
+    } else {
+      // PNG poster — convert to video (with live ad composite if applicable) then upload
+      fs.writeFileSync(imgFile, posterResult.buffer);
+      // 5 — Convert to video
+      await videoService.convertImageToVideo(imgFile, vidFile, {
+        adVideoInput: posterResult.liveAdVideoUrl || null,
+        adH:          posterResult.adH            || null,
+      });
+      // 6 — Upload to Cloudinary
+      const upload = await cloudinary.uploader.upload(vidFile, {
+        resource_type: "video",
+        folder:        "news_posters",
+      });
+      finalUrl = upload.secure_url;
+    }
+
     console.log(`🔗 Cloudinary [${platform}]:`, finalUrl);
-
     safeDelete(imgFile, vidFile);
 
     // 7 — Build captions

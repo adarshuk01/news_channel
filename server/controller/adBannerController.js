@@ -9,19 +9,43 @@ const REDIS_COUNT_KEY  = "ad-banner-count";
 const REDIS_INDEX_KEY  = "ad-banner-index";
 
 // ─── Helper: detect real mimetype from buffer magic bytes ─────────────────────
-// multer memoryStorage passes the browser-reported Content-Type, which is based
-// on file extension — NOT the actual file content. A JPEG file named .png will
-// be reported as "image/png". If we pass that wrong mimetype to Cloudinary, it
-// re-encodes the file as PNG, which can produce corrupt or unloadable output.
-// This function reads the first 4 magic bytes to get the TRUE format.
+// Detects both image and video formats from magic bytes.
+// Browser-reported Content-Type is based on file extension and cannot be trusted.
 function detectMimeType(buffer) {
   const b = buffer;
-  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return "image/jpeg";
-  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return "image/png";
-  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return "image/gif";
-  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return "image/webp";
-  // Default to JPEG if unrecognised
+
+  // ── Images ──
+  if (b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF)
+    return "image/jpeg";
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47)
+    return "image/png";
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46)
+    return "image/gif";
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46)
+    return "image/webp";
+
+  // ── Videos ──
+  // MP4 / MOV / M4V: ftyp box at offset 4 (bytes 4–7 = "ftyp")
+  if (
+    b.length > 11 &&
+    b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70
+  ) {
+    // brand at bytes 8–11 distinguishes MP4 vs MOV
+    const brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
+    if (brand === "qt  ") return "video/quicktime"; // MOV
+    return "video/mp4";                             // mp42, isom, avc1, etc.
+  }
+  // WebM / MKV: starts with EBML header 0x1A 0x45 0xDF 0xA3
+  if (b[0] === 0x1A && b[1] === 0x45 && b[2] === 0xDF && b[3] === 0xA3)
+    return "video/webm";
+
+  // Default to JPEG for unrecognised content
   return "image/jpeg";
+}
+
+// ─── Helper: is this mimetype a video? ───────────────────────────────────────
+function isVideoMime(mime) {
+  return mime.startsWith("video/");
 }
 
 // ─── Helper: get total count ──────────────────────────────────────────────────
@@ -34,37 +58,50 @@ async function getBannerCount() {
 exports.uploadAdBanner = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No image file provided." });
+      return res.status(400).json({ error: "No file provided." });
     }
 
     // Detect real format from magic bytes — ignore browser-reported mimetype
-    const realMime = detectMimeType(req.file.buffer);
-    const b64      = req.file.buffer.toString("base64");
-    const dataUri  = `data:${realMime};base64,${b64}`;
+    const realMime    = detectMimeType(req.file.buffer);
+    const isVideo     = isVideoMime(realMime);
+    const resourceType = isVideo ? "video" : "image";
 
-    console.log(`[Ad Upload] Browser mime: ${req.file.mimetype} | Detected mime: ${realMime}`);
+    console.log(
+      `[Ad Upload] Browser mime: ${req.file.mimetype} | ` +
+      `Detected mime: ${realMime} | Resource type: ${resourceType}`
+    );
 
-    const final = await cloudinary.uploader.upload(dataUri, {
-      resource_type: "image",
+    const b64     = req.file.buffer.toString("base64");
+    const dataUri = `data:${realMime};base64,${b64}`;
+
+    const uploadResult = await cloudinary.uploader.upload(dataUri, {
+      resource_type: resourceType,
       folder:        "ad_banners",
       overwrite:     false,
     });
 
-    const { width, height, secure_url } = final;
+    const { width, height, secure_url, duration } = uploadResult;
 
     const count = await getBannerCount();
     const slot  = count;
 
+    // Store URL + type so the list/current endpoints can expose it
     await redis.set(`${REDIS_KEY_PREFIX}${slot}`, secure_url);
+    await redis.set(`${REDIS_KEY_PREFIX}${slot}:type`, resourceType);
     await redis.set(REDIS_COUNT_KEY, String(count + 1));
 
-    console.log(`🖼️  Ad banner saved to slot ${slot}: ${secure_url} (${width}x${height})`);
+    console.log(
+      `${isVideo ? "🎬" : "🖼️ "} Ad banner saved to slot ${slot}: ` +
+      `${secure_url} (${width}x${height}${duration ? ` ${duration.toFixed(1)}s` : ""})`
+    );
 
     return res.json({
-      message:    "✅ Ad banner uploaded successfully.",
+      message:      `✅ Ad banner uploaded successfully.`,
       slot,
-      url:        secure_url,
-      dimensions: { width, height },
+      url:          secure_url,
+      resourceType,
+      dimensions:   { width, height },
+      ...(duration != null && { duration }),
     });
 
   } catch (err) {
@@ -86,8 +123,9 @@ exports.getCurrentAdBanner = async (req, res) => {
     const rawIdx = await redis.get(REDIS_INDEX_KEY);
     const idx    = rawIdx ? parseInt(rawIdx, 10) % count : 0;
     const url    = await redis.get(`${REDIS_KEY_PREFIX}${idx}`);
+    const type   = await redis.get(`${REDIS_KEY_PREFIX}${idx}:type`) || "image";
 
-    return res.json({ url, slot: idx, total: count });
+    return res.json({ url, slot: idx, total: count, resourceType: type });
   } catch (err) {
     console.error("❌ getCurrentAdBanner error:", err.message);
     return res.status(500).json({ error: "Failed to get banner.", details: err.message });
@@ -106,8 +144,9 @@ exports.listAdBanners = async (req, res) => {
 
     const banners = [];
     for (let i = 0; i < count; i++) {
-      const url = await redis.get(`${REDIS_KEY_PREFIX}${i}`);
-      if (url) banners.push({ slot: i, url });
+      const url  = await redis.get(`${REDIS_KEY_PREFIX}${i}`);
+      const type = await redis.get(`${REDIS_KEY_PREFIX}${i}:type`) || "image";
+      if (url) banners.push({ slot: i, url, resourceType: type });
     }
 
     return res.json({ banners, total: banners.length });
@@ -128,12 +167,17 @@ exports.deleteAdBanner = async (req, res) => {
       return res.status(400).json({ error: `Invalid slot. Must be 0–${count - 1}.` });
     }
 
+    // Shift all slots down, including the :type keys
     for (let i = slot; i < count - 1; i++) {
-      const next = await redis.get(`${REDIS_KEY_PREFIX}${i + 1}`);
-      await redis.set(`${REDIS_KEY_PREFIX}${i}`, next);
+      const nextUrl  = await redis.get(`${REDIS_KEY_PREFIX}${i + 1}`);
+      const nextType = await redis.get(`${REDIS_KEY_PREFIX}${i + 1}:type`) || "image";
+      await redis.set(`${REDIS_KEY_PREFIX}${i}`, nextUrl);
+      await redis.set(`${REDIS_KEY_PREFIX}${i}:type`, nextType);
     }
 
+    // Remove the last slot (now a duplicate after shifting)
     await redis.del(`${REDIS_KEY_PREFIX}${count - 1}`);
+    await redis.del(`${REDIS_KEY_PREFIX}${count - 1}:type`);
     await redis.set(REDIS_COUNT_KEY, String(count - 1));
 
     const newCount = count - 1;
@@ -171,7 +215,12 @@ exports.getNextAdBannerUrl = async function () {
 
   await redis.set(REDIS_INDEX_KEY, String(nextIdx));
 
-  const url = await redis.get(`${REDIS_KEY_PREFIX}${safeIdx}`);
-  console.log(`🖼️  Ad Banner [${safeIdx + 1}/${count}]: ${url}`);
-  return url || null;
+  const url  = await redis.get(`${REDIS_KEY_PREFIX}${safeIdx}`);
+  const type = await redis.get(`${REDIS_KEY_PREFIX}${safeIdx}:type`) || "image";
+
+  console.log(`${type === "video" ? "🎬" : "🖼️ "} Ad Banner [${safeIdx + 1}/${count}]: ${url}`);
+  if (!url) return null;
+
+  // Return both url and resourceType so callers can route image vs video correctly
+  return { url, resourceType: type };
 };
