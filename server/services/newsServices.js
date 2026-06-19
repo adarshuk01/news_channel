@@ -314,11 +314,102 @@ async function scrapeKeralaKaumudi() {
 
 // ─────────────────────────────────────────────
 // NEWS18 MALAYALAM — Google News Sitemap
+// Parses the sitemap for title/link/image/time, then
+// scrapes each article page in parallel to extract the
+// full article summary from:
+//   • Para 1 → first div whose class contains a "jsx-*" token (hash changes)
+//   • Para 2 & 3 → all div.lastpara elements (fixed class, 2 of them)
+// All three pieces are joined and returned as one string.
 // ─────────────────────────────────────────────
+
+/**
+ * Scrape the full article summary from a News18 Malayalam article page.
+ *
+ * Page structure:
+ *   <div class="jsx-4088182340"></div>   ← paragraph 1 (jsx hash changes every build)
+ *   <div class="lastpara "></div>        ← paragraph 2 (fixed class)
+ *   <div class="lastpara "></div>        ← paragraph 3 (fixed class)
+ *
+ * Strategy:
+ *  1. jsx-* div  → first div whose class list has a token starting with "jsx-"
+ *                  that holds direct text content (not nav/header noise).
+ *  2. .lastpara  → collect ALL matching divs and join their text.
+ *  3. Combine 1 + 2 into a single clean summary string.
+ *
+ * Returns a clean, trimmed string or "" on failure.
+ */
+async function fetchNews18ArticleSummary(articleUrl) {
+  try {
+    const $ = await loadPage(articleUrl);
+
+    const parts = [];
+
+    // ── Part 1: first jsx-* div with meaningful direct text ──────────────
+    // We look for divs whose class contains a "jsx-XXXXXXXX" token.
+    // To avoid picking up large wrapper divs (which would include nav text
+    // etc.), we take the direct text of the element itself — not .find("p") —
+    // because the paragraph content is rendered as direct child text nodes
+    // inside that div, not wrapped in a <p>.
+    $("div").each((_, el) => {
+      if (parts.length > 0) return false; // already found para 1, stop
+
+      const cls = $(el).attr("class") || "";
+      const hasJsx = cls.split(/\s+/).some((c) => c.startsWith("jsx-"));
+      if (!hasJsx) return;
+
+      // Use the element's own text (shallow), not nested descendants,
+      // to avoid capturing the entire page through wrapper divs.
+      // cheerio's .text() is always deep, so we collect only direct
+      // text node content via the contents() filter.
+      const directText = $(el)
+        .contents()
+        .filter((_, node) => node.type === "text")
+        .text()
+        .trim();
+
+      // If shallow text is empty, try one level of <p> children only
+      // (some builds wrap the sentence in a single <p> inside the jsx div)
+      const paraText = $(el).children("p").text().trim();
+
+      const candidate = directText || paraText;
+      if (candidate.length > 20) {
+        parts.push(cleanHtmlText(candidate));
+      }
+    });
+
+    // ── Part 2 & 3: all div.lastpara elements ────────────────────────────
+    // The class is "lastpara " (with a trailing space in the HTML),
+    // but cheerio's class selector handles that transparently.
+    $("div.lastpara").each((_, el) => {
+      const text = $(el).text().trim();
+      if (text.length > 20) {
+        parts.push(cleanHtmlText(text));
+      }
+    });
+
+    // ── Combine ───────────────────────────────────────────────────────────
+    if (parts.length) {
+      return parts.join(" ").replace(/\s+/g, " ").trim();
+    }
+
+    // ── Fallback: first substantial <p> anywhere (edge cases) ────────────
+    let fallback = "";
+    $("p").each((_, el) => {
+      if (fallback) return false;
+      const t = $(el).text().trim();
+      if (t.length > 40) fallback = cleanHtmlText(t);
+    });
+    return fallback;
+  } catch (_) {
+    return "";
+  }
+}
+
+
 async function scrapeNews18() {
   const { sitemapUrl, icon, channel } = SOURCES.news18;
   const data = await fetchRaw(sitemapUrl);
-  const news = [];
+  const parsed = [];
 
   const urlBlocks = data.split("<url>");
 
@@ -357,23 +448,31 @@ async function scrapeNews18() {
     const rawImageLoc = getXmlTag(chunk, "image:loc");
     const image = stripCdata(rawImageLoc).trim();
 
-    const rawKeywords = getXmlTag(chunk, "news:keywords");
-    const summary = stripCdata(rawKeywords).trim();
-
-    if (title && loc) {
-      news.push({
-        title,
-        link: loc,
-        summary,
-        image: isValidImage(image) ? image : "",
-        readableTime,
-        icon,
-        channel,
-      });
-    }
+    parsed.push({
+      title,
+      link: loc,
+      image: isValidImage(image) ? image : "",
+      readableTime,
+    });
   }
 
-  return news;
+  if (!parsed.length) return [];
+
+  // Scrape all article pages in parallel to get real summaries
+  const summaryResults = await Promise.allSettled(
+    parsed.map((item) => fetchNews18ArticleSummary(item.link))
+  );
+
+  // Merge summaries back
+  return parsed.map((item, i) => ({
+    ...item,
+    summary:
+      summaryResults[i].status === "fulfilled"
+        ? summaryResults[i].value
+        : "",
+    icon,
+    channel,
+  }));
 }
 
 // ─────────────────────────────────────────────
