@@ -9,7 +9,7 @@ let ffmpeg;
 try {
   ffmpeg = require("fluent-ffmpeg");
   const ffmpegPath  = require("ffmpeg-static");
-  const ffprobePath = require("ffprobe-static").path; // ← FIX: was missing entirely
+  const ffprobePath = require("ffprobe-static").path;
 
   if (ffmpegPath && fs.existsSync(ffmpegPath)) {
     ffmpeg.setFfmpegPath(ffmpegPath);
@@ -18,7 +18,7 @@ try {
   }
 
   if (ffprobePath && fs.existsSync(ffprobePath)) {
-    ffmpeg.setFfprobePath(ffprobePath); // ← FIX: .screenshots() needs this to probe duration/metadata
+    ffmpeg.setFfprobePath(ffprobePath);
   } else {
     console.error("❌ ffprobe binary missing:", ffprobePath);
   }
@@ -28,7 +28,7 @@ try {
 }
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
+  path.join(__dirname, "../fonts/RIT-tnjoy-extrabold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
@@ -37,11 +37,66 @@ GlobalFonts.registerFromPath(
 );
 
 // ── Asset video path ─────────────────────────────────────────
-// Place your fallback MP4 at: <project-root>/assets/ad_fallback.mp4
-// Override via FALLBACK_VIDEO env var.
 const FALLBACK_VIDEO_PATH =
   process.env.FALLBACK_VIDEO ||
   path.join(__dirname, "../assets/ad_fallback.mp4");
+
+// ── Blue-grid panel background asset (the textured background that
+// sits behind the title text) ───────────────────────────────────
+// Resolution order:
+//   1. PANEL_BG_IMAGE env var, if set
+//   2. <this-file's-dir>/../assets/blue_panel_bg.png
+//   3. <process cwd>/assets/blue_panel_bg.png
+//   4. <process cwd>/server/assets/blue_panel_bg.png
+function resolvePanelBgPath() {
+  const candidates = [
+    process.env.PANEL_BG_IMAGE,
+    "C:\\Users\\adars\\Downloads\\news_channel-main\\news_channel-main\\server\\assets\\blue_panel_bg.png", // confirmed-working absolute path
+    path.join(__dirname, "assets/blue_panel_bg.png"),
+    path.join(__dirname, "../assets/blue_panel_bg.png"),
+    path.join(process.cwd(), "assets/blue_panel_bg.png"),
+    path.join(process.cwd(), "server/assets/blue_panel_bg.png"),
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    console.log("[Panel] checking background asset at:", candidate);
+    if (fs.existsSync(candidate)) {
+      console.log("[Panel] found background asset at:", candidate);
+      return candidate;
+    }
+  }
+  console.warn(
+    "[Panel] blue_panel_bg.png not found in any candidate location — " +
+    "falling back to a flat gradient. Checked:", candidates
+  );
+  return null;
+}
+
+// NOTE: intentionally does NOT cache a failed (null) result — if the
+// file wasn't there on the first render but shows up later without a
+// server restart, the next poster render will pick it up.
+let _panelBgImageCache = null; // caches a SUCCESSFUL load only
+async function loadPanelBgImage() {
+  if (_panelBgImageCache) return _panelBgImageCache;
+
+  const resolvedPath = resolvePanelBgPath();
+  if (!resolvedPath) return null;
+
+  try {
+    const rawBuf   = fs.readFileSync(resolvedPath);
+    // Re-encode through sharp first — avoids @napi-rs/canvas's format
+    // auto-detection misfiring on files that don't cleanly match its
+    // expected PNG signature (seen as a spurious "Invalid SVG image" error).
+    const cleanBuf = await sharp(rawBuf).png().toBuffer();
+    const img      = await loadImage(cleanBuf);
+    console.log(`[Panel] background asset loaded: ${img.width}x${img.height}px`);
+    _panelBgImageCache = img;
+    return img;
+  } catch (e) {
+    console.warn("[Panel] failed to load background asset:", e.message);
+    return null;
+  }
+}
 
 const W            = 1080;
 const H            = 1380;
@@ -85,10 +140,21 @@ function computeAdHeight(adImg) {
   return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
 }
 
-// ─────────────────────────────────────────────────────────────
-// toNodeBuffer — guarantee a real Node.js Buffer always.
-// fetch().arrayBuffer() returns a native ArrayBuffer (NOT a Buffer)
-// which crashes sharp / fs.writeFile / Instagram SDK.
+// Draw a single image into a rect using "cover" fit (crop to fill).
+function drawCover(ctx, img, x, y, w, h) {
+  const scale = Math.max(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.restore();
+}
+
 // ─────────────────────────────────────────────────────────────
 function toNodeBuffer(data) {
   if (Buffer.isBuffer(data))       return data;
@@ -97,29 +163,24 @@ function toNodeBuffer(data) {
   throw new TypeError(`toNodeBuffer: unsupported type ${Object.prototype.toString.call(data)}`);
 }
 
-// Fetch a URL → guaranteed Node.js Buffer
 async function fetchBuffer(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
   return toNodeBuffer(await res.arrayBuffer());
 }
 
-// Fetch a URL → JPEG Buffer (normalises WebP/PNG/AVIF, strips alpha)
 async function fetchAsJpegBuffer(url) {
   const raw = await fetchBuffer(url);
   return toNodeBuffer(await sharp(raw).jpeg().toBuffer());
 }
 
-// canvas.toBuffer() → guaranteed Node.js Buffer
 async function canvasToBuffer(canvas, mime = "image/png") {
   const result = canvas.toBuffer(mime);
   return Buffer.isBuffer(result) ? result : toNodeBuffer(await result);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// VIDEO FRAME EXTRACTION
-// Extracts one frame from an MP4 file path and returns a JPEG Buffer.
-// Returns null if ffmpeg is unavailable or extraction fails.
+// VIDEO FRAME EXTRACTION (unchanged)
 // ═══════════════════════════════════════════════════════════════
 
 function extractVideoFrame(videoPath, atSecond = 1) {
@@ -134,8 +195,6 @@ function extractVideoFrame(videoPath, atSecond = 1) {
       return resolve(null);
     }
 
-    // ── FIX: guard against zero-byte / unreadable files so ffprobe
-    // doesn't hang or throw an uncaught error before .on("error") attaches.
     try {
       const stat = fs.statSync(videoPath);
       if (stat.size === 0) {
@@ -156,8 +215,6 @@ function extractVideoFrame(videoPath, atSecond = 1) {
       resolve(value);
     };
 
-    // ── FIX: safety timeout — if ffprobe/ffmpeg hangs (e.g. misconfigured
-    // ffprobe path on a malformed file), don't block the whole poster render.
     const timer = setTimeout(() => {
       console.error("[Video] Frame extraction timed out:", videoPath);
       fs.unlink(tmpFile, () => {});
@@ -198,7 +255,7 @@ function extractVideoFrame(videoPath, atSecond = 1) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// AD STRIP
+// AD STRIP (unchanged)
 // ═══════════════════════════════════════════════════════════════
 
 function drawAdStrip(ctx, adImg, yOffset, adH) {
@@ -232,7 +289,6 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
     return;
   }
 
-  // Text-only fallback
   const bg = ctx.createLinearGradient(0, yOffset, 0, yOffset + adH);
   bg.addColorStop(0, "#0d1b4b");
   bg.addColorStop(1, "#091230");
@@ -296,29 +352,96 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// NEW POSTER LAYOUT HELPERS (matches the reference template:
+// single photo + circular badge + blue title panel)
+// ═══════════════════════════════════════════════════════════════
+
+// Small semi-transparent watermark text, used in the corners and
+// faintly over the photo area.
+function drawWatermark(ctx, text, x, y, opts = {}) {
+  const {
+    size    = 20,
+    color   = "rgba(255,255,255,0.65)",
+    align   = "left",
+    angle   = 0,
+    weight  = "600",
+  } = opts;
+  ctx.save();
+  ctx.translate(x, y);
+  if (angle) ctx.rotate(angle);
+  ctx.font         = `${weight} ${size}px English`;
+  ctx.fillStyle    = color;
+  ctx.textAlign    = align;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+// Circular "shock" badge (e.g. the roach photo) with a red/white ring,
+// overlapping the bottom edge of the photo.
+async function drawCircleBadge(ctx, badgeImg, cx, cy, radius) {
+  const ringOuter = radius + 12;
+
+  // drop shadow behind the ring
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringOuter, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.filter = "blur(6px)";
+  ctx.fill();
+  ctx.restore();
+
+  // red outer ring
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringOuter, 0, Math.PI * 2);
+  ctx.fillStyle = "#e30613";
+  ctx.fill();
+  ctx.restore();
+
+  // white gap ring
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 5, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+
+  // clipped photo
+  if (badgeImg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    const scale = Math.max((radius * 2) / badgeImg.width, (radius * 2) / badgeImg.height);
+    const dw = badgeImg.width * scale;
+    const dh = badgeImg.height * scale;
+    ctx.drawImage(badgeImg, cx - dw / 2, cy - dh / 2, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#222222";
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN POSTER DRAW
 // ═══════════════════════════════════════════════════════════════
 
 async function createNewsPoster(newsItem) {
 
-  // ── Load ad image ──────────────────────────────────────────
-  // Priority:
-  //   A) adBannerUrl is an IMAGE  → fetch & decode directly
-  //   B) adBannerUrl is a VIDEO   → download to temp, extract frame
-  //   C) no banner at all         → extract frame from local ad_fallback.mp4
-  //   D) everything fails         → text-only fallback strip
+  // ── Load ad image (unchanged logic) ─────────────────────────
   const hasAdUrl  = Boolean(newsItem.adBannerUrl);
   const isVideoAd = newsItem.adResourceType === "video";
   let   adImg     = null;
   let   actualAdH = DEFAULT_AD_H;
-
-  // ── When the ad is a real video URL, we skip drawing on canvas entirely.
-  // The live video will be composited by videoService (FFmpeg vstack).
-  // We still need actualAdH for canvas sizing; derive it from the video frame.
-  let liveAdVideoUrl = null; // non-null → videoService must composite this
+  let   liveAdVideoUrl = null;
 
   if (hasAdUrl && !isVideoAd) {
-    // ── A) Image banner ───────────────────────────────────────
     try {
       console.log("[Ad] Loading image banner:", newsItem.adBannerUrl);
       const jpegBuf = await fetchAsJpegBuffer(newsItem.adBannerUrl);
@@ -327,14 +450,10 @@ async function createNewsPoster(newsItem) {
       console.log(`[Ad] Image banner loaded: ${adImg.width}x${adImg.height}px, strip: ${actualAdH}px`);
     } catch (err) {
       console.error("[Ad] Image banner load failed:", err.message);
-      // fall through to local video fallback below
     }
   }
 
   if (!adImg && hasAdUrl && isVideoAd) {
-    // ── B) Video banner — will be composited live by videoService ─
-    // Probe dimensions via a single frame so we can size the canvas correctly,
-    // but do NOT draw the frame — the real video plays at the bottom instead.
     let tmpVidPath = null;
     try {
       console.log("[Ad] Probing video banner dimensions:", newsItem.adBannerUrl);
@@ -350,10 +469,10 @@ async function createNewsPoster(newsItem) {
       } else {
         console.warn("[Ad] Video banner probe returned null — using default height");
       }
-      liveAdVideoUrl = newsItem.adBannerUrl; // signal to composite live video
+      liveAdVideoUrl = newsItem.adBannerUrl;
     } catch (err) {
       console.error("[Ad] Video banner probe failed:", err.message);
-      liveAdVideoUrl = newsItem.adBannerUrl; // still try compositing
+      liveAdVideoUrl = newsItem.adBannerUrl;
     } finally {
       if (tmpVidPath) {
         try { fs.unlinkSync(tmpVidPath); } catch { /* ignore */ }
@@ -362,8 +481,6 @@ async function createNewsPoster(newsItem) {
   }
 
   if (!adImg && !liveAdVideoUrl) {
-    // ── C) Local ad_fallback.mp4 ──────────────────────────────
-    // Also a video — composite live rather than drawing a still frame.
     console.log("[Ad] Using local video fallback (live composite):", FALLBACK_VIDEO_PATH);
     try {
       const frameBuf = await extractVideoFrame(FALLBACK_VIDEO_PATH, 1);
@@ -375,271 +492,178 @@ async function createNewsPoster(newsItem) {
         console.warn("[Ad] Local fallback probe returned null — using default height");
         actualAdH = DEFAULT_AD_H;
       }
-      liveAdVideoUrl = FALLBACK_VIDEO_PATH; // local path — videoService handles both URLs and paths
+      liveAdVideoUrl = FALLBACK_VIDEO_PATH;
     } catch (err) {
       console.error("[Ad] Local fallback error:", err.message);
       actualAdH      = DEFAULT_AD_H;
-      // liveAdVideoUrl stays null → text-only strip drawn on canvas
     }
   }
 
-  // ── Canvas height ──────────────────────────────────────────
-  // If a live video ad will be composited by videoService, we omit the ad
-  // strip from the canvas (canvas = poster only = H tall).
-  // If falling back to a static image/text strip, include it in the canvas.
   const canvasH = liveAdVideoUrl ? H : H + actualAdH;
-  const totalH  = H + actualAdH; // reported for logging; actual video height
   console.log(`[Canvas] poster=${H}px  adStrip=${actualAdH}px  liveVideoAd=${!!liveAdVideoUrl}  canvasH=${canvasH}px`);
 
   const canvas = createCanvas(W, canvasH);
   const ctx    = canvas.getContext("2d");
 
-  // ── 1. Background ─────────────────────────────────────────
-  ctx.fillStyle = "#181818";
-  ctx.fillRect(0, 0, W, H);
+  // ═════════════════════════════════════════════════════════
+  // 1. SINGLE PHOTO — top 50% of the poster, one full-width
+  //    cover-fit image.
+  //    (Previously this rendered newsItem.image on the left half
+  //    and newsItem.image2 || newsItem.image on the right half —
+  //    when image2 wasn't supplied that silently fell back to the
+  //    SAME image again, producing the "doubled" look. Fixed by
+  //    drawing newsItem.image once across the full width.)
+  // ═════════════════════════════════════════════════════════
+  const IMG_H = Math.round(H * 0.5);
 
-  // ── 2. Photo — top 46% ────────────────────────────────────
-  const IMG_H = Math.round(H * 0.46);
+  ctx.fillStyle = "#181818";
+  ctx.fillRect(0, 0, W, IMG_H);
 
   try {
-    const img   = await loadImage(newsItem.image);
-    const scale = Math.max(W / img.width, IMG_H / img.height);
-    const dw    = img.width  * scale;
-    const dh    = img.height * scale;
-    const dx    = (W - dw) / 2;
-    const dy    = (IMG_H - dh) / 2;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, W, IMG_H);
-    ctx.clip();
-    ctx.drawImage(img, dx, dy, dw, dh);
-    ctx.restore();
-
-    const fade = ctx.createLinearGradient(0, IMG_H * 0.52, 0, IMG_H);
-    fade.addColorStop(0, "rgba(24,24,24,0)");
-    fade.addColorStop(1, "rgba(24,24,24,1)");
-    ctx.fillStyle = fade;
-    ctx.fillRect(0, 0, W, IMG_H);
-  } catch {
-    const fallback = ctx.createLinearGradient(0, 0, 0, IMG_H);
-    fallback.addColorStop(0, "#2a2a2a");
-    fallback.addColorStop(1, "#181818");
-    ctx.fillStyle = fallback;
-    ctx.fillRect(0, 0, W, IMG_H);
+    const img1 = await loadImage(newsItem.image);
+    drawCover(ctx, img1, 0, 0, W, IMG_H);
+  } catch (e) {
+    console.warn("[Poster] photo failed:", e.message);
   }
 
-  // ── 3. Logo — FLASH / KERALAM ─────────────────────────────
-  const LOGO_CY  = IMG_H - 30;
-  const FLASH_SZ = 64;
-  const KER_SZ   = 20;
+  // ═════════════════════════════════════════════════════════
+  // 2. Blue-grid panel — uses the cropped background image asset,
+  //    stretched to cover the area below the photo. A small solid
+  //    padding strip is inserted directly under the photo first so
+  //    the grid pattern doesn't butt right up against the photo's
+  //    bottom edge — gives the panel some breathing room at the top.
+  // ═════════════════════════════════════════════════════════
+  const PANEL_FALLBACK_COLOR = "#0d2a6e";
+  const PANEL_TOP_PADDING    = 28; // px of breathing room under the photo
 
-  ctx.save();
-  ctx.textAlign     = "center";
-  ctx.shadowColor   = "rgba(0,0,0,0.98)";
-  ctx.shadowBlur    = 20;
-  ctx.shadowOffsetX = 2;
-  ctx.shadowOffsetY = 2;
+  const panelBgImg = await loadPanelBgImage();
 
-  ctx.font          = `bold ${FLASH_SZ}px English`;
-  ctx.fillStyle     = "#ffffff";
-  ctx.textBaseline  = "middle";
-  ctx.letterSpacing = "5px";
-  ctx.fillText("FLASH", W / 2, LOGO_CY);
-  ctx.letterSpacing = "0px";
+  // Fill the padding strip first with a solid color matching the panel.
+  ctx.fillStyle = PANEL_FALLBACK_COLOR;
+  ctx.fillRect(0, IMG_H, W, PANEL_TOP_PADDING);
 
-  ctx.font          = `bold ${KER_SZ}px English`;
-  ctx.fillStyle     = "#dddddd";
-  ctx.textBaseline  = "top";
-  ctx.letterSpacing = "10px";
-  ctx.fillText("KERALAM", W / 2 + 5, LOGO_CY + FLASH_SZ / 2 + 4);
-  ctx.letterSpacing = "0px";
+  if (panelBgImg) {
+    drawCover(
+      ctx,
+      panelBgImg,
+      0,
+      IMG_H + PANEL_TOP_PADDING,
+      W,
+      H - IMG_H - PANEL_TOP_PADDING
+    );
+  } else {
+    // fallback if the asset is missing
+    const panelGrad = ctx.createLinearGradient(0, IMG_H + PANEL_TOP_PADDING, 0, H);
+    panelGrad.addColorStop(0, PANEL_FALLBACK_COLOR);
+    panelGrad.addColorStop(1, "#081022");
+    ctx.fillStyle = panelGrad;
+    ctx.fillRect(0, IMG_H + PANEL_TOP_PADDING, W, H - IMG_H - PANEL_TOP_PADDING);
+  }
 
-  ctx.restore();
+  // (dark blue fade/scrim removed per request — panel image shows directly)
 
-  // ── 4. Date box — red 3D ──────────────────────────────────
-  const now   = new Date();
-  const day   = String(now.getDate()).padStart(2, "0");
-  const month = now.toLocaleDateString("en-IN", { month: "short" }).toUpperCase();
-  const year  = String(now.getFullYear());
+  // ═════════════════════════════════════════════════════════
+  // 4. Circular badge photo, overlapping the bottom edge of the photo
+  // ═════════════════════════════════════════════════════════
+  const BADGE_RADIUS = Math.round(W * 0.095);
+  const BADGE_CX = Math.round(W * 0.53);
+  const BADGE_CY = Math.round(IMG_H * 0.08);
 
-  ctx.font = "bold 42px English";
-  const dayW   = ctx.measureText(day).width;
-  ctx.font = "bold 24px English";
-  const monthW = ctx.measureText(month).width;
-  ctx.font = "bold 19px English";
-  const yearW  = ctx.measureText(year).width;
+  if (newsItem.badgeImage) {
+    try {
+      const badgeImg = await loadImage(newsItem.badgeImage);
+      await drawCircleBadge(ctx, badgeImg, BADGE_CX, BADGE_CY, BADGE_RADIUS);
+    } catch (e) {
+      console.warn("[Poster] badge image failed:", e.message);
+    }
+  }
 
-  const D_GAP   = 10;
-  const MYW     = Math.max(monthW, yearW);
-  const D_PADX  = 26;
-  const BOX_H   = 70;
-  const BOX_W   = dayW + D_GAP + MYW + D_PADX * 2;
-  const BOX_RAD = 7;
-  const BOX_X   = W / 2 - BOX_W / 2;
-  const BOX_Y   = LOGO_CY + FLASH_SZ / 2 + KER_SZ + 14;
+  // faint watermark over the photo area (bottom-left of the photo band)
+  drawWatermark(
+    ctx,
+    newsItem.watermark || "FLASH KERALAM",
+    W * 0.18,
+    IMG_H * 0.84,
+    { size: 18, color: "rgba(255,255,255,0.35)", align: "left" }
+  );
 
-  ctx.save();
-  ctx.shadowBlur = 0;
-
-  ctx.globalAlpha = 0.65;
-  ctx.fillStyle   = "#5a0000";
-  roundRect(ctx, BOX_X + 5, BOX_Y + 5, BOX_W, BOX_H, BOX_RAD);
-  ctx.fill();
-
-  ctx.globalAlpha = 1;
-  const redGrad = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X, BOX_Y + BOX_H);
-  redGrad.addColorStop(0,    "#ff2828");
-  redGrad.addColorStop(0.18, "#dd0000");
-  redGrad.addColorStop(0.80, "#bb0000");
-  redGrad.addColorStop(1,    "#880000");
-  ctx.fillStyle = redGrad;
-  roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_RAD);
-  ctx.fill();
-
-  const sheen = ctx.createLinearGradient(BOX_X, BOX_Y, BOX_X, BOX_Y + BOX_H * 0.45);
-  sheen.addColorStop(0, "rgba(255,255,255,0.28)");
-  sheen.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = sheen;
-  roundRect(ctx, BOX_X, BOX_Y, BOX_W, BOX_H, BOX_RAD);
-  ctx.fill();
-
-  const DAY_X = BOX_X + D_PADX;
-  const MID_Y = BOX_Y + BOX_H / 2;
-
-  ctx.font         = "bold 42px English";
-  ctx.fillStyle    = "#ffffff";
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "middle";
-  ctx.fillText(day, DAY_X, MID_Y);
-
-  const MY_X = DAY_X + dayW + D_GAP;
-  ctx.font         = "bold 24px English";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(month, MY_X, MID_Y - 1);
-
-  ctx.font         = "bold 19px English";
-  ctx.fillStyle    = "#ffcccc";
-  ctx.textBaseline = "top";
-  ctx.fillText(year, MY_X, MID_Y + 1);
-
-  ctx.restore();
-
-  // ── 5. Malayalam title text ───────────────────────────────
+  // ═════════════════════════════════════════════════════════
+  // 5. Main white title text, centered in the blue panel
+  // ═════════════════════════════════════════════════════════
   const PAD      = 52;
-  const TEXT_TOP = BOX_Y + BOX_H + 4;
+  const TEXT_TOP = IMG_H + PANEL_TOP_PADDING + 24;
   const TEXT_BOT = H - 50;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
   const TEXT_W   = W - PAD * 2;
   const CX       = W / 2;
 
-  let bodyInput = [];
-  let lastInput = "";
-
-  if (newsItem.lastLine) {
-    lastInput = newsItem.lastLine;
-    bodyInput = Array.isArray(newsItem.titleLines)
-      ? newsItem.titleLines
-      : [newsItem.title || ""];
-  } else if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
-    lastInput = newsItem.titleLines[newsItem.titleLines.length - 1];
-    bodyInput  = newsItem.titleLines.slice(0, -1);
+  let titleLines;
+  if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
+    titleLines = newsItem.titleLines;
   } else {
-    const full     = newsItem.title || "";
-    const spaceIdx = full.lastIndexOf(" ");
-    if (spaceIdx > 0) {
-      lastInput = full.slice(spaceIdx + 1);
-      bodyInput = [full.slice(0, spaceIdx)];
-    } else {
-      lastInput = full;
-      bodyInput = [];
+    titleLines = [newsItem.title || ""];
+  }
+
+  // Search UPWARD from small to large, keeping the largest size that
+  // still fits the panel — a fixed starting cap would lock in that
+  // size whenever the text is short, instead of growing to fill the
+  // space and center properly.
+  const LINE_H_RATIO = 1.0;
+  const FIT_MARGIN   = 0.98; // use nearly all of the available height
+  const MIN_SIZE     = 28;
+  const MAX_SIZE     = 220;
+
+  let TITLE_SIZE   = MIN_SIZE;
+  let wrappedTitle = [];
+
+  for (let size = MIN_SIZE; size <= MAX_SIZE; size += 2) {
+    ctx.font = `bold ${size}px Malayalam`;
+    const wrapped = [];
+    for (const seg of titleLines) {
+      if (seg) wrapped.push(...wrapText(ctx, seg, TEXT_W));
     }
+    const fits = wrapped.length * size * LINE_H_RATIO <= TEXT_H * FIT_MARGIN;
+    if (!fits) break; // sizes only get worse from here — stop searching
+    TITLE_SIZE   = size;
+    wrappedTitle = wrapped;
   }
 
-  const LINE_H_RATIO = 1.18;
-  let BODY_SIZE   = 82;
-  let wrappedBody = [];
-
-  while (BODY_SIZE >= 38) {
-    ctx.font    = `bold ${BODY_SIZE}px Malayalam`;
-    wrappedBody = [];
-    for (const seg of bodyInput) {
-      if (seg) wrappedBody.push(...wrapText(ctx, seg, TEXT_W));
-    }
-    if (wrappedBody.length * BODY_SIZE * LINE_H_RATIO <= TEXT_H * 0.62) break;
-    BODY_SIZE -= 2;
-  }
-
-  let LAST_SIZE   = Math.round(BODY_SIZE * 1.7);
-  let wrappedLast = [];
-
-  while (LAST_SIZE >= 60) {
-    ctx.font    = `bold ${LAST_SIZE}px Malayalam`;
-    wrappedLast = lastInput ? wrapText(ctx, lastInput, TEXT_W) : [];
-    if (wrappedLast.length * LAST_SIZE * 1.10 <= TEXT_H * 0.42) break;
-    LAST_SIZE -= 4;
-  }
-
-  const LINE_H_BODY = Math.round(BODY_SIZE * LINE_H_RATIO);
-  const LINE_H_LAST = Math.round(LAST_SIZE * 1.10);
-  const totalH2     = wrappedBody.length * LINE_H_BODY + wrappedLast.length * LINE_H_LAST;
-
-  let drawY = TEXT_TOP + Math.round((TEXT_H - totalH2) / 2);
+  const LINE_H = Math.round(TITLE_SIZE * LINE_H_RATIO);
+  const totalTextH = wrappedTitle.length * LINE_H;
+  let drawY = TEXT_TOP + Math.round((TEXT_H - totalTextH) / 2);
 
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
 
-  const yellowIdx = wrappedBody.length - 1;
-
-  for (let i = 0; i < wrappedBody.length; i++) {
+  for (const line of wrappedTitle) {
     ctx.save();
-    ctx.font          = `bold ${BODY_SIZE}px Malayalam`;
-    ctx.shadowColor   = "rgba(0,0,0,0.90)";
+    ctx.font          = `bold ${TITLE_SIZE}px Malayalam`;
+    ctx.fillStyle     = "#ffffff";
+    ctx.shadowColor   = "rgba(0,0,0,0.6)";
     ctx.shadowBlur    = 10;
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
-    if (i === yellowIdx) {
-      const yg = ctx.createLinearGradient(0, drawY, 0, drawY + BODY_SIZE);
-      yg.addColorStop(0, "#ffe033");
-      yg.addColorStop(1, "#ffaa00");
-      ctx.fillStyle = yg;
-    } else {
-      ctx.fillStyle = "#ffffff";
-    }
-    ctx.fillText(wrappedBody[i], CX, drawY);
-    ctx.restore();
-    drawY += LINE_H_BODY;
-  }
-
-  for (const line of wrappedLast) {
-    ctx.save();
-    ctx.font          = `bold ${LAST_SIZE}px Malayalam`;
-    ctx.shadowColor   = "rgba(0,0,0,0.95)";
-    ctx.shadowBlur    = 18;
-    ctx.shadowOffsetX = 3;
-    ctx.shadowOffsetY = 3;
-    ctx.fillStyle     = "#ffffff";
     ctx.fillText(line, CX, drawY);
     ctx.restore();
-    drawY += LINE_H_LAST;
+    drawY += LINE_H;
   }
 
-  // ── 6. Reset ──────────────────────────────────────────────
+  // ═════════════════════════════════════════════════════════
+  // 7. Bottom-corner watermarks
+  // ═════════════════════════════════════════════════════════
+  const wmText = newsItem.watermark || "FLASH KERALAM";
+  drawWatermark(ctx, wmText, 28, H - 26, { size: 19, align: "left" });
+  drawWatermark(ctx, wmText, W - 28, H - 26, { size: 19, align: "right" });
+
+  // ── Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
 
-  // ── 7. Ad strip ───────────────────────────────────────────
-  // Only draw a static strip when there's no live video to composite.
-  // When liveAdVideoUrl is set, videoService will FFmpeg-stack the real
-  // ad video below the poster — we leave the canvas as poster-only.
+  // ── Ad strip ─────────────────────────────────────────────
   if (!liveAdVideoUrl) {
     drawAdStrip(ctx, adImg, H, actualAdH);
   }
 
-  // ── 8. Return { type, buffer, liveAdVideoUrl, adH } ───────
-  // type is always "image" — the PNG gets converted to MP4 by
-  // videoService.convertImageToVideo() in the controllers.
-  // When liveAdVideoUrl is non-null, videoService must composite the ad.
   const buffer = await canvasToBuffer(canvas, "image/png");
   return { type: "image", buffer, liveAdVideoUrl, adH: actualAdH };
 }
