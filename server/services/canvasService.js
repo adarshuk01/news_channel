@@ -28,7 +28,7 @@ try {
 }
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/RIT-tnjoy-extrabold.ttf"),
+  path.join(__dirname, "../fonts/BalooChettan2-VariableFont_wght.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
@@ -122,6 +122,23 @@ function wrapText(ctx, text, maxWidth) {
   }
   if (cur) lines.push(cur);
   return lines;
+}
+
+// Letter-spacing for the title, done the SAFE way: using the canvas's
+// native `letterSpacing` state property rather than splitting the
+// string into individual characters. Malayalam (and other complex
+// scripts) rely on the font engine shaping consonants + vowel signs +
+// conjuncts together — drawing character-by-character breaks that
+// shaping and produces garbled glyphs. Setting ctx.letterSpacing and
+// calling the normal measureText/fillText/strokeText on the WHOLE
+// string keeps shaping intact while still adding the gap.
+function setLetterSpacing(ctx, px) {
+  try {
+    ctx.letterSpacing = `${px}px`;
+  } catch (e) {
+    // If this build of @napi-rs/canvas doesn't support letterSpacing,
+    // fail silently — no extra spacing is far better than broken text.
+  }
 }
 
 function roundRect(ctx, x, y, w, h, r) {
@@ -608,16 +625,30 @@ async function createNewsPoster(newsItem) {
   // still fits the panel — a fixed starting cap would lock in that
   // size whenever the text is short, instead of growing to fill the
   // space and center properly.
-  const LINE_H_RATIO = 1.0;
+  // LINE_H_RATIO controls the vertical gap between wrapped lines —
+  // 1.0 packs lines tight enough that ascenders/descenders across
+  // consecutive lines can visually crowd or touch each other,
+  // especially with tall Malayalam vowel signs. Bumping it to ~1.22
+  // gives proper breathing room between lines without needing to
+  // shrink the font itself.
+  const LINE_H_RATIO = 1.22;
   const FIT_MARGIN   = 0.98; // use nearly all of the available height
   const MIN_SIZE     = 28;
   const MAX_SIZE     = 220;
 
+  // Extra gap inserted between letters (tracking), applied via the
+  // canvas's native letterSpacing so Malayalam conjuncts/vowel signs
+  // still shape correctly — scales with font size. Kept small (0.015)
+  // since Malayalam glyphs already sit close together by design; too
+  // much tracking looks disconnected rather than "spaced out".
+  const LETTER_SPACING_RATIO = 0.015;
+
   let TITLE_SIZE   = MIN_SIZE;
-  let wrappedTitle = [];
+  let wrappedTitle = []; // array of line strings
 
   for (let size = MIN_SIZE; size <= MAX_SIZE; size += 2) {
-    ctx.font = `bold ${size}px Malayalam`;
+    ctx.font = `700 ${size}px Malayalam`;
+    setLetterSpacing(ctx, size * LETTER_SPACING_RATIO);
     const wrapped = [];
     for (const seg of titleLines) {
       if (seg) wrapped.push(...wrapText(ctx, seg, TEXT_W));
@@ -637,12 +668,26 @@ async function createNewsPoster(newsItem) {
 
   for (const line of wrappedTitle) {
     ctx.save();
-    ctx.font          = `bold ${TITLE_SIZE}px Malayalam`;
+    ctx.font          = `700 ${TITLE_SIZE}px Malayalam`;
+    setLetterSpacing(ctx, TITLE_SIZE * LETTER_SPACING_RATIO);
     ctx.fillStyle     = "#ffffff";
     ctx.shadowColor   = "rgba(0,0,0,0.6)";
     ctx.shadowBlur    = 10;
     ctx.shadowOffsetX = 2;
     ctx.shadowOffsetY = 2;
+    // Stroke first, then fill — this fattens the letterforms beyond
+    // what the loaded ttf's own "bold" weight provides, since
+    // @napi-rs/canvas can only render the weight(s) actually baked
+    // into the font file itself. Stroke width scales with the
+    // auto-fit title size so it stays proportionally heavy whether
+    // the fitter lands on a small or large size.
+    ctx.lineWidth   = Math.max(2, Math.round(TITLE_SIZE * 0.045));
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineJoin    = "round";
+    // Whole-string draw (not per-character) so the font shapes
+    // Malayalam conjuncts/vowel signs correctly; letterSpacing above
+    // adds the gap after shaping.
+    ctx.strokeText(line, CX, drawY);
     ctx.fillText(line, CX, drawY);
     ctx.restore();
     drawY += LINE_H;
@@ -658,6 +703,7 @@ async function createNewsPoster(newsItem) {
   // ── Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
+  setLetterSpacing(ctx, 0);
 
   // ── Ad strip ─────────────────────────────────────────────
   if (!liveAdVideoUrl) {
