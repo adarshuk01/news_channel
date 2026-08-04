@@ -40,6 +40,13 @@ const SOURCES = {
     channel: "News18 Malayalam",
   },
 
+  oneindia: {
+    rssUrl: "https://malayalam.oneindia.com/rss/feeds/malayalam-news-fb.xml",
+    baseUrl: "https://malayalam.oneindia.com",
+    icon: "https://malayalam.oneindia.com/favicon.ico",
+    channel: "Oneindia",
+  },
+
   mathrubhumi: {
     apiUrl: "https://www.mathrubhumi.com/263/api/home-api-1",
     baseUrl: "https://www.mathrubhumi.com",
@@ -203,6 +210,41 @@ async function scrapeManorama(url, selector) {
 // ─────────────────────────────────────────────
 async function scrapeAsianet(url) {
   const { icon, channel } = SOURCES.asianet;
+  const data = await fetchRaw(url);
+  const news = [];
+  const items = data.split("<item>");
+
+  for (const chunk of items.slice(1)) {
+    const itemXml = chunk.split("</item>")[0];
+    const title = stripLive(getXmlTag(itemXml, "title"));
+    const link = getXmlTag(itemXml, "link");
+    const pubDate = getXmlTag(itemXml, "pubDate");
+    const image =
+      getXmlAttr(itemXml, "media:content", "url") ||
+      getXmlAttr(itemXml, "enclosure", "url") ||
+      "";
+
+    let summary = cleanHtmlText(
+      getXmlTag(itemXml, "content:encoded") ||
+        getXmlTag(itemXml, "description")
+    );
+    const words = summary.split(" ").filter(Boolean);
+    if (words.length > 40) summary = words.slice(0, 150).join(" ") + "...";
+
+    if (!isValidImage(image)) continue;
+    if (title && link) {
+      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
+    }
+  }
+
+  return news;
+}
+
+// ─────────────────────────────────────────────
+// ONEINDIA — RSS feed (same generic pattern as Asianet)
+// ─────────────────────────────────────────────
+async function scrapeOneindia(url) {
+  const { icon, channel } = SOURCES.oneindia;
   const data = await fetchRaw(url);
   const news = [];
   const items = data.split("<item>");
@@ -666,6 +708,8 @@ exports.fetchKeralaKaumudiLatestNews = () => scrapeKeralaKaumudi();
 
 exports.fetchNews18LatestNews = () => scrapeNews18();
 
+exports.fetchOneindiaLatestNews = () => scrapeOneindia(SOURCES.oneindia.rssUrl);
+
 exports.fetchMathrubhumiLatestNews = () => scrapeMathrubhumi();
 
 exports.fetchTwentyFourLatestNews = () => scrapeTwentyFour();
@@ -681,6 +725,7 @@ exports.fetchAllLatestNews = async () => {
     exports.fetchMediaOneLatestNews(),
     exports.fetchKeralaKaumudiLatestNews(),
     exports.fetchNews18LatestNews(),
+    exports.fetchOneindiaLatestNews(),
     exports.fetchMathrubhumiLatestNews(),
     exports.fetchTwentyFourLatestNews(),
   ]);
