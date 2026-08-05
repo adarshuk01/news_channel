@@ -28,7 +28,7 @@ try {
 }
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/RIT-tnjoy-extrabold.ttf"),
+  path.join(__dirname, "../fonts/Rachana-Regular.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
@@ -525,6 +525,11 @@ async function createNewsPoster(newsItem) {
   // ═════════════════════════════════════════════════════════
   // 1. SINGLE PHOTO — top 50% of the poster, one full-width
   //    cover-fit image.
+  //    (Previously this rendered newsItem.image on the left half
+  //    and newsItem.image2 || newsItem.image on the right half —
+  //    when image2 wasn't supplied that silently fell back to the
+  //    SAME image again, producing the "doubled" look. Fixed by
+  //    drawing newsItem.image once across the full width.)
   // ═════════════════════════════════════════════════════════
   const IMG_H = Math.round(H * 0.5);
 
@@ -540,13 +545,17 @@ async function createNewsPoster(newsItem) {
 
   // ═════════════════════════════════════════════════════════
   // 2. Blue-grid panel — uses the cropped background image asset,
-  //    stretched to cover the area below the photo.
+  //    stretched to cover the area below the photo. A small solid
+  //    padding strip is inserted directly under the photo first so
+  //    the grid pattern doesn't butt right up against the photo's
+  //    bottom edge — gives the panel some breathing room at the top.
   // ═════════════════════════════════════════════════════════
   const PANEL_FALLBACK_COLOR = "#0d2a6e";
   const PANEL_TOP_PADDING    = 28; // px of breathing room under the photo
 
   const panelBgImg = await loadPanelBgImage();
 
+  // Fill the padding strip first with a solid color matching the panel.
   ctx.fillStyle = PANEL_FALLBACK_COLOR;
   ctx.fillRect(0, IMG_H, W, PANEL_TOP_PADDING);
 
@@ -560,12 +569,15 @@ async function createNewsPoster(newsItem) {
       H - IMG_H - PANEL_TOP_PADDING
     );
   } else {
+    // fallback if the asset is missing
     const panelGrad = ctx.createLinearGradient(0, IMG_H + PANEL_TOP_PADDING, 0, H);
     panelGrad.addColorStop(0, PANEL_FALLBACK_COLOR);
     panelGrad.addColorStop(1, "#081022");
     ctx.fillStyle = panelGrad;
     ctx.fillRect(0, IMG_H + PANEL_TOP_PADDING, W, H - IMG_H - PANEL_TOP_PADDING);
   }
+
+  // (dark blue fade/scrim removed per request — panel image shows directly)
 
   // ═════════════════════════════════════════════════════════
   // 4. Circular badge photo, overlapping the bottom edge of the photo
@@ -593,13 +605,7 @@ async function createNewsPoster(newsItem) {
   );
 
   // ═════════════════════════════════════════════════════════
-  // 5. Main white title text, centered in the blue panel.
-  //
-  //    UPDATED: odd lines (1st, 3rd, 5th...) are rendered BIGGER
-  //    than even lines (2nd, 4th, 6th...). EVEN_LINE_SIZE_RATIO
-  //    controls how much smaller the even lines are relative to
-  //    the fitted base size — tweak this single constant to
-  //    change the size difference.
+  // 5. Main white title text, centered in the blue panel
   // ═════════════════════════════════════════════════════════
   const PAD      = 52;
   const TEXT_TOP = IMG_H + PANEL_TOP_PADDING + 24;
@@ -619,36 +625,19 @@ async function createNewsPoster(newsItem) {
   // still fits the panel — a fixed starting cap would lock in that
   // size whenever the text is short, instead of growing to fill the
   // space and center properly.
-  const LINE_H_RATIO = 0.85;
+  const LINE_H_RATIO = 1.0;
   const FIT_MARGIN   = 0.98; // use nearly all of the available height
   const MIN_SIZE     = 28;
   const MAX_SIZE     = 220;
-
-  // Odd lines (index 0, 2, 4... i.e. 1st, 3rd, 5th...) use the full
-  // fitted size. Even lines (index 1, 3, 5... i.e. 2nd, 4th, 6th...)
-  // use this fraction of that size instead.
-  const EVEN_LINE_SIZE_RATIO = 0.72;
 
   // Extra gap inserted between letters (tracking), applied via the
   // canvas's native letterSpacing so Malayalam conjuncts/vowel signs
   // still shape correctly — scales with font size.
   const LETTER_SPACING_RATIO = 0.06;
 
-  // Helper: font size for a given wrapped-line index (0-based).
-  const sizeForLine = (baseSize, idx) =>
-    idx % 2 === 0 ? baseSize : Math.round(baseSize * EVEN_LINE_SIZE_RATIO);
-
   let TITLE_SIZE   = MIN_SIZE;
   let wrappedTitle = []; // array of line strings
 
-  // Wrapping still measures using the (larger) odd-line size for each
-  // segment — this is the conservative choice so lines never overflow
-  // TEXT_W even though even lines end up a bit smaller/narrower.
-  //
-  // IMPORTANT: the row-to-row rhythm (LINE_H) is UNIFORM — always based
-  // on the base/odd size — regardless of whether a given line is big or
-  // small. That's what keeps the gap between every pair of lines equal;
-  // only the glyphs drawn inside each equal-height row change size.
   for (let size = MIN_SIZE; size <= MAX_SIZE; size += 2) {
     ctx.font = `900 ${size}px Malayalam`;
     setLetterSpacing(ctx, size * LETTER_SPACING_RATIO);
@@ -656,33 +645,24 @@ async function createNewsPoster(newsItem) {
     for (const seg of titleLines) {
       if (seg) wrapped.push(...wrapText(ctx, seg, TEXT_W));
     }
-
-    const totalH = wrapped.length * size * LINE_H_RATIO;
-
-    const fits = totalH <= TEXT_H * FIT_MARGIN;
+    const fits = wrapped.length * size * LINE_H_RATIO <= TEXT_H * FIT_MARGIN;
     if (!fits) break; // sizes only get worse from here — stop searching
     TITLE_SIZE   = size;
     wrappedTitle = wrapped;
   }
 
-  // Uniform row height for every line, based on the base (odd-line) size.
-  const LINE_H     = Math.round(TITLE_SIZE * LINE_H_RATIO);
+  const LINE_H = Math.round(TITLE_SIZE * LINE_H_RATIO);
   const totalTextH = wrappedTitle.length * LINE_H;
-  let rowTop = TEXT_TOP + Math.round((TEXT_H - totalTextH) / 2);
+  let drawY = TEXT_TOP + Math.round((TEXT_H - totalTextH) / 2);
 
   ctx.textAlign    = "center";
-  ctx.textBaseline = "middle"; // center each line's glyphs within its equal-height row
+  ctx.textBaseline = "top";
 
-  wrappedTitle.forEach((line, i) => {
-    const lineSize = sizeForLine(TITLE_SIZE, i);
-    const rowCenterY = rowTop + LINE_H / 2;
+  for (const line of wrappedTitle) {
     ctx.save();
-    ctx.font          = `900 ${lineSize}px Malayalam`;
-    setLetterSpacing(ctx, lineSize * LETTER_SPACING_RATIO);
-    // Last 2 lines render in accent gold; all lines above that stay white.
-    const isAccentLine = i >= wrappedTitle.length - 2;
-    ctx.fillStyle     = isAccentLine ? "#ffde59" : "#ffffff";
-    ctx.strokeStyle   = isAccentLine ? "#ffde59" : "#ffffff";
+    ctx.font          = `900 ${TITLE_SIZE}px Malayalam`;
+    setLetterSpacing(ctx, TITLE_SIZE * LETTER_SPACING_RATIO);
+    ctx.fillStyle     = "#ffffff";
     ctx.shadowColor   = "rgba(0,0,0,0.6)";
     ctx.shadowBlur    = 10;
     ctx.shadowOffsetX = 2;
@@ -690,18 +670,20 @@ async function createNewsPoster(newsItem) {
     // Stroke first, then fill — this fattens the letterforms beyond
     // what the loaded ttf's own "bold" weight provides, since
     // @napi-rs/canvas can only render the weight(s) actually baked
-    // into the font file itself. Stroke width scales with each
-    // line's own size so smaller (even) lines don't look over-stroked.
-    ctx.lineWidth   = Math.max(2, Math.round(lineSize * 0.045));
+    // into the font file itself. Stroke width scales with the
+    // auto-fit title size so it stays proportionally heavy whether
+    // the fitter lands on a small or large size.
+    ctx.lineWidth   = Math.max(2, Math.round(TITLE_SIZE * 0.045));
+    ctx.strokeStyle = "#ffffff";
     ctx.lineJoin    = "round";
     // Whole-string draw (not per-character) so the font shapes
     // Malayalam conjuncts/vowel signs correctly; letterSpacing above
     // adds the gap after shaping.
-    ctx.strokeText(line, CX, rowCenterY);
-    ctx.fillText(line, CX, rowCenterY);
+    ctx.strokeText(line, CX, drawY);
+    ctx.fillText(line, CX, drawY);
     ctx.restore();
-    rowTop += LINE_H;
-  });
+    drawY += LINE_H;
+  }
 
   // ═════════════════════════════════════════════════════════
   // 7. Bottom-corner watermarks
