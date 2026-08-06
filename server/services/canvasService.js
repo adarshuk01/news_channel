@@ -28,7 +28,7 @@ try {
 }
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/Rachana-Regular.ttf"),
+  path.join(__dirname, "../fonts/RIT-tnjoy-extrabold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
