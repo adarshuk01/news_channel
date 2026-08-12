@@ -28,7 +28,7 @@ try {
 }
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/RIT-tnjoy-extrabold.ttf"),
+  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
@@ -41,17 +41,14 @@ const FALLBACK_VIDEO_PATH =
   process.env.FALLBACK_VIDEO ||
   path.join(__dirname, "../assets/ad_fallback.mp4");
 
-// ── Blue-grid panel background asset (the textured background that
-// sits behind the title text) ───────────────────────────────────
-// Resolution order:
-//   1. PANEL_BG_IMAGE env var, if set
-//   2. <this-file's-dir>/../assets/blue_panel_bg.png
-//   3. <process cwd>/assets/blue_panel_bg.png
-//   4. <process cwd>/server/assets/blue_panel_bg.png
+// ── Blue-grid panel background asset (kept for backward-compat /
+// callers that still pass panel-style items — no longer used by the
+// default layout below, which now paints its own dark photo-backed
+// title panel instead) ───────────────────────────────────────────
 function resolvePanelBgPath() {
   const candidates = [
     process.env.PANEL_BG_IMAGE,
-    "C:\\Users\\adars\\Downloads\\news_channel-main\\news_channel-main\\server\\assets\\blue_panel_bg.png", // confirmed-working absolute path
+    "C:\\Users\\adars\\Downloads\\news_channel-main\\news_channel-main\\server\\assets\\blue_panel_bg.png",
     path.join(__dirname, "assets/blue_panel_bg.png"),
     path.join(__dirname, "../assets/blue_panel_bg.png"),
     path.join(process.cwd(), "assets/blue_panel_bg.png"),
@@ -59,37 +56,20 @@ function resolvePanelBgPath() {
   ].filter(Boolean);
 
   for (const candidate of candidates) {
-    console.log("[Panel] checking background asset at:", candidate);
-    if (fs.existsSync(candidate)) {
-      console.log("[Panel] found background asset at:", candidate);
-      return candidate;
-    }
+    if (fs.existsSync(candidate)) return candidate;
   }
-  console.warn(
-    "[Panel] blue_panel_bg.png not found in any candidate location — " +
-    "falling back to a flat gradient. Checked:", candidates
-  );
   return null;
 }
 
-// NOTE: intentionally does NOT cache a failed (null) result — if the
-// file wasn't there on the first render but shows up later without a
-// server restart, the next poster render will pick it up.
-let _panelBgImageCache = null; // caches a SUCCESSFUL load only
+let _panelBgImageCache = null;
 async function loadPanelBgImage() {
   if (_panelBgImageCache) return _panelBgImageCache;
-
   const resolvedPath = resolvePanelBgPath();
   if (!resolvedPath) return null;
-
   try {
     const rawBuf   = fs.readFileSync(resolvedPath);
-    // Re-encode through sharp first — avoids @napi-rs/canvas's format
-    // auto-detection misfiring on files that don't cleanly match its
-    // expected PNG signature (seen as a spurious "Invalid SVG image" error).
     const cleanBuf = await sharp(rawBuf).png().toBuffer();
     const img      = await loadImage(cleanBuf);
-    console.log(`[Panel] background asset loaded: ${img.width}x${img.height}px`);
     _panelBgImageCache = img;
     return img;
   } catch (e) {
@@ -369,12 +349,14 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// NEW POSTER LAYOUT HELPERS (matches the reference template:
-// single photo + circular badge + blue title panel)
+// NEW POSTER LAYOUT HELPERS
+// (matches the reference template: dark photo-backed title panel
+// with multi-size gold headline + social row, then a full-width
+// two-photo split, with a circular "compare" badge straddling the
+// seam between the two zones)
 // ═══════════════════════════════════════════════════════════════
 
-// Small semi-transparent watermark text, used in the corners and
-// faintly over the photo area.
+// Small semi-transparent watermark text.
 function drawWatermark(ctx, text, x, y, opts = {}) {
   const {
     size    = 20,
@@ -382,11 +364,12 @@ function drawWatermark(ctx, text, x, y, opts = {}) {
     align   = "left",
     angle   = 0,
     weight  = "600",
+    font    = "English",
   } = opts;
   ctx.save();
   ctx.translate(x, y);
   if (angle) ctx.rotate(angle);
-  ctx.font         = `${weight} ${size}px English`;
+  ctx.font         = `${weight} ${size}px ${font}`;
   ctx.fillStyle    = color;
   ctx.textAlign    = align;
   ctx.textBaseline = "middle";
@@ -394,8 +377,8 @@ function drawWatermark(ctx, text, x, y, opts = {}) {
   ctx.restore();
 }
 
-// Circular "shock" badge (e.g. the roach photo) with a red/white ring,
-// overlapping the bottom edge of the photo.
+// Circular "compare" badge with a red/white ring, straddling the
+// boundary between the title panel and the photo strip below it.
 async function drawCircleBadge(ctx, badgeImg, cx, cy, radius) {
   const ringOuter = radius + 12;
 
@@ -443,6 +426,125 @@ async function drawCircleBadge(ctx, badgeImg, cx, cy, radius) {
     ctx.fill();
     ctx.restore();
   }
+}
+
+// Simple flat-icon Facebook glyph (blue circle + white "f") drawn
+// entirely in canvas primitives — no external asset required.
+function drawFacebookIcon(ctx, cx, cy, r) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#1877f2";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = "#ffffff";
+  ctx.fillStyle   = "#ffffff";
+  ctx.lineWidth   = r * 0.32;
+  ctx.lineCap     = "round";
+  // vertical stroke of the "f"
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 0.06, cy - r * 0.5);
+  ctx.lineTo(cx + r * 0.06, cy + r * 0.55);
+  ctx.stroke();
+  // hook at top
+  ctx.beginPath();
+  ctx.arc(cx + r * 0.32, cy - r * 0.42, r * 0.28, Math.PI, Math.PI * 1.55, false);
+  ctx.lineWidth = r * 0.28;
+  ctx.stroke();
+  // crossbar
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.28, cy - r * 0.02);
+  ctx.lineTo(cx + r * 0.32, cy - r * 0.02);
+  ctx.lineWidth = r * 0.26;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Simple flat-icon Instagram glyph (rounded gradient square + ring +
+// dot) drawn entirely in canvas primitives.
+function drawInstagramIcon(ctx, cx, cy, r) {
+  const size = r * 2;
+  const x = cx - r;
+  const y = cy - r;
+  const rad = r * 0.55;
+
+  const grad = ctx.createLinearGradient(x, y + size, x + size, y);
+  grad.addColorStop(0,    "#ffdb73");
+  grad.addColorStop(0.35, "#ee2a7b");
+  grad.addColorStop(0.7,  "#8134af");
+  grad.addColorStop(1,    "#5851db");
+
+  ctx.save();
+  roundRect(ctx, x, y, size, size, rad);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth   = r * 0.16;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx + r * 0.55, cy - r * 0.55, r * 0.1, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+}
+
+// Draws the "f  📷  <label>" social-proof row.
+function drawSocialRow(ctx, label, cy) {
+  const iconR   = 15;
+  const gap     = 10;
+  ctx.save();
+  ctx.font = "700 26px English";
+  const labelW = ctx.measureText(label).width;
+  ctx.restore();
+
+  const totalW = iconR * 2 + gap + iconR * 2 + gap + labelW;
+  let x = W / 2 - totalW / 2 + iconR;
+
+  drawFacebookIcon(ctx, x, cy, iconR);
+  x += iconR + gap + iconR;
+  drawInstagramIcon(ctx, x, cy, iconR);
+  x += iconR + gap;
+
+  ctx.save();
+  ctx.font         = "700 26px English";
+  ctx.fillStyle    = "#ffffff";
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor  = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur   = 6;
+  ctx.fillText(label, x, cy + 1);
+  ctx.restore();
+}
+
+// Default alternating emphasis: 1st, 3rd, 5th... lines (odd,
+// 1-indexed) render bigger than the 2nd, 4th, 6th... lines — matches
+// the reference poster's big/small/big/small headline rhythm.
+const ODD_LINE_SIZE_MULT  = 1.25;
+const EVEN_LINE_SIZE_MULT = 0.85;
+
+// Normalizes a titleLines entry into { text, sizeMult, color }.
+// `index` is the entry's position in the titleLines array (0-based)
+// and drives the default odd/even size alternation. Accepts a plain
+// string, or an object such as { text: "...", size: 1.3 } /
+// { text: "...", emphasis: true } to override the default for that
+// specific line.
+function normalizeTitleLine(entry, index) {
+  const defaultMult = index % 2 === 0 ? ODD_LINE_SIZE_MULT : EVEN_LINE_SIZE_MULT;
+
+  if (typeof entry === "string") {
+    return { text: entry, sizeMult: defaultMult, color: null };
+  }
+  const sizeMult = entry.size || (entry.emphasis != null
+    ? (entry.emphasis ? 1.35 : 1)
+    : defaultMult);
+  return { text: entry.text || "", sizeMult, color: entry.color || null };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -523,174 +625,171 @@ async function createNewsPoster(newsItem) {
   const ctx    = canvas.getContext("2d");
 
   // ═════════════════════════════════════════════════════════
-  // 1. SINGLE PHOTO — top 50% of the poster, one full-width
-  //    cover-fit image.
-  //    (Previously this rendered newsItem.image on the left half
-  //    and newsItem.image2 || newsItem.image on the right half —
-  //    when image2 wasn't supplied that silently fell back to the
-  //    SAME image again, producing the "doubled" look. Fixed by
-  //    drawing newsItem.image once across the full width.)
+  // Load the main photo up front — it's used both as the dimmed
+  // backdrop behind the headline AND as the single full-width
+  // photo strip lower down.
   // ═════════════════════════════════════════════════════════
-  const IMG_H = Math.round(H * 0.5);
+  let img1 = null;
+  try { img1 = await loadImage(newsItem.image); }
+  catch (e) { console.warn("[Poster] photo failed:", e.message); }
 
-  ctx.fillStyle = "#181818";
-  ctx.fillRect(0, 0, W, IMG_H);
+  // ═════════════════════════════════════════════════════════
+  // 1. TITLE PANEL — top portion of the poster: a dimmed/darkened
+  //    photo backdrop (cover-fit, blurred) with the bold gold
+  //    headline on top, a faint diagonal watermark, and the
+  //    social-proof row near the bottom of the panel.
+  // ═════════════════════════════════════════════════════════
+  const TITLE_H = Math.round(H * 0.46);
 
-  try {
-    const img1 = await loadImage(newsItem.image);
-    drawCover(ctx, img1, 0, 0, W, IMG_H);
-  } catch (e) {
-    console.warn("[Poster] photo failed:", e.message);
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, W, TITLE_H);
+
+  if (img1) {
+    ctx.save();
+    ctx.filter = "blur(18px)";
+    drawCover(ctx, img1, -40, -40, W + 80, TITLE_H + 80);
+    ctx.restore();
   }
 
-  // ═════════════════════════════════════════════════════════
-  // 2. Blue-grid panel — uses the cropped background image asset,
-  //    stretched to cover the area below the photo. A small solid
-  //    padding strip is inserted directly under the photo first so
-  //    the grid pattern doesn't butt right up against the photo's
-  //    bottom edge — gives the panel some breathing room at the top.
-  // ═════════════════════════════════════════════════════════
-  const PANEL_FALLBACK_COLOR = "#0d2a6e";
-  const PANEL_TOP_PADDING    = 28; // px of breathing room under the photo
+  // dark scrim so the gold text stays readable over any photo
+  const scrim = ctx.createLinearGradient(0, 0, 0, TITLE_H);
+  scrim.addColorStop(0,   "rgba(0,0,0,0.72)");
+  scrim.addColorStop(0.6, "rgba(0,0,0,0.58)");
+  scrim.addColorStop(1,   "rgba(0,0,0,0.78)");
+  ctx.fillStyle = scrim;
+  ctx.fillRect(0, 0, W, TITLE_H);
 
-  const panelBgImg = await loadPanelBgImage();
-
-  // Fill the padding strip first with a solid color matching the panel.
-  ctx.fillStyle = PANEL_FALLBACK_COLOR;
-  ctx.fillRect(0, IMG_H, W, PANEL_TOP_PADDING);
-
-  if (panelBgImg) {
-    drawCover(
-      ctx,
-      panelBgImg,
-      0,
-      IMG_H + PANEL_TOP_PADDING,
-      W,
-      H - IMG_H - PANEL_TOP_PADDING
-    );
-  } else {
-    // fallback if the asset is missing
-    const panelGrad = ctx.createLinearGradient(0, IMG_H + PANEL_TOP_PADDING, 0, H);
-    panelGrad.addColorStop(0, PANEL_FALLBACK_COLOR);
-    panelGrad.addColorStop(1, "#081022");
-    ctx.fillStyle = panelGrad;
-    ctx.fillRect(0, IMG_H + PANEL_TOP_PADDING, W, H - IMG_H - PANEL_TOP_PADDING);
-  }
-
-  // (dark blue fade/scrim removed per request — panel image shows directly)
+  // faint diagonal "watermark" text across the middle of the panel
+  const wmText = newsItem.watermark || "FLASH KERALAM";
+  drawWatermark(ctx, wmText, W / 2, TITLE_H * 0.42, {
+    size: 22, color: "rgba(255,255,255,0.28)", align: "center", weight: "700",
+  });
 
   // ═════════════════════════════════════════════════════════
-  // 4. Circular badge photo, overlapping the bottom edge of the photo
+  // 2. HEADLINE — multiple lines, each line individually sized
+  //    (some lines rendered noticeably larger for emphasis, as
+  //    in the reference poster) and auto-fit to the panel.
   // ═════════════════════════════════════════════════════════
-  const BADGE_RADIUS = Math.round(W * 0.095);
-  const BADGE_CX = Math.round(W * 0.53);
-  const BADGE_CY = Math.round(IMG_H * 0.08);
+  const PAD        = 44;
+  const TEXT_TOP    = 58;
+  const SOCIAL_ROW_H = 52;
+  const TEXT_BOT    = TITLE_H - SOCIAL_ROW_H - 4;
+  const TEXT_H      = TEXT_BOT - TEXT_TOP;
+  const TEXT_W      = W - PAD * 2;
+  const CX          = W / 2;
 
-  if (newsItem.badgeImage) {
-    try {
-      const badgeImg = await loadImage(newsItem.badgeImage);
-      await drawCircleBadge(ctx, badgeImg, BADGE_CX, BADGE_CY, BADGE_RADIUS);
-    } catch (e) {
-      console.warn("[Poster] badge image failed:", e.message);
-    }
-  }
-
-  // faint watermark over the photo area (bottom-left of the photo band)
-  drawWatermark(
-    ctx,
-    newsItem.watermark || "FLASH KERALAM",
-    W * 0.18,
-    IMG_H * 0.84,
-    { size: 18, color: "rgba(255,255,255,0.35)", align: "left" }
-  );
-
-  // ═════════════════════════════════════════════════════════
-  // 5. Main white title text, centered in the blue panel
-  // ═════════════════════════════════════════════════════════
-  const PAD      = 52;
-  const TEXT_TOP = IMG_H + PANEL_TOP_PADDING + 24;
-  const TEXT_BOT = H - 50;
-  const TEXT_H   = TEXT_BOT - TEXT_TOP;
-  const TEXT_W   = W - PAD * 2;
-  const CX       = W / 2;
-
-  let titleLines;
+  let rawLines;
   if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
-    titleLines = newsItem.titleLines;
+    rawLines = newsItem.titleLines.map((entry, i) => normalizeTitleLine(entry, i));
   } else {
-    titleLines = [newsItem.title || ""];
+    rawLines = [normalizeTitleLine(newsItem.title || "", 0)];
   }
 
-  // Search UPWARD from small to large, keeping the largest size that
-  // still fits the panel — a fixed starting cap would lock in that
-  // size whenever the text is short, instead of growing to fill the
-  // space and center properly.
-  const LINE_H_RATIO = 1.0;
-  const FIT_MARGIN   = 0.98; // use nearly all of the available height
-  const MIN_SIZE     = 28;
-  const MAX_SIZE     = 220;
+  const LINE_H_RATIO         = 1.06;
+  const FIT_MARGIN           = 0.98;
+  const MIN_BASE             = 20;
+  const MAX_BASE             = 120;
+  const LETTER_SPACING_RATIO = 0.02;
 
-  // Extra gap inserted between letters (tracking), applied via the
-  // canvas's native letterSpacing so Malayalam conjuncts/vowel signs
-  // still shape correctly — scales with font size.
-  const LETTER_SPACING_RATIO = 0.06;
+  // Search upward for the largest BASE size such that every line
+  // (base * that line's own sizeMult, wrapped independently) still
+  // fits inside TEXT_H — this is what produces the "some lines
+  // bigger than others" look while keeping the whole block sized
+  // to fill the available space.
+  let BASE_SIZE = MIN_BASE;
+  let fittedLines = []; // [{ text, size, color }]
 
-  let TITLE_SIZE   = MIN_SIZE;
-  let wrappedTitle = []; // array of line strings
-
-  for (let size = MIN_SIZE; size <= MAX_SIZE; size += 2) {
-    ctx.font = `900 ${size}px Malayalam`;
-    setLetterSpacing(ctx, size * LETTER_SPACING_RATIO);
+  for (let base = MIN_BASE; base <= MAX_BASE; base += 1) {
     const wrapped = [];
-    for (const seg of titleLines) {
-      if (seg) wrapped.push(...wrapText(ctx, seg, TEXT_W));
+    for (const line of rawLines) {
+      const size = Math.round(base * line.sizeMult);
+      ctx.font = `900 ${size}px Malayalam`;
+      setLetterSpacing(ctx, size * LETTER_SPACING_RATIO);
+      const segs = line.text ? wrapText(ctx, line.text, TEXT_W) : [];
+      for (const seg of segs) {
+        wrapped.push({ text: seg, size, color: line.color });
+      }
     }
-    const fits = wrapped.length * size * LINE_H_RATIO <= TEXT_H * FIT_MARGIN;
-    if (!fits) break; // sizes only get worse from here — stop searching
-    TITLE_SIZE   = size;
-    wrappedTitle = wrapped;
+    const totalH = wrapped.reduce((sum, l) => sum + l.size * LINE_H_RATIO, 0);
+    if (totalH > TEXT_H * FIT_MARGIN) break;
+    BASE_SIZE   = base;
+    fittedLines = wrapped;
   }
 
-  const LINE_H = Math.round(TITLE_SIZE * LINE_H_RATIO);
-  const totalTextH = wrappedTitle.length * LINE_H;
+  const totalTextH = fittedLines.reduce((sum, l) => sum + l.size * LINE_H_RATIO, 0);
   let drawY = TEXT_TOP + Math.round((TEXT_H - totalTextH) / 2);
 
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
 
-  for (const line of wrappedTitle) {
+  for (const line of fittedLines) {
+    const lineH = Math.round(line.size * LINE_H_RATIO);
     ctx.save();
-    ctx.font          = `900 ${TITLE_SIZE}px Malayalam`;
-    setLetterSpacing(ctx, TITLE_SIZE * LETTER_SPACING_RATIO);
-    ctx.fillStyle     = "#ffffff";
-    ctx.shadowColor   = "rgba(0,0,0,0.6)";
-    ctx.shadowBlur    = 10;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
-    // Stroke first, then fill — this fattens the letterforms beyond
-    // what the loaded ttf's own "bold" weight provides, since
-    // @napi-rs/canvas can only render the weight(s) actually baked
-    // into the font file itself. Stroke width scales with the
-    // auto-fit title size so it stays proportionally heavy whether
-    // the fitter lands on a small or large size.
-    ctx.lineWidth   = Math.max(2, Math.round(TITLE_SIZE * 0.045));
-    ctx.strokeStyle = "#ffffff";
+    ctx.font = `900 ${line.size}px Malayalam`;
+    setLetterSpacing(ctx, line.size * LETTER_SPACING_RATIO);
+
+    // gold gradient fill (bright yellow → amber), like the reference
+    const goldGrad = ctx.createLinearGradient(0, drawY, 0, drawY + line.size);
+    goldGrad.addColorStop(0, "#fff27a");
+    goldGrad.addColorStop(1, "#ffc400");
+
+    ctx.fillStyle     = line.color || goldGrad;
+    ctx.shadowColor    = "rgba(0,0,0,0.85)";
+    ctx.shadowBlur      = 8;
+    ctx.shadowOffsetX  = 2;
+    ctx.shadowOffsetY  = 2;
+
+    // dark outline to punch the gold text off busy photo backdrops —
+    // stroked twice (a heavier pass, then a slightly lighter one) to
+    // fatten the letterforms further than the font's own weight
+    // allows, giving a bolder, more solid headline look.
     ctx.lineJoin    = "round";
-    // Whole-string draw (not per-character) so the font shapes
-    // Malayalam conjuncts/vowel signs correctly; letterSpacing above
-    // adds the gap after shaping.
-    ctx.strokeText(line, CX, drawY);
-    ctx.fillText(line, CX, drawY);
+    ctx.strokeStyle = "rgba(20,14,0,0.95)";
+    ctx.lineWidth   = Math.max(3, Math.round(line.size * 0.11));
+    ctx.strokeText(line.text, CX, drawY + (lineH - line.size) / 2);
+    ctx.lineWidth   = Math.max(2, Math.round(line.size * 0.07));
+    ctx.strokeText(line.text, CX, drawY + (lineH - line.size) / 2);
+    ctx.fillText(line.text, CX, drawY + (lineH - line.size) / 2);
     ctx.restore();
-    drawY += LINE_H;
+
+    drawY += lineH;
   }
 
   // ═════════════════════════════════════════════════════════
-  // 7. Bottom-corner watermarks
+  // 3. SOCIAL ROW — Facebook + Instagram glyphs and the page
+  //    name, sitting near the bottom of the title panel.
   // ═════════════════════════════════════════════════════════
-  const wmText = newsItem.watermark || "FLASH KERALAM";
-  drawWatermark(ctx, wmText, 28, H - 26, { size: 19, align: "left" });
-  drawWatermark(ctx, wmText, W - 28, H - 26, { size: 19, align: "right" });
+  const socialLabel = newsItem.socialLabel || newsItem.watermark || "FLASH KERALAM";
+  drawSocialRow(ctx, socialLabel, TITLE_H - SOCIAL_ROW_H / 2 - 6);
+
+  // ═════════════════════════════════════════════════════════
+  // 4. SINGLE PHOTO STRIP — full width, one cover-fit photo, no
+  //    split and no circular badge overlapping it.
+  // ═════════════════════════════════════════════════════════
+  const PHOTO_TOP = TITLE_H;
+  const PHOTO_H   = H - PHOTO_TOP;
+
+  ctx.fillStyle = "#181818";
+  ctx.fillRect(0, PHOTO_TOP, W, PHOTO_H);
+
+  if (img1) drawCover(ctx, img1, 0, PHOTO_TOP, W, PHOTO_H);
+
+  // Black-to-transparent gradient over the top of the photo strip so
+  // the transition from the blurred/darkened title panel above into
+  // the sharp photo below reads as one continuous fade, not a cut.
+  const SEAM_FADE_H = Math.round(PHOTO_H * 0.22);
+  const seamFade = ctx.createLinearGradient(0, PHOTO_TOP, 0, PHOTO_TOP + SEAM_FADE_H);
+  seamFade.addColorStop(0,   "rgba(0,0,0,0.85)");
+  seamFade.addColorStop(0.5, "rgba(0,0,0,0.35)");
+  seamFade.addColorStop(1,   "rgba(0,0,0,0)");
+  ctx.fillStyle = seamFade;
+  ctx.fillRect(0, PHOTO_TOP, W, SEAM_FADE_H);
+
+  // ═════════════════════════════════════════════════════════
+  // 5. Bottom-corner watermarks over the photo strip.
+  // ═════════════════════════════════════════════════════════
+  drawWatermark(ctx, wmText, 28, H - 26, { size: 19, align: "left", color: "rgba(255,255,255,0.75)" });
+  drawWatermark(ctx, wmText, W - 28, H - 26, { size: 19, align: "right", color: "rgba(255,255,255,0.75)" });
 
   // ── Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
