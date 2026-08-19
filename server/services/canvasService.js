@@ -28,7 +28,7 @@ try {
 }
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
+  path.join(__dirname, "../fonts/AnekMalayalam_SemiCondensed-Bold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
