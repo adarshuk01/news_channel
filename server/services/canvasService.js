@@ -28,7 +28,7 @@ try {
 }
 
 GlobalFonts.registerFromPath(
-  path.join(__dirname, "../fonts/AnekMalayalam_SemiCondensed-Bold.ttf"),
+  path.join(__dirname, "../fonts/AnekMalayalam-Bold.ttf"),
   "Malayalam"
 );
 GlobalFonts.registerFromPath(
@@ -148,46 +148,6 @@ function drawCover(ctx, img, x, y, w, h) {
   ctx.rect(x, y, w, h);
   ctx.clip();
   ctx.drawImage(img, dx, dy, dw, dh);
-  ctx.restore();
-}
-
-// Draw a single image into a rect using "contain" fit (scale down to
-// fit fully inside the rect, no cropping — the whole source image
-// stays visible, letterboxed on whichever axis has slack).
-function drawContain(ctx, img, x, y, w, h) {
-  const scale = Math.min(w / img.width, h / img.height);
-  const dw = img.width * scale;
-  const dh = img.height * scale;
-  const dx = x + (w - dw) / 2;
-  const dy = y + (h - dh) / 2;
-  ctx.drawImage(img, dx, dy, dw, dh);
-}
-
-// Fills a rect with a blurred, darkened "cover" copy of the image —
-// used as a backdrop behind a "contain"-fit photo so any letterbox
-// gaps read as an intentional soft background instead of empty bars.
-function drawBlurredBackdrop(ctx, img, x, y, w, h) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-  try {
-    ctx.filter = "blur(50px)";
-  } catch (e) {
-    // If blur isn't supported in this canvas build, fall back to a
-    // plain (unblurred) cover fill rather than throwing.
-  }
-  // Oversize slightly so the blur's edge softening doesn't leave a
-  // visible seam at the rect boundary.
-  drawCover(ctx, img, x - 30, y - 30, w + 60, h + 60);
-  ctx.filter = "none";
-  ctx.restore();
-
-  // Darken so the sharp foreground photo and white text stay legible
-  // against it.
-  ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.fillRect(x, y, w, h);
   ctx.restore();
 }
 
@@ -665,100 +625,6 @@ function drawAccentDash(ctx, x, y, w = 46, h = 6) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TOP HEADER (monochrome) — the black date-ribbon on the left and
-// the black/white "FLASH KERALAM" logo on the right, drawn directly
-// on top of the photo (no white bar behind them). Same shapes as
-// drawDateRibbon/drawBrandLogo but re-colored to black & white
-// instead of red, with a drop shadow for legibility over the image.
-// ═══════════════════════════════════════════════════════════════
-
-const HEADER_H = 150; // vertical space the header elements sit within
-
-function drawDateRibbonMono(ctx, text, x, y) {
-  ctx.save();
-  ctx.font = "900 36px English";
-  setLetterSpacing(ctx, 1);
-  const textW = ctx.measureText(text).width;
-  const padL  = 32;
-  const padR  = 34;
-  const h     = 60;
-  const r     = h / 2;
-  const w     = textW + padL + padR;
-
-  ctx.save();
-  ctx.shadowColor   = "rgba(0,0,0,0.5)";
-  ctx.shadowBlur    = 10;
-  ctx.shadowOffsetY = 3;
-  roundRect(ctx, x, y, w, h, r);
-  ctx.fillStyle = "#141414";
-  ctx.fill();
-  ctx.restore();
-
-  ctx.font         = "900 34px English";
-  ctx.fillStyle    = "#ffffff";
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "middle";
-  setLetterSpacing(ctx, 1);
-  ctx.fillText(text, x + padL, y + h / 2 + 2);
-  ctx.restore();
-
-  return { w, h };
-}
-
-// Small solid dot accent between the ribbon and the logo block.
-function drawDotMono(ctx, cx, cy, r = 5) {
-  ctx.save();
-  ctx.shadowColor = "rgba(0,0,0,0.5)";
-  ctx.shadowBlur  = 6;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = "#141414";
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawBrandLogoMono(ctx, line1, line2, rightX, topY) {
-  ctx.save();
-  ctx.textAlign    = "right";
-  ctx.textBaseline = "top";
-  ctx.shadowColor  = "rgba(0,0,0,0.5)";
-  ctx.shadowBlur   = 8;
-
-  // Line 1 — solid black fill
-  ctx.font = "900 36px English";
-  setLetterSpacing(ctx, 1);
-  ctx.fillStyle = "#141414";
-  ctx.fillText(line1, rightX, topY);
-  const line1H = 36;
-
-  // Line 2 — white fill with a bold black outline (stencil look)
-  const y2 = topY + line1H + 2;
-  ctx.font = "900 36px English";
-  setLetterSpacing(ctx, 1);
-  ctx.lineJoin    = "round";
-  ctx.strokeStyle = "#141414";
-  ctx.lineWidth   = 6;
-  ctx.strokeText(line2, rightX, y2);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillText(line2, rightX, y2);
-
-  ctx.restore();
-}
-
-function drawTopHeaderMono(ctx, dateText, logoLine1, logoLine2) {
-  const topPad = 40;
-
-  // Date ribbon, flush left.
-  drawDateRibbonMono(ctx, dateText, 0, topPad);
-
-  // Logo block, right-aligned.
-  drawBrandLogoMono(ctx, logoLine1, logoLine2, W - 40, topPad - 4);
-
-  // Small dot accent just above-left of the logo block.
-  drawDotMono(ctx, W - 250, topPad + 18);
-}
-
-// ═══════════════════════════════════════════════════════════════
 // MAIN POSTER DRAW
 // ═══════════════════════════════════════════════════════════════
 
@@ -844,35 +710,16 @@ async function createNewsPoster(newsItem) {
   try { img1 = await loadGrayscaleImage(newsItem.image); }
   catch (e) { console.warn("[Poster] photo failed:", e.message); }
 
-  // Photo fills the full poster height — the header is drawn on top
-  // of it afterward, not in a separate white band.
-  const PHOTO_TOP = 0;
-  const PHOTO_H   = H;
-
   ctx.fillStyle = "#181818";
-  ctx.fillRect(0, PHOTO_TOP, W, PHOTO_H);
-  if (img1) {
-    // Blurred cover backdrop fills the frame edge-to-edge first...
-    drawBlurredBackdrop(ctx, img1, 0, PHOTO_TOP, W, PHOTO_H);
-    // ...then the full, uncropped photo is drawn on top ("contain"
-    // fit) so nothing from the original image gets cut off, however
-    // wide or narrow it is compared to the poster's aspect ratio.
-    drawContain(ctx, img1, 0, PHOTO_TOP, W, PHOTO_H);
-  }
-
-  // ── Top header (date ribbon + FLASH KERALAM logo), monochrome —
-  // drawn directly over the photo, no white background behind it.
-  const badgeText  = newsItem.dateText || formatBadgeDate(new Date());
-  const logoLine1  = newsItem.logoLine1 || "FLASH";
-  const logoLine2  = newsItem.logoLine2 || "KERALAM";
-  drawTopHeaderMono(ctx, badgeText, logoLine1, logoLine2);
+  ctx.fillRect(0, 0, W, H);
+  if (img1) drawCover(ctx, img1, 0, 0, W, H);
 
   // ═════════════════════════════════════════════════════════
   // 1. DARK GRADIENT OVERLAY — fades the lower portion of the photo
   //    to black so the white headline text stays legible, matching
   //    the reference poster's bottom scrim.
   // ═════════════════════════════════════════════════════════
-  const OVERLAY_TOP = PHOTO_TOP + Math.round(PHOTO_H * 0.52);
+  const OVERLAY_TOP = Math.round(H * 0.52);
   const overlay = ctx.createLinearGradient(0, OVERLAY_TOP, 0, H);
   overlay.addColorStop(0,    "rgba(0,0,0,0)");
   overlay.addColorStop(0.45, "rgba(0,0,0,0.55)");
@@ -880,7 +727,6 @@ async function createNewsPoster(newsItem) {
   overlay.addColorStop(1,    "rgba(0,0,0,0.96)");
   ctx.fillStyle = overlay;
   ctx.fillRect(0, OVERLAY_TOP, W, H - OVERLAY_TOP);
-
 
   // ═════════════════════════════════════════════════════════
   // 2. HEADLINE — left-aligned, bold white text over the dark
@@ -892,7 +738,7 @@ async function createNewsPoster(newsItem) {
   const DASH_GAP    = 26;   // space between dash and first text line
   const TEXT_W      = W - PAD_X * 2;
   const TEXT_BOTTOM = H - BOTTOM_PAD;
-  const TEXT_TOP    = PHOTO_TOP + Math.round(PHOTO_H * 0.58); // headline block never starts above this
+  const TEXT_TOP    = Math.round(H * 0.58); // headline block never starts above this
 
   const LINE_H_RATIO         = 1.18;
   const FIT_MARGIN           = 0.98;
@@ -958,6 +804,8 @@ async function createNewsPoster(newsItem) {
   // ═════════════════════════════════════════════════════════
   // 3. Bottom-corner watermarks over the photo.
   // ═════════════════════════════════════════════════════════
+  const logoLine1 = newsItem.logoLine1 || "FLASH";
+  const logoLine2 = newsItem.logoLine2 || "KERALAM";
   const wmText = newsItem.watermark || `${logoLine1} ${logoLine2}`;
   drawWatermark(ctx, wmText, PAD_X - 18, H - 26, { size: 19, align: "left", color: "rgba(255,255,255,0.75)" });
   drawWatermark(ctx, wmText, W - (PAD_X - 18), H - 26, { size: 19, align: "right", color: "rgba(255,255,255,0.75)" });
