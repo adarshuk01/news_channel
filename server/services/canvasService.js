@@ -151,6 +151,46 @@ function drawCover(ctx, img, x, y, w, h) {
   ctx.restore();
 }
 
+// Draw a single image into a rect using "contain" fit (scale down to
+// fit fully inside the rect, no cropping — the whole source image
+// stays visible, letterboxed on whichever axis has slack).
+function drawContain(ctx, img, x, y, w, h) {
+  const scale = Math.min(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.drawImage(img, dx, dy, dw, dh);
+}
+
+// Fills a rect with a blurred, darkened "cover" copy of the image —
+// used as a backdrop behind a "contain"-fit photo so any letterbox
+// gaps read as an intentional soft background instead of empty bars.
+function drawBlurredBackdrop(ctx, img, x, y, w, h) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  try {
+    ctx.filter = "blur(50px)";
+  } catch (e) {
+    // If blur isn't supported in this canvas build, fall back to a
+    // plain (unblurred) cover fill rather than throwing.
+  }
+  // Oversize slightly so the blur's edge softening doesn't leave a
+  // visible seam at the rect boundary.
+  drawCover(ctx, img, x - 30, y - 30, w + 60, h + 60);
+  ctx.filter = "none";
+  ctx.restore();
+
+  // Darken so the sharp foreground photo and white text stay legible
+  // against it.
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fillRect(x, y, w, h);
+  ctx.restore();
+}
+
 // ─────────────────────────────────────────────────────────────
 function toNodeBuffer(data) {
   if (Buffer.isBuffer(data))       return data;
@@ -168,6 +208,25 @@ async function fetchBuffer(url) {
 async function fetchAsJpegBuffer(url) {
   const raw = await fetchBuffer(url);
   return toNodeBuffer(await sharp(raw).jpeg().toBuffer());
+}
+
+// Reads an image from a URL, a local path, or a raw Buffer, converts
+// it to grayscale (black & white), and returns a loaded canvas image.
+// Used for the main photo strip so it matches the reference design's
+// desaturated look, regardless of what format `newsItem.image` is in.
+async function loadGrayscaleImage(source) {
+  let raw;
+  if (Buffer.isBuffer(source)) {
+    raw = source;
+  } else if (typeof source === "string" && /^https?:\/\//i.test(source)) {
+    raw = await fetchBuffer(source);
+  } else if (typeof source === "string") {
+    raw = fs.readFileSync(source);
+  } else {
+    throw new TypeError(`loadGrayscaleImage: unsupported source type ${typeof source}`);
+  }
+  const grayBuf = await sharp(raw).grayscale().png().toBuffer();
+  return loadImage(grayBuf);
 }
 
 async function canvasToBuffer(canvas, mime = "image/png") {
@@ -348,10 +407,11 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DATE / RIBBON BADGE  (top-left red ribbon, e.g. "18 AUG 2026")
+// DATE / RIBBON BADGE  (kept for backward-compat / callers that
+// still want a top ribbon — not used by the default bottom-caption
+// layout below, since the reference poster has no top elements.)
 // ═══════════════════════════════════════════════════════════════
 
-// Formats a Date as "18 AUG 2026" (day, short month uppercase, year).
 function formatBadgeDate(d = new Date()) {
   const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
   const day    = d.getDate();
@@ -360,9 +420,6 @@ function formatBadgeDate(d = new Date()) {
   return `${day} ${month} ${year}`;
 }
 
-// Clean pill-shaped ribbon, flush against the left edge of the
-// canvas — matches the reference poster's date tag (rounded on both
-// ends, no pointed tail, only a soft, subtle shadow).
 function drawDateRibbon(ctx, text, x, y) {
   ctx.save();
   ctx.font = "900 40px English";
@@ -395,22 +452,19 @@ function drawDateRibbon(ctx, text, x, y) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// LOGO — "FLASH" (solid red) / "KERALAM" (white, outlined) stacked,
-// right-aligned near the top edge.
+// LOGO — kept for backward-compat, unused by default layout below.
 // ═══════════════════════════════════════════════════════════════
 function drawBrandLogo(ctx, line1, line2, rightX, topY) {
   ctx.save();
   ctx.textAlign    = "right";
   ctx.textBaseline = "top";
 
-  // Line 1 — solid red fill
   ctx.font = "900 50px English";
   setLetterSpacing(ctx, 1);
   ctx.fillStyle = "#c8102e";
   ctx.fillText(line1, rightX, topY);
   const line1H = 50;
 
-  // Line 2 — white fill with a bold outline (stencil look)
   const y2 = topY + line1H + 2;
   ctx.font = "900 50px English";
   setLetterSpacing(ctx, 1);
@@ -424,8 +478,8 @@ function drawBrandLogo(ctx, line1, line2, rightX, topY) {
   ctx.restore();
 }
 
-// Small semi-transparent watermark text (kept for the bottom-corner
-// credits over the photo strip).
+// Small semi-transparent watermark text (bottom-corner credits over
+// the photo).
 function drawWatermark(ctx, text, x, y, opts = {}) {
   const {
     size    = 20,
@@ -446,8 +500,8 @@ function drawWatermark(ctx, text, x, y, opts = {}) {
   ctx.restore();
 }
 
-// Circular "compare" badge — kept for backward-compat callers, not
-// used by the default layout below.
+// Circular "compare" badge — kept for backward-compat, unused by
+// default layout.
 async function drawCircleBadge(ctx, badgeImg, cx, cy, radius) {
   const ringOuter = radius + 12;
 
@@ -558,7 +612,7 @@ function drawInstagramIcon(ctx, cx, cy, r) {
 }
 
 // "f  📷  <label>" social-proof row (kept for backward-compat, unused
-// by default layout — the reference poster doesn't show this row).
+// by default layout).
 function drawSocialRow(ctx, label, cy) {
   const iconR   = 15;
   const gap     = 10;
@@ -586,24 +640,122 @@ function drawSocialRow(ctx, label, cy) {
   ctx.restore();
 }
 
-// Default alternating emphasis: the 1st, 3rd, 5th... lines (odd,
-// 1-indexed) render SMALLER than the 2nd, 4th, 6th... lines — matches
-// the reference poster's small/big/small/big headline rhythm (first
-// line small, second line big, etc).
-const ODD_LINE_SIZE_MULT  = 0.88;
-const EVEN_LINE_SIZE_MULT = 1.22;
-
-// Normalizes a titleLines entry into { text, sizeMult, color }.
-function normalizeTitleLine(entry, index) {
-  const defaultMult = index % 2 === 0 ? ODD_LINE_SIZE_MULT : EVEN_LINE_SIZE_MULT;
-
+// Normalizes a titleLines entry into { text, color }. The bottom-
+// caption layout uses one uniform size for every line (auto-fit),
+// so no per-line size multiplier is needed here — only an optional
+// per-line color override.
+function normalizeTitleLine(entry) {
   if (typeof entry === "string") {
-    return { text: entry, sizeMult: defaultMult, color: null };
+    return { text: entry, color: null };
   }
-  const sizeMult = entry.size || (entry.emphasis != null
-    ? (entry.emphasis ? 1.3 : 1)
-    : defaultMult);
-  return { text: entry.text || "", sizeMult, color: entry.color || null };
+  return { text: entry.text || "", color: entry.color || null };
+}
+
+// Small gold/orange accent dash, drawn above the headline — matches
+// the short horizontal tick mark in the reference poster.
+function drawAccentDash(ctx, x, y, w = 46, h = 6) {
+  ctx.save();
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, "#ffb300");
+  grad.addColorStop(1, "#ff8a00");
+  ctx.fillStyle = grad;
+  roundRect(ctx, x, y, w, h, h / 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOP HEADER (monochrome) — the black date-ribbon on the left and
+// the black/white "FLASH KERALAM" logo on the right, drawn directly
+// on top of the photo (no white bar behind them). Same shapes as
+// drawDateRibbon/drawBrandLogo but re-colored to black & white
+// instead of red, with a drop shadow for legibility over the image.
+// ═══════════════════════════════════════════════════════════════
+
+const HEADER_H = 150; // vertical space the header elements sit within
+
+function drawDateRibbonMono(ctx, text, x, y) {
+  ctx.save();
+  ctx.font = "900 36px English";
+  setLetterSpacing(ctx, 1);
+  const textW = ctx.measureText(text).width;
+  const padL  = 32;
+  const padR  = 34;
+  const h     = 60;
+  const r     = h / 2;
+  const w     = textW + padL + padR;
+
+  ctx.save();
+  ctx.shadowColor   = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur    = 10;
+  ctx.shadowOffsetY = 3;
+  roundRect(ctx, x, y, w, h, r);
+  ctx.fillStyle = "#141414";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.font         = "900 34px English";
+  ctx.fillStyle    = "#ffffff";
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "middle";
+  setLetterSpacing(ctx, 1);
+  ctx.fillText(text, x + padL, y + h / 2 + 2);
+  ctx.restore();
+
+  return { w, h };
+}
+
+// Small solid dot accent between the ribbon and the logo block.
+function drawDotMono(ctx, cx, cy, r = 5) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur  = 6;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#141414";
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBrandLogoMono(ctx, line1, line2, rightX, topY) {
+  ctx.save();
+  ctx.textAlign    = "right";
+  ctx.textBaseline = "top";
+  ctx.shadowColor  = "rgba(0,0,0,0.5)";
+  ctx.shadowBlur   = 8;
+
+  // Line 1 — solid black fill
+  ctx.font = "900 36px English";
+  setLetterSpacing(ctx, 1);
+  ctx.fillStyle = "#141414";
+  ctx.fillText(line1, rightX, topY);
+  const line1H = 36;
+
+  // Line 2 — white fill with a bold black outline (stencil look)
+  const y2 = topY + line1H + 2;
+  ctx.font = "900 36px English";
+  setLetterSpacing(ctx, 1);
+  ctx.lineJoin    = "round";
+  ctx.strokeStyle = "#141414";
+  ctx.lineWidth   = 6;
+  ctx.strokeText(line2, rightX, y2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(line2, rightX, y2);
+
+  ctx.restore();
+}
+
+function drawTopHeaderMono(ctx, dateText, logoLine1, logoLine2) {
+  const topPad = 40;
+
+  // Date ribbon, flush left.
+  drawDateRibbonMono(ctx, dateText, 0, topPad);
+
+  // Logo block, right-aligned.
+  drawBrandLogoMono(ctx, logoLine1, logoLine2, W - 40, topPad - 4);
+
+  // Small dot accent just above-left of the logo block.
+  drawDotMono(ctx, W - 250, topPad + 18);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -684,148 +836,131 @@ async function createNewsPoster(newsItem) {
   const ctx    = canvas.getContext("2d");
 
   // ═════════════════════════════════════════════════════════
-  // Load the main photo up front — used as the full-width photo
-  // strip below the title panel.
+  // Load the main photo — converted to grayscale (black & white)
+  // to match the reference poster — and draw it FULL BLEED across
+  // the entire poster area (not just a lower strip).
   // ═════════════════════════════════════════════════════════
   let img1 = null;
-  try { img1 = await loadImage(newsItem.image); }
+  try { img1 = await loadGrayscaleImage(newsItem.image); }
   catch (e) { console.warn("[Poster] photo failed:", e.message); }
 
-  // ═════════════════════════════════════════════════════════
-  // 1. TITLE PANEL — plain white background (matches reference),
-  //    with the date ribbon top-left, the brand logo top-right,
-  //    and the bold red headline centered below them.
-  // ═════════════════════════════════════════════════════════
-  const TITLE_H = Math.round(H * 0.565);
-
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, W, TITLE_H);
-
-  // ── 1a. Date ribbon (top-left) ──────────────────────────────
-  const badgeText = newsItem.dateText || formatBadgeDate(new Date());
-  const HEADER_TOP = 40;
-  drawDateRibbon(ctx, badgeText, 0, HEADER_TOP);
-
-  // ── 1b. Brand logo (top-right) ──────────────────────────────
-  const logoLine1 = newsItem.logoLine1 || "FLASH";
-  const logoLine2 = newsItem.logoLine2 || "KERALAM";
-  drawBrandLogo(ctx, logoLine1, logoLine2, W - 40, HEADER_TOP - 4);
-
-  // ═════════════════════════════════════════════════════════
-  // 2. HEADLINE — multiple lines, each individually sized (some
-  //    lines bigger for emphasis), auto-fit into the remaining
-  //    panel space, rendered in bold red.
-  // ═════════════════════════════════════════════════════════
-  const PAD          = 40;
-  const HEADER_H      = 150; // room reserved for ribbon + logo
-  const TEXT_TOP      = HEADER_H + 20;
-  const TEXT_BOT      = TITLE_H - 24;
-  const TEXT_H        = TEXT_BOT - TEXT_TOP;
-  const TEXT_W        = W - PAD * 2;
-  const CX            = W / 2;
-
-  const LINE_H_RATIO         = 1.08;
-  const FIT_MARGIN           = 0.98;
-  const MIN_BASE             = 20;
-  const MAX_BASE             = 120;
-  const LETTER_SPACING_RATIO = 0.01;
-
-  let rawLines;
-  if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
-    // Caller already split the headline into its intended visual
-    // lines — alternate small/big directly per entry.
-    rawLines = newsItem.titleLines.map((entry, i) => normalizeTitleLine(entry, i));
-  } else {
-    // Plain single-string title: first find its NATURAL line breaks
-    // by wrapping at a neutral reference size (no size alternation
-    // yet), then alternate small/big per resulting line — so a plain
-    // string gets the same small/big/small/big rhythm as an explicit
-    // titleLines array instead of one uniform size.
-    const titleText = newsItem.title || "";
-    let naturalLines = [];
-    if (titleText) {
-      ctx.font = "900 60px Malayalam";
-      setLetterSpacing(ctx, 60 * LETTER_SPACING_RATIO);
-      naturalLines = wrapText(ctx, titleText, TEXT_W);
-    }
-    rawLines = naturalLines.map((text, i) => normalizeTitleLine(text, i));
-  }
-
-  // Search upward for the largest BASE size such that every line
-  // (base * that line's own sizeMult, wrapped independently) still
-  // fits inside TEXT_H.
-  let BASE_SIZE = MIN_BASE;
-  let fittedLines = []; // [{ text, size, color }]
-
-  for (let base = MIN_BASE; base <= MAX_BASE; base += 1) {
-    const wrapped = [];
-    for (const line of rawLines) {
-      const size = Math.round(base * line.sizeMult);
-      ctx.font = `900 ${size}px Malayalam`;
-      setLetterSpacing(ctx, size * LETTER_SPACING_RATIO);
-      const segs = line.text ? wrapText(ctx, line.text, TEXT_W) : [];
-      for (const seg of segs) {
-        wrapped.push({ text: seg, size, color: line.color });
-      }
-    }
-    const totalH = wrapped.reduce((sum, l) => sum + l.size * LINE_H_RATIO, 0);
-    if (totalH > TEXT_H * FIT_MARGIN) break;
-    BASE_SIZE   = base;
-    fittedLines = wrapped;
-  }
-
-  const totalTextH = fittedLines.reduce((sum, l) => sum + l.size * LINE_H_RATIO, 0);
-  let drawY = TEXT_TOP + Math.round((TEXT_H - totalTextH) / 2);
-
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "top";
-
-  for (const line of fittedLines) {
-    const lineH = Math.round(line.size * LINE_H_RATIO);
-    ctx.save();
-    ctx.font = `900 ${line.size}px Malayalam`;
-    setLetterSpacing(ctx, line.size * LETTER_SPACING_RATIO);
-
-    // Solid, crisp red fill — flat color, no stroke and no shadow.
-    // A stroke/shadow on top of an already-bold condensed font is
-    // what caused the blurred/muddy look; the font weight alone is
-    // enough to read as bold against the white panel.
-    ctx.fillStyle = line.color || "#c8102e";
-    ctx.fillText(line.text, CX, drawY + (lineH - line.size) / 2);
-    ctx.restore();
-
-    drawY += lineH;
-  }
-
-  // ═════════════════════════════════════════════════════════
-  // 3. SINGLE PHOTO STRIP — full width, one cover-fit photo below
-  //    the white title panel.
-  // ═════════════════════════════════════════════════════════
-  const PHOTO_TOP = TITLE_H;
-  const PHOTO_H   = H - PHOTO_TOP;
+  // Photo fills the full poster height — the header is drawn on top
+  // of it afterward, not in a separate white band.
+  const PHOTO_TOP = 0;
+  const PHOTO_H   = H;
 
   ctx.fillStyle = "#181818";
   ctx.fillRect(0, PHOTO_TOP, W, PHOTO_H);
+  if (img1) {
+    // Blurred cover backdrop fills the frame edge-to-edge first...
+    drawBlurredBackdrop(ctx, img1, 0, PHOTO_TOP, W, PHOTO_H);
+    // ...then the full, uncropped photo is drawn on top ("contain"
+    // fit) so nothing from the original image gets cut off, however
+    // wide or narrow it is compared to the poster's aspect ratio.
+    drawContain(ctx, img1, 0, PHOTO_TOP, W, PHOTO_H);
+  }
 
-  if (img1) drawCover(ctx, img1, 0, PHOTO_TOP, W, PHOTO_H);
-
-  // White-to-transparent gradient over the top of the photo strip so
-  // the transition from the white title panel into the photo below
-  // reads as a soft fade rather than a hard cut (matches reference).
-  const SEAM_FADE_H = Math.round(PHOTO_H * 0.16);
-  const seamFade = ctx.createLinearGradient(0, PHOTO_TOP, 0, PHOTO_TOP + SEAM_FADE_H);
-  seamFade.addColorStop(0,   "rgba(255,255,255,0.9)");
-  seamFade.addColorStop(0.5, "rgba(255,255,255,0.35)");
-  seamFade.addColorStop(1,   "rgba(255,255,255,0)");
-  ctx.fillStyle = seamFade;
-  ctx.fillRect(0, PHOTO_TOP, W, SEAM_FADE_H);
+  // ── Top header (date ribbon + FLASH KERALAM logo), monochrome —
+  // drawn directly over the photo, no white background behind it.
+  const badgeText  = newsItem.dateText || formatBadgeDate(new Date());
+  const logoLine1  = newsItem.logoLine1 || "FLASH";
+  const logoLine2  = newsItem.logoLine2 || "KERALAM";
+  drawTopHeaderMono(ctx, badgeText, logoLine1, logoLine2);
 
   // ═════════════════════════════════════════════════════════
-  // 4. Bottom-corner watermarks over the photo strip.
+  // 1. DARK GRADIENT OVERLAY — fades the lower portion of the photo
+  //    to black so the white headline text stays legible, matching
+  //    the reference poster's bottom scrim.
+  // ═════════════════════════════════════════════════════════
+  const OVERLAY_TOP = PHOTO_TOP + Math.round(PHOTO_H * 0.52);
+  const overlay = ctx.createLinearGradient(0, OVERLAY_TOP, 0, H);
+  overlay.addColorStop(0,    "rgba(0,0,0,0)");
+  overlay.addColorStop(0.45, "rgba(0,0,0,0.55)");
+  overlay.addColorStop(0.75, "rgba(0,0,0,0.85)");
+  overlay.addColorStop(1,    "rgba(0,0,0,0.96)");
+  ctx.fillStyle = overlay;
+  ctx.fillRect(0, OVERLAY_TOP, W, H - OVERLAY_TOP);
+
+
+  // ═════════════════════════════════════════════════════════
+  // 2. HEADLINE — left-aligned, bold white text over the dark
+  //    scrim, anchored near the bottom, with a small gold accent
+  //    dash above the first line.
+  // ═════════════════════════════════════════════════════════
+  const PAD_X       = 46;
+  const BOTTOM_PAD  = 78;   // leaves room for the watermark row
+  const DASH_GAP    = 26;   // space between dash and first text line
+  const TEXT_W      = W - PAD_X * 2;
+  const TEXT_BOTTOM = H - BOTTOM_PAD;
+  const TEXT_TOP    = PHOTO_TOP + Math.round(PHOTO_H * 0.58); // headline block never starts above this
+
+  const LINE_H_RATIO         = 1.18;
+  const FIT_MARGIN           = 0.98;
+  const MIN_SIZE             = 20;
+  const MAX_SIZE             = 64;
+  const LETTER_SPACING_RATIO = 0.005;
+
+  let rawLines;
+  if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
+    rawLines = newsItem.titleLines.map((entry) => normalizeTitleLine(entry));
+  } else {
+    rawLines = [{ text: newsItem.title || "", color: null }];
+  }
+
+  const availH = TEXT_BOTTOM - TEXT_TOP - DASH_GAP - 6; // 6px ≈ dash height
+
+  // Search for the largest uniform font size such that all wrapped
+  // lines fit within the available height and width.
+  let fittedLines = [];
+  let usedSize    = MIN_SIZE;
+
+  for (let size = MIN_SIZE; size <= MAX_SIZE; size += 1) {
+    ctx.font = `900 ${size}px Malayalam`;
+    setLetterSpacing(ctx, size * LETTER_SPACING_RATIO);
+
+    const wrapped = [];
+    for (const line of rawLines) {
+      const segs = line.text ? wrapText(ctx, line.text, TEXT_W) : [];
+      for (const seg of segs) wrapped.push({ text: seg, color: line.color });
+    }
+    const totalH = wrapped.length * size * LINE_H_RATIO;
+    if (totalH > availH * FIT_MARGIN) break;
+    usedSize    = size;
+    fittedLines = wrapped;
+  }
+
+  const lineH       = Math.round(usedSize * LINE_H_RATIO);
+  const totalTextH  = fittedLines.length * lineH;
+  const blockBottom = TEXT_BOTTOM;
+  const blockTop    = blockBottom - totalTextH;
+
+  // Accent dash sits just above the text block.
+  drawAccentDash(ctx, PAD_X, blockTop - DASH_GAP - 6);
+
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "alphabetic";
+  ctx.shadowColor  = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur   = 10;
+
+  let lineY = blockTop;
+  for (const line of fittedLines) {
+    ctx.save();
+    ctx.font = `900 ${usedSize}px Malayalam`;
+    setLetterSpacing(ctx, usedSize * LETTER_SPACING_RATIO);
+    ctx.fillStyle = line.color || "#ffffff";
+    // Baseline sits near the bottom of the line's box.
+    ctx.fillText(line.text, PAD_X, lineY + lineH - Math.round(usedSize * 0.22));
+    ctx.restore();
+    lineY += lineH;
+  }
+  ctx.shadowBlur = 0;
+
+  // ═════════════════════════════════════════════════════════
+  // 3. Bottom-corner watermarks over the photo.
   // ═════════════════════════════════════════════════════════
   const wmText = newsItem.watermark || `${logoLine1} ${logoLine2}`;
-  drawWatermark(ctx, wmText, 28, H - 26, { size: 19, align: "left", color: "rgba(255,255,255,0.75)" });
-  drawWatermark(ctx, wmText, W - 28, H - 26, { size: 19, align: "right", color: "rgba(255,255,255,0.75)" });
+  drawWatermark(ctx, wmText, PAD_X - 18, H - 26, { size: 19, align: "left", color: "rgba(255,255,255,0.75)" });
+  drawWatermark(ctx, wmText, W - (PAD_X - 18), H - 26, { size: 19, align: "right", color: "rgba(255,255,255,0.75)" });
 
   // ── Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
