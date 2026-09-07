@@ -1,741 +1,837 @@
-"use strict";
+const { createCanvas, GlobalFonts, loadImage } = require("@napi-rs/canvas");
+const path  = require("path");
+const sharp = require("sharp");
+const fs    = require("fs");
+const os    = require("os");
 
-const axios = require("axios");
-const cheerio = require("cheerio");
+// fluent-ffmpeg + ffmpeg-static for frame extraction
+let ffmpeg;
+try {
+  ffmpeg = require("fluent-ffmpeg");
+  const ffmpegPath  = require("ffmpeg-static");
+  const ffprobePath = require("ffprobe-static").path;
 
-// ─────────────────────────────────────────────
-// Source configuration
-// ─────────────────────────────────────────────
-const SOURCES = {
-  manorama: {
-    baseUrl: "https://www.manoramaonline.com",
-    icon: "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/50/3f/56/503f5669-704b-5689-b68b-88ce6dd7d7e9/AppIcon4NormalUsers-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg",
-    channel: "Manorama",
-  },
-
-  asianet: {
-    baseUrl: "https://www.asianetnews.com",
-    icon: "https://play-lh.googleusercontent.com/P_-tUCKxNAhgNMwSyHF1NQBg0H27KnHiD_7SFf_y5BYFT3cMEV8FqUBiGGGJsJNMUg=w240-h480-rw",
-    channel: "Asianet",
-  },
-
-  mediaone: {
-    baseUrl: "https://www.mediaoneonline.com",
-    latestUrl: "https://www.mediaoneonline.com/latest-news",
-    icon: "https://upload.wikimedia.org/wikipedia/commons/6/62/Media_One_Logo.png",
-    channel: "MediaOne",
-  },
-
-  keralakaumudi: {
-    baseUrl: "https://keralakaumudi.com",
-    loadMoreUrl: "https://keralakaumudi.com/news/mobile/inc/load-more-latest.php",
-    icon: "https://keralakaumudi.com/favicon.ico",
-    channel: "Kerala Kaumudi",
-  },
-
-  news18: {
-    sitemapUrl: "https://malayalam.news18.com/commonfeeds/v1/mal/sitemap/google-news.xml",
-    baseUrl: "https://malayalam.news18.com",
-    icon: "https://static.news18.com/static/img/logo-news18-favicon-32.png",
-    channel: "News18 Malayalam",
-  },
-
-  oneindia: {
-    rssUrl: "https://malayalam.oneindia.com/rss/feeds/malayalam-news-fb.xml",
-    baseUrl: "https://malayalam.oneindia.com",
-    icon: "https://malayalam.oneindia.com/favicon.ico",
-    channel: "Oneindia",
-  },
-
-  mathrubhumi: {
-    apiUrl: "https://www.mathrubhumi.com/263/api/home-api-1",
-    baseUrl: "https://www.mathrubhumi.com",
-    imageBaseUrl: "https://img.mathrubhumi.com",
-    icon: "https://www.mathrubhumi.com/favicon.ico",
-    channel: "Mathrubhumi",
-  },
-
-  twentyfour: {
-    rssUrl: "https://www.twentyfournews.com/feed",
-    icon: "https://www.twentyfournews.com/wp-content/uploads/2019/03/cropped-24-logo-fav-32x32.jpg",
-    channel: "24 News",
-  },
-};
-
-// ─────────────────────────────────────────────
-// Default headers
-// ─────────────────────────────────────────────
-const DEFAULT_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-};
-
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
-
-async function loadPage(url) {
-  const { data } = await axios.get(url, {
-    timeout: 20000,
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-      Accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate, br",
-      Connection: "keep-alive",
-      Referer: "https://www.google.com/",
-      DNT: "1",
-      "Upgrade-Insecure-Requests": "1",
-      "Sec-Fetch-Dest": "document",
-      "Sec-Fetch-Mode": "navigate",
-      "Sec-Fetch-Site": "none",
-      "Sec-Fetch-User": "?1",
-      Priority: "u=0, i",
-      Pragma: "no-cache",
-      "Cache-Control": "no-cache",
-    },
-  });
-  return cheerio.load(data);
-}
-
-async function fetchRaw(url) {
-  const { data } = await axios.get(url, {
-    headers: DEFAULT_HEADERS,
-    timeout: 15000,
-  });
-  return data;
-}
-
-async function fetchJson(url) {
-  const { data } = await axios.get(url, {
-    headers: {
-      ...DEFAULT_HEADERS,
-      Accept: "application/json, text/plain, */*",
-    },
-    timeout: 15000,
-  });
-  return data;
-}
-
-const stripLive = (t = "") => t.replace(/^Live\s*/gi, "").trim();
-const stripCdata = (s = "") =>
-  s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
-const resolve = (base, href = "") => {
-  if (!href) return "";
-  if (href.startsWith("http")) return href;
-  return base + href;
-};
-
-function cleanHtmlText(text = "") {
-  if (!text) return "";
-  text = stripCdata(text);
-  text = text
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/pic\.twitter\.com\/\S+/gi, "")
-    .replace(/https?:\/\/t\.co\/\S+/gi, "");
-  text = cheerio.load(`<div>${text}</div>`).text();
-  text = text
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'");
-  return text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function getXmlTag(xml, tag) {
-  const esc = tag.replace(":", "\\:");
-  const m = xml.match(
-    new RegExp(`<${esc}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${esc}>`, "i")
-  );
-  return m ? stripCdata(m[1]).trim() : "";
-}
-
-function getXmlAttr(xml, tag, attr) {
-  const esc = tag.replace(":", "\\:");
-  const m = xml.match(
-    new RegExp(`<${esc}[^>]*\\s${attr}="([^"]*)"`, "i")
-  );
-  return m ? m[1].trim() : "";
-}
-
-const isValidImage = (url = "") => {
-  if (!url) return false;
-  return (
-    /^https?:\/\//i.test(url) &&
-    /\.(jpg|jpeg|png|webp|gif)$/i.test(url.split("?")[0])
-  );
-};
-
-// ─────────────────────────────────────────────
-// MANORAMA
-// ─────────────────────────────────────────────
-async function scrapeManorama(url, selector) {
-  const { baseUrl, icon, channel } = SOURCES.manorama;
-  const $ = await loadPage(url);
-  const news = [];
-
-  $(selector).each((_, el) => {
-    const anchor = $(el).find("h2 a");
-    const title = stripLive(anchor.text().trim());
-    const link = resolve(baseUrl, anchor.attr("href"));
-    const summary = cleanHtmlText(
-      $(el).find(".cmp-story-list__dispn").html() || ""
-    );
-    const imgEl = $(el).find(".cmp-story-list__image-block img");
-    const image =
-      imgEl.attr("data-src") ||
-      imgEl.attr("data-websrc") ||
-      imgEl.attr("src") ||
-      "";
-    const readableTime = $(el).find(".cmp-story-list__date").text().trim();
-
-    if (title && link) {
-      news.push({ title, link, summary, image, readableTime, icon, channel });
-    }
-  });
-
-  return news;
-}
-
-// ─────────────────────────────────────────────
-// ASIANET
-// ─────────────────────────────────────────────
-async function scrapeAsianet(url) {
-  const { icon, channel } = SOURCES.asianet;
-  const data = await fetchRaw(url);
-  const news = [];
-  const items = data.split("<item>");
-
-  for (const chunk of items.slice(1)) {
-    const itemXml = chunk.split("</item>")[0];
-    const title = stripLive(getXmlTag(itemXml, "title"));
-    const link = getXmlTag(itemXml, "link");
-    const pubDate = getXmlTag(itemXml, "pubDate");
-    const image =
-      getXmlAttr(itemXml, "media:content", "url") ||
-      getXmlAttr(itemXml, "enclosure", "url") ||
-      "";
-
-    let summary = cleanHtmlText(
-      getXmlTag(itemXml, "content:encoded") ||
-        getXmlTag(itemXml, "description")
-    );
-    const words = summary.split(" ").filter(Boolean);
-    if (words.length > 40) summary = words.slice(0, 150).join(" ") + "...";
-
-    if (!isValidImage(image)) continue;
-    if (title && link) {
-      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
-    }
+  if (ffmpegPath && fs.existsSync(ffmpegPath)) {
+    ffmpeg.setFfmpegPath(ffmpegPath);
+  } else {
+    console.error("❌ ffmpeg binary missing:", ffmpegPath);
   }
 
-  return news;
-}
-
-// ─────────────────────────────────────────────
-// ONEINDIA — RSS feed (same generic pattern as Asianet)
-// ─────────────────────────────────────────────
-async function scrapeOneindia(url) {
-  const { icon, channel } = SOURCES.oneindia;
-  const data = await fetchRaw(url);
-  const news = [];
-  const items = data.split("<item>");
-
-  for (const chunk of items.slice(1)) {
-    const itemXml = chunk.split("</item>")[0];
-    const title = stripLive(getXmlTag(itemXml, "title"));
-    const link = getXmlTag(itemXml, "link");
-    const pubDate = getXmlTag(itemXml, "pubDate");
-    const image =
-      getXmlAttr(itemXml, "media:content", "url") ||
-      getXmlAttr(itemXml, "enclosure", "url") ||
-      "";
-
-    let summary = cleanHtmlText(
-      getXmlTag(itemXml, "content:encoded") ||
-        getXmlTag(itemXml, "description")
-    );
-    const words = summary.split(" ").filter(Boolean);
-    if (words.length > 40) summary = words.slice(0, 150).join(" ") + "...";
-
-    if (!isValidImage(image)) continue;
-    if (title && link) {
-      news.push({ title, link, summary, image, readableTime: pubDate, icon, channel });
-    }
+  if (ffprobePath && fs.existsSync(ffprobePath)) {
+    ffmpeg.setFfprobePath(ffprobePath);
+  } else {
+    console.error("❌ ffprobe binary missing:", ffprobePath);
   }
-
-  return news;
+} catch (err) {
+  console.error("[Video] fluent-ffmpeg setup failed:", err.message);
+  ffmpeg = null;
 }
 
-// ─────────────────────────────────────────────
-// MEDIAONE
-// ─────────────────────────────────────────────
-async function scrapeMediaOne() {
-  const { latestUrl, baseUrl, icon, channel } = SOURCES.mediaone;
-  const $ = await loadPage(latestUrl);
-  const news = [];
+GlobalFonts.registerFromPath(
+  path.join(__dirname, "../fonts/AnekMalayalam_SemiCondensed-Bold.ttf"),
+  "Malayalam"
+);
+GlobalFonts.registerFromPath(
+  path.join(__dirname, "../fonts/DejaVuSans-Bold.ttf"),
+  "English"
+);
 
-  $("#pills-all > ul > li.list-item").each((_, el) => {
-    const title = stripLive($(el).find("h3.story-title").text().trim());
-    const href = $(el).find("a").attr("href");
-    const link = resolve(baseUrl, href);
-    const summary = cleanHtmlText($(el).find("p").text().trim());
-    const image =
-      $(el).find("img").attr("data-src") ||
-      $(el).find("img").attr("src") ||
-      "";
-    const readableTime = $(el).find(".time-as-duration").text().trim();
+// ── Asset video path ─────────────────────────────────────────
+const FALLBACK_VIDEO_PATH =
+  process.env.FALLBACK_VIDEO ||
+  path.join(__dirname, "../assets/ad_fallback.mp4");
 
-    if (title && link) {
-      news.push({ title, link, summary, image, readableTime, icon, channel });
-    }
-  });
+// ── Blue-grid panel background asset (kept for backward-compat /
+// callers that still pass panel-style items — no longer used by the
+// default layout below) ───────────────────────────────────────────
+function resolvePanelBgPath() {
+  const candidates = [
+    process.env.PANEL_BG_IMAGE,
+    "C:\\Users\\adars\\Downloads\\news_channel-main\\news_channel-main\\server\\assets\\blue_panel_bg.png",
+    path.join(__dirname, "assets/blue_panel_bg.png"),
+    path.join(__dirname, "../assets/blue_panel_bg.png"),
+    path.join(process.cwd(), "assets/blue_panel_bg.png"),
+    path.join(process.cwd(), "server/assets/blue_panel_bg.png"),
+  ].filter(Boolean);
 
-  return news;
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
 }
 
-// ─────────────────────────────────────────────
-// KERALA KAUMUDI
-// Same load-more endpoint the article page itself uses.
-// Calling it directly from the server avoids the 500/CORS
-// you saw, because that error only happens when fetch()
-// runs from a foreign origin without a Referer header.
-// ─────────────────────────────────────────────
-async function scrapeKeralaKaumudi() {
-  const { baseUrl, loadMoreUrl, icon, channel } = SOURCES.keralakaumudi;
-  const news = [];
-
-  const { data: html } = await axios.post(
-    loadMoreUrl,
-    new URLSearchParams({ offset: "0", tag: "" }).toString(),
-    {
-      timeout: 15000,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
-        Accept: "text/html, */*; q=0.01",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "X-Requested-With": "XMLHttpRequest",
-        Referer: `${baseUrl}/latest`,
-        Origin: baseUrl,
-      },
-    }
-  );
-
-  const $ = cheerio.load(html);
-
-  $(".cat-news").each((_, el) => {
-    const title = stripLive($(el).find("h5").text().trim());
-
-    const href = $(el).find("a").attr("href");
-    const link = resolve(baseUrl, href);
-
-    const summary = cleanHtmlText($(el).find(".cat-text span").text().trim());
-    const readableTime = $(el).find(".dt-info").text().trim();
-
-    let image = $(el).find("img").attr("src") || "";
-    image = image.replace(/^(\.\.\/)+/, "");
-    image = resolve(baseUrl + "/", image);
-
-    if (title && link) {
-      news.push({ title, link, summary, image, readableTime, icon, channel });
-    }
-  });
-
-  return news;
-}
-
-// ─────────────────────────────────────────────
-// NEWS18 MALAYALAM — Google News Sitemap
-// Parses the sitemap for title/link/image/time, then
-// scrapes each article page in parallel to extract the
-// full article summary from:
-//   • Para 1 → first div whose class contains a "jsx-*" token (hash changes)
-//   • Para 2 & 3 → all div.lastpara elements (fixed class, 2 of them)
-// All three pieces are joined and returned as one string.
-// ─────────────────────────────────────────────
-
-/**
- * Scrape the full article summary from a News18 Malayalam article page.
- *
- * Page structure:
- *   <div class="jsx-4088182340"></div>   ← paragraph 1 (jsx hash changes every build)
- *   <div class="lastpara "></div>        ← paragraph 2 (fixed class)
- *   <div class="lastpara "></div>        ← paragraph 3 (fixed class)
- *
- * Strategy:
- *  1. jsx-* div  → first div whose class list has a token starting with "jsx-"
- *                  that holds direct text content (not nav/header noise).
- *  2. .lastpara  → collect ALL matching divs and join their text.
- *  3. Combine 1 + 2 into a single clean summary string.
- *
- * Returns a clean, trimmed string or "" on failure.
- */
-async function fetchNews18ArticleSummary(articleUrl) {
+let _panelBgImageCache = null;
+async function loadPanelBgImage() {
+  if (_panelBgImageCache) return _panelBgImageCache;
+  const resolvedPath = resolvePanelBgPath();
+  if (!resolvedPath) return null;
   try {
-    const $ = await loadPage(articleUrl);
-
-    const parts = [];
-
-    // ── Part 1: first jsx-* div with meaningful direct text ──────────────
-    // We look for divs whose class contains a "jsx-XXXXXXXX" token.
-    // To avoid picking up large wrapper divs (which would include nav text
-    // etc.), we take the direct text of the element itself — not .find("p") —
-    // because the paragraph content is rendered as direct child text nodes
-    // inside that div, not wrapped in a <p>.
-    $("div").each((_, el) => {
-      if (parts.length > 0) return false; // already found para 1, stop
-
-      const cls = $(el).attr("class") || "";
-      const hasJsx = cls.split(/\s+/).some((c) => c.startsWith("jsx-"));
-      if (!hasJsx) return;
-
-      // Use the element's own text (shallow), not nested descendants,
-      // to avoid capturing the entire page through wrapper divs.
-      // cheerio's .text() is always deep, so we collect only direct
-      // text node content via the contents() filter.
-      const directText = $(el)
-        .contents()
-        .filter((_, node) => node.type === "text")
-        .text()
-        .trim();
-
-      // If shallow text is empty, try one level of <p> children only
-      // (some builds wrap the sentence in a single <p> inside the jsx div)
-      const paraText = $(el).children("p").text().trim();
-
-      const candidate = directText || paraText;
-      if (candidate.length > 20) {
-        parts.push(cleanHtmlText(candidate));
-      }
-    });
-
-    // ── Part 2 & 3: all div.lastpara elements ────────────────────────────
-    // The class is "lastpara " (with a trailing space in the HTML),
-    // but cheerio's class selector handles that transparently.
-    $("div.lastpara").each((_, el) => {
-      const text = $(el).text().trim();
-      if (text.length > 20) {
-        parts.push(cleanHtmlText(text));
-      }
-    });
-
-    // ── Combine ───────────────────────────────────────────────────────────
-    if (parts.length) {
-      return parts.join(" ").replace(/\s+/g, " ").trim();
-    }
-
-    // ── Fallback: first substantial <p> anywhere (edge cases) ────────────
-    let fallback = "";
-    $("p").each((_, el) => {
-      if (fallback) return false;
-      const t = $(el).text().trim();
-      if (t.length > 40) fallback = cleanHtmlText(t);
-    });
-    return fallback;
-  } catch (_) {
-    return "";
+    const rawBuf   = fs.readFileSync(resolvedPath);
+    const cleanBuf = await sharp(rawBuf).png().toBuffer();
+    const img      = await loadImage(cleanBuf);
+    _panelBgImageCache = img;
+    return img;
+  } catch (e) {
+    console.warn("[Panel] failed to load background asset:", e.message);
+    return null;
   }
 }
 
+const W            = 1080;
+const H            = 1380;
+const DEFAULT_AD_H = 180;
+const MAX_AD_H     = 320;
 
-async function scrapeNews18() {
-  const { sitemapUrl, icon, channel } = SOURCES.news18;
-  const data = await fetchRaw(sitemapUrl);
-  const parsed = [];
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
 
-  const urlBlocks = data.split("<url>");
-
-  for (const block of urlBlocks.slice(1)) {
-    const chunk = block.split("</url>")[0];
-
-    const loc = getXmlTag(chunk, "loc");
-    if (!loc || !loc.includes("malayalam.news18.com")) continue;
-
-    const rawTitle =
-      getXmlTag(chunk, "news:title") || getXmlTag(chunk, "title");
-    const title = stripLive(stripCdata(rawTitle).trim());
-    if (!title) continue;
-
-    const pubDate =
-      getXmlTag(chunk, "news:publication_date") ||
-      getXmlTag(chunk, "lastmod") ||
-      "";
-
-    let readableTime = pubDate;
-    if (pubDate) {
-      try {
-        readableTime = new Date(pubDate).toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-      } catch (_) {
-        readableTime = pubDate;
-      }
+function wrapText(ctx, text, maxWidth) {
+  const words = text.split(" ");
+  const lines = [];
+  let cur = "";
+  for (const word of words) {
+    const test = cur ? cur + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && cur) {
+      lines.push(cur);
+      cur = word;
+    } else {
+      cur = test;
     }
-
-    const rawImageLoc = getXmlTag(chunk, "image:loc");
-    const image = stripCdata(rawImageLoc).trim();
-
-    parsed.push({
-      title,
-      link: loc,
-      image: isValidImage(image) ? image : "",
-      readableTime,
-    });
   }
-
-  if (!parsed.length) return [];
-
-  // Scrape all article pages in parallel to get real summaries
-  const summaryResults = await Promise.allSettled(
-    parsed.map((item) => fetchNews18ArticleSummary(item.link))
-  );
-
-  // Merge summaries back
-  return parsed.map((item, i) => ({
-    ...item,
-    summary:
-      summaryResults[i].status === "fulfilled"
-        ? summaryResults[i].value
-        : "",
-    icon,
-    channel,
-  }));
+  if (cur) lines.push(cur);
+  return lines;
 }
 
-// ─────────────────────────────────────────────
-// MATHRUBHUMI — JSON API
-// ─────────────────────────────────────────────
-async function scrapeMathrubhumi() {
-  const { apiUrl, baseUrl, imageBaseUrl, icon, channel } = SOURCES.mathrubhumi;
-  const news = [];
-
-  const data = await fetchJson(apiUrl);
-
-  // The API returns { home: { data: [ ...items ] } }
-  const items = data?.home?.data || [];
-
-  for (const item of items) {
-    // Skip non-article element types:
-    // elementType 0 = standard article
-    // elementType 1 = article with lead text
-    // elementType 11 = trending topics / sliders (skip)
-    // elementType 12 = ad units (skip)
-    const elementType = item.elementType;
-    if (elementType === 12) continue; // ads
-    if (elementType === 11) continue; // trending topic chips
-
-    const title = (item.itemTitle || "").trim();
-    if (!title) continue;
-
-    // Build full article URL
-    const detailPath = item.itemDetailURL || "";
-    let link = "";
-    if (detailPath.startsWith("http")) {
-      link = detailPath;
-    } else if (detailPath) {
-      // detailPath is like "/263/news/india/some-slug"
-      // strip the leading /263 prefix that is app-internal routing
-      link = resolve(baseUrl, detailPath.replace(/^\/263/, ""));
-    }
-    if (!link) continue;
-
-    // Also use shareURL if available and looks like a real URL
-    if (item.shareURL && item.shareURL.startsWith("http")) {
-      link = item.shareURL;
-    }
-
-    // Build full image URL — strip query string (e.g. ?f=1:1&w=172&q=0.8)
-    let image = "";
-    const rawImage = item.itemImageURL || "";
-    if (rawImage) {
-      const cleanPath = rawImage.split("?")[0];
-      if (cleanPath.startsWith("http")) {
-        image = cleanPath;
-      } else {
-        image = imageBaseUrl + cleanPath;
-      }
-    }
-
-    const summary = (item.itemTitleLead || "").trim();
-    const readableTime = (item.publishedTime || "").trim();
-
-    // Determine section label for context (optional, used as subSectionTitle)
-    const section = item.subSectionTitle || item.sectionTitle || "";
-
-    news.push({
-      title,
-      link,
-      summary,
-      image,
-      readableTime,
-      icon,
-      channel,
-      section, // bonus metadata
-    });
-  }
-
-  return news;
-}
-
-
-// ─────────────────────────────────────────────
-// TWENTYFOUR NEWS — RSS feed + article page image scrape
-// The RSS feed has no images, so we scrape the post-thumbnail
-// from each article page in parallel after parsing the feed.
-// ─────────────────────────────────────────────
-
-/**
- * Scrape the featured (post-thumbnail) image from a 24 News article page.
- * Returns the clean src URL (no query string) or "" on failure.
- */
-async function fetchTwentyFourArticleImage(articleUrl) {
+// Letter-spacing for the title, done the SAFE way: using the canvas's
+// native `letterSpacing` state property rather than splitting the
+// string into individual characters. Malayalam (and other complex
+// scripts) rely on the font engine shaping consonants + vowel signs +
+// conjuncts together — drawing character-by-character breaks that
+// shaping and produces garbled glyphs. Setting ctx.letterSpacing and
+// calling the normal measureText/fillText/strokeText on the WHOLE
+// string keeps shaping intact while still adding the gap.
+function setLetterSpacing(ctx, px) {
   try {
-    const $ = await loadPage(articleUrl);
+    ctx.letterSpacing = `${px}px`;
+  } catch (e) {
+    // If this build of @napi-rs/canvas doesn't support letterSpacing,
+    // fail silently — no extra spacing is far better than broken text.
+  }
+}
 
-    // Primary: WP post-thumbnail class
-    const thumbEl = $("img.attachment-post-thumbnail, img.size-post-thumbnail").first();
-    let src = thumbEl.attr("src") || thumbEl.attr("data-src") || "";
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y,     x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x,     y + h, r);
+  ctx.arcTo(x,     y + h, x,     y,     r);
+  ctx.arcTo(x,     y,     x + w, y,     r);
+  ctx.closePath();
+}
 
-    // Fallback: any large wp-content uploads image in article
-    if (!src) {
-      $("img[src*='twentyfournews.com/wp-content/uploads']").each((_, el) => {
-        const s = $(el).attr("src") || "";
-        // Prefer the largest variant — skip -300x, -150x, etc. thumbnail crops
-        if (s && !/-\d+x\d+\./.test(s.split("?")[0])) {
-          src = s;
-          return false; // break
+function computeAdHeight(adImg) {
+  if (!adImg) return DEFAULT_AD_H;
+  const naturalH = Math.round((adImg.height / adImg.width) * W);
+  return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
+}
+
+// Draw a single image into a rect using "cover" fit (crop to fill).
+function drawCover(ctx, img, x, y, w, h) {
+  const scale = Math.max(w / img.width, h / img.height);
+  const dw = img.width * scale;
+  const dh = img.height * scale;
+  const dx = x + (w - dw) / 2;
+  const dy = y + (h - dh) / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────────────────────
+function toNodeBuffer(data) {
+  if (Buffer.isBuffer(data))       return data;
+  if (data instanceof ArrayBuffer) return Buffer.from(data);
+  if (ArrayBuffer.isView(data))    return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  throw new TypeError(`toNodeBuffer: unsupported type ${Object.prototype.toString.call(data)}`);
+}
+
+async function fetchBuffer(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  return toNodeBuffer(await res.arrayBuffer());
+}
+
+async function fetchAsJpegBuffer(url) {
+  const raw = await fetchBuffer(url);
+  return toNodeBuffer(await sharp(raw).jpeg().toBuffer());
+}
+
+async function canvasToBuffer(canvas, mime = "image/png") {
+  const result = canvas.toBuffer(mime);
+  return Buffer.isBuffer(result) ? result : toNodeBuffer(await result);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VIDEO FRAME EXTRACTION (unchanged)
+// ═══════════════════════════════════════════════════════════════
+
+function extractVideoFrame(videoPath, atSecond = 1) {
+  return new Promise((resolve) => {
+    if (!ffmpeg) {
+      console.warn("[Video] fluent-ffmpeg not available — skipping frame extract");
+      return resolve(null);
+    }
+
+    if (!fs.existsSync(videoPath)) {
+      console.warn("[Video] File not found:", videoPath);
+      return resolve(null);
+    }
+
+    try {
+      const stat = fs.statSync(videoPath);
+      if (stat.size === 0) {
+        console.warn("[Video] File is zero bytes:", videoPath);
+        return resolve(null);
+      }
+    } catch (e) {
+      console.warn("[Video] Could not stat file:", videoPath, e.message);
+      return resolve(null);
+    }
+
+    const tmpFile = path.join(os.tmpdir(), `ad_frame_${Date.now()}.png`);
+    let settled = false;
+
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    const timer = setTimeout(() => {
+      console.error("[Video] Frame extraction timed out:", videoPath);
+      fs.unlink(tmpFile, () => {});
+      finish(null);
+    }, 15000);
+
+    ffmpeg(videoPath)
+      .on("error", (err) => {
+        clearTimeout(timer);
+        console.error("[Video] Frame extraction failed:", err.message);
+        fs.unlink(tmpFile, () => {});
+        finish(null);
+      })
+      .on("end", async () => {
+        clearTimeout(timer);
+        try {
+          if (!fs.existsSync(tmpFile)) {
+            console.error("[Video] Expected frame file was never written:", tmpFile);
+            return finish(null);
+          }
+          const raw     = fs.readFileSync(tmpFile);
+          const jpegBuf = toNodeBuffer(await sharp(raw).jpeg().toBuffer());
+          fs.unlink(tmpFile, () => {});
+          finish(jpegBuf);
+        } catch (e) {
+          console.error("[Video] Sharp conversion failed:", e.message);
+          fs.unlink(tmpFile, () => {});
+          finish(null);
         }
+      })
+      .screenshots({
+        timestamps: [atSecond],
+        filename:   path.basename(tmpFile),
+        folder:     path.dirname(tmpFile),
+        size:       `${W}x?`,
       });
-    }
+  });
+}
 
-    // Strip query string (e.g. ?x11600)
-    return src ? src.split("?")[0] : "";
-  } catch (_) {
-    return "";
+// ═══════════════════════════════════════════════════════════════
+// AD STRIP (unchanged)
+// ═══════════════════════════════════════════════════════════════
+
+function drawAdStrip(ctx, adImg, yOffset, adH) {
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, yOffset, W, adH);
+
+  if (adImg) {
+    const scaleW = W / adImg.width;
+    const scaleH = adH / adImg.height;
+    const scale  = Math.max(scaleW, scaleH);
+
+    const drawW = adImg.width  * scale;
+    const drawH = adImg.height * scale;
+    const drawX = (W - drawW) / 2;
+    const drawY = yOffset + (adH - drawH) / 2;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, yOffset, W, adH);
+    ctx.clip();
+    ctx.drawImage(adImg, drawX, drawY, drawW, drawH);
+    ctx.restore();
+
+    const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
+    lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
+    lineGrad.addColorStop(0.2, "rgba(255,180,0,0.8)");
+    lineGrad.addColorStop(0.8, "rgba(255,180,0,0.8)");
+    lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
+    ctx.fillStyle = lineGrad;
+    ctx.fillRect(0, yOffset, W, 3);
+    return;
+  }
+
+  const bg = ctx.createLinearGradient(0, yOffset, 0, yOffset + adH);
+  bg.addColorStop(0, "#0d1b4b");
+  bg.addColorStop(1, "#091230");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, yOffset, W, adH);
+
+  const lineGrad = ctx.createLinearGradient(0, 0, W, 0);
+  lineGrad.addColorStop(0,   "rgba(255,180,0,0)");
+  lineGrad.addColorStop(0.2, "rgba(255,180,0,1)");
+  lineGrad.addColorStop(0.8, "rgba(255,180,0,1)");
+  lineGrad.addColorStop(1,   "rgba(255,180,0,0)");
+  ctx.fillStyle = lineGrad;
+  ctx.fillRect(0, yOffset, W, 3);
+
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle   = "#ffffff";
+  for (let x = 40; x < W; x += 60) {
+    for (let y = yOffset + 20; y < yOffset + adH - 20; y += 40) {
+      ctx.beginPath();
+      ctx.arc(x, y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.font         = "bold 52px English";
+  ctx.fillStyle    = "rgba(255,200,60,0.22)";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("📢", W / 2, yOffset + adH / 2 - 8);
+  ctx.restore();
+
+  const line1    = "പരസ്യത്തിനായി ഞങ്ങൾക്ക്";
+  const line2    = "സന്ദേശം അയയ്ക്കുക";
+  const LINE_GAP = 58;
+  const midY     = yOffset + adH / 2;
+
+  ctx.save();
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor  = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur   = 14;
+
+  ctx.font      = "bold 42px Malayalam";
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.fillText(line1, W / 2, midY - LINE_GAP / 2);
+
+  const goldGrad = ctx.createLinearGradient(0, midY, 0, midY + 50);
+  goldGrad.addColorStop(0, "#ffe566");
+  goldGrad.addColorStop(1, "#ffaa00");
+
+  ctx.font      = "bold 44px Malayalam";
+  ctx.fillStyle = goldGrad;
+  ctx.fillText(line2, W / 2, midY + LINE_GAP / 2);
+  ctx.restore();
+
+  ctx.fillStyle = lineGrad;
+  ctx.fillRect(0, yOffset + adH - 3, W, 3);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LEGACY PANEL HELPERS
+// (kept for backward-compat with older callers / item shapes — no
+// longer invoked by the default photo-top / quote-panel layout below)
+// ═══════════════════════════════════════════════════════════════
+
+// Small semi-transparent watermark text.
+function drawWatermark(ctx, text, x, y, opts = {}) {
+  const {
+    size    = 20,
+    color   = "rgba(255,255,255,0.65)",
+    align   = "left",
+    angle   = 0,
+    weight  = "600",
+    font    = "English",
+  } = opts;
+  ctx.save();
+  ctx.translate(x, y);
+  if (angle) ctx.rotate(angle);
+  ctx.font         = `${weight} ${size}px ${font}`;
+  ctx.fillStyle    = color;
+  ctx.textAlign    = align;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
+}
+
+// Circular "compare" badge with a red/white ring.
+async function drawCircleBadge(ctx, badgeImg, cx, cy, radius) {
+  const ringOuter = radius + 12;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringOuter, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.filter = "blur(6px)";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, ringOuter, 0, Math.PI * 2);
+  ctx.fillStyle = "#e30613";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 5, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+
+  if (badgeImg) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.clip();
+    const scale = Math.max((radius * 2) / badgeImg.width, (radius * 2) / badgeImg.height);
+    const dw = badgeImg.width * scale;
+    const dh = badgeImg.height * scale;
+    ctx.drawImage(badgeImg, cx - dw / 2, cy - dh / 2, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#222222";
+    ctx.fill();
+    ctx.restore();
   }
 }
 
-async function scrapeTwentyFour() {
-  const { rssUrl, icon, channel } = SOURCES.twentyfour;
-  const news = [];
+// Simple flat-icon Facebook glyph.
+function drawFacebookIcon(ctx, cx, cy, r) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = "#1877f2";
+  ctx.fill();
+  ctx.restore();
 
-  // 1 — Fetch and parse the RSS feed
-  const xml = await fetchRaw(rssUrl);
-  const items = xml.split("<item>");
+  ctx.save();
+  ctx.strokeStyle = "#ffffff";
+  ctx.fillStyle   = "#ffffff";
+  ctx.lineWidth   = r * 0.32;
+  ctx.lineCap     = "round";
+  ctx.beginPath();
+  ctx.moveTo(cx + r * 0.06, cy - r * 0.5);
+  ctx.lineTo(cx + r * 0.06, cy + r * 0.55);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx + r * 0.32, cy - r * 0.42, r * 0.28, Math.PI, Math.PI * 1.55, false);
+  ctx.lineWidth = r * 0.28;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(cx - r * 0.28, cy - r * 0.02);
+  ctx.lineTo(cx + r * 0.32, cy - r * 0.02);
+  ctx.lineWidth = r * 0.26;
+  ctx.stroke();
+  ctx.restore();
+}
 
-  const parsed = [];
-  for (const chunk of items.slice(1)) {
-    const itemXml = chunk.split("</item>")[0];
+// Simple flat-icon Instagram glyph.
+function drawInstagramIcon(ctx, cx, cy, r) {
+  const size = r * 2;
+  const x = cx - r;
+  const y = cy - r;
+  const rad = r * 0.55;
 
-    const title = stripLive(cleanHtmlText(getXmlTag(itemXml, "title")));
-    if (!title) continue;
+  const grad = ctx.createLinearGradient(x, y + size, x + size, y);
+  grad.addColorStop(0,    "#ffdb73");
+  grad.addColorStop(0.35, "#ee2a7b");
+  grad.addColorStop(0.7,  "#8134af");
+  grad.addColorStop(1,    "#5851db");
 
-    const link = cleanHtmlText(getXmlTag(itemXml, "link"));
-    if (!link) continue;
+  ctx.save();
+  roundRect(ctx, x, y, size, size, rad);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
 
-    const summary = cleanHtmlText(getXmlTag(itemXml, "description"));
-    const pubDate = getXmlTag(itemXml, "pubDate");
+  ctx.save();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth   = r * 0.16;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx + r * 0.55, cy - r * 0.55, r * 0.1, 0, Math.PI * 2);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.restore();
+}
 
-    let readableTime = "";
-    if (pubDate) {
-      try {
-        readableTime = new Date(pubDate).toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-      } catch (_) {
-        readableTime = pubDate;
+// Draws the "f  📷  <label>" social-proof row.
+function drawSocialRow(ctx, label, cy) {
+  const iconR   = 15;
+  const gap     = 10;
+  ctx.save();
+  ctx.font = "700 26px English";
+  const labelW = ctx.measureText(label).width;
+  ctx.restore();
+
+  const totalW = iconR * 2 + gap + iconR * 2 + gap + labelW;
+  let x = W / 2 - totalW / 2 + iconR;
+
+  drawFacebookIcon(ctx, x, cy, iconR);
+  x += iconR + gap + iconR;
+  drawInstagramIcon(ctx, x, cy, iconR);
+  x += iconR + gap;
+
+  ctx.save();
+  ctx.font         = "700 26px English";
+  ctx.fillStyle    = "#ffffff";
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor  = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur   = 6;
+  ctx.fillText(label, x, cy + 1);
+  ctx.restore();
+}
+
+// Default alternating emphasis used by the old title-panel layout —
+// kept for backward-compat with any caller still passing titleLines.
+const ODD_LINE_SIZE_MULT  = 1.25;
+const EVEN_LINE_SIZE_MULT = 0.85;
+
+function normalizeTitleLine(entry, index) {
+  const defaultMult = index % 2 === 0 ? ODD_LINE_SIZE_MULT : EVEN_LINE_SIZE_MULT;
+
+  if (typeof entry === "string") {
+    return { text: entry, sizeMult: defaultMult, color: null };
+  }
+  const sizeMult = entry.size || (entry.emphasis != null
+    ? (entry.emphasis ? 1.35 : 1)
+    : defaultMult);
+  return { text: entry.text || "", sizeMult, color: entry.color || null };
+}
+
+// Normalizes a quoteLines entry into { text, sizeMult, color }, for
+// the new photo-top / quote-panel layout. Matches the reference
+// poster's rhythm: every line renders at the same size EXCEPT the
+// last line, which renders noticeably bigger/bolder. Accepts a plain
+// string, or an object such as { text: "...", size: 1.3 } /
+// { text: "...", emphasis: true } to override a specific line.
+const QUOTE_LAST_LINE_MULT = 1.3;
+const QUOTE_LINE_MULT      = 1.0;
+
+function normalizeQuoteLine(entry, index, total) {
+  const isLast      = index === total - 1;
+  const defaultMult = isLast ? QUOTE_LAST_LINE_MULT : QUOTE_LINE_MULT;
+
+  if (typeof entry === "string") {
+    return { text: entry, sizeMult: defaultMult, color: null };
+  }
+  const sizeMult = entry.size || (entry.emphasis != null
+    ? (entry.emphasis ? QUOTE_LAST_LINE_MULT : QUOTE_LINE_MULT)
+    : defaultMult);
+  return { text: entry.text || "", sizeMult, color: entry.color || null };
+}
+
+function formatPosterDate(d = new Date()) {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN POSTER DRAW
+// New layout (matches the reference template): a sharp full-width
+// photo across the top with the date in the corner, then a solid
+// black panel below holding a bold yellow quote (last line
+// emphasized) and a smaller white attribution line, then the ad
+// strip at the very bottom.
+// ═══════════════════════════════════════════════════════════════
+
+async function createNewsPoster(newsItem) {
+
+  // ── Load ad image (unchanged logic) ─────────────────────────
+  const hasAdUrl  = Boolean(newsItem.adBannerUrl);
+  const isVideoAd = newsItem.adResourceType === "video";
+  let   adImg     = null;
+  let   actualAdH = DEFAULT_AD_H;
+  let   liveAdVideoUrl = null;
+
+  if (hasAdUrl && !isVideoAd) {
+    try {
+      console.log("[Ad] Loading image banner:", newsItem.adBannerUrl);
+      const jpegBuf = await fetchAsJpegBuffer(newsItem.adBannerUrl);
+      adImg         = await loadImage(jpegBuf);
+      actualAdH     = computeAdHeight(adImg);
+      console.log(`[Ad] Image banner loaded: ${adImg.width}x${adImg.height}px, strip: ${actualAdH}px`);
+    } catch (err) {
+      console.error("[Ad] Image banner load failed:", err.message);
+    }
+  }
+
+  if (!adImg && hasAdUrl && isVideoAd) {
+    let tmpVidPath = null;
+    try {
+      console.log("[Ad] Probing video banner dimensions:", newsItem.adBannerUrl);
+      tmpVidPath     = path.join(os.tmpdir(), `ad_video_${Date.now()}.mp4`);
+      const vidBuf   = await fetchBuffer(newsItem.adBannerUrl);
+      fs.writeFileSync(tmpVidPath, vidBuf);
+
+      const frameBuf = await extractVideoFrame(tmpVidPath, 1);
+      if (frameBuf) {
+        const probeImg = await loadImage(frameBuf);
+        actualAdH      = computeAdHeight(probeImg);
+        console.log(`[Ad] Video banner probed: ${probeImg.width}x${probeImg.height}px, strip: ${actualAdH}px`);
+      } else {
+        console.warn("[Ad] Video banner probe returned null — using default height");
+      }
+      liveAdVideoUrl = newsItem.adBannerUrl;
+    } catch (err) {
+      console.error("[Ad] Video banner probe failed:", err.message);
+      liveAdVideoUrl = newsItem.adBannerUrl;
+    } finally {
+      if (tmpVidPath) {
+        try { fs.unlinkSync(tmpVidPath); } catch { /* ignore */ }
       }
     }
-
-    parsed.push({ title, link, summary, readableTime });
   }
 
-  if (!parsed.length) return news;
-
-  // 2 — Scrape all article pages in parallel to get images
-  const imageResults = await Promise.allSettled(
-    parsed.map((item) => fetchTwentyFourArticleImage(item.link))
-  );
-
-  // 3 — Merge images back into parsed items
-  for (let i = 0; i < parsed.length; i++) {
-    const { title, link, summary, readableTime } = parsed[i];
-    const image =
-      imageResults[i].status === "fulfilled" ? imageResults[i].value : "";
-
-    news.push({ title, link, summary, image, readableTime, icon, channel });
+  if (!adImg && !liveAdVideoUrl) {
+    console.log("[Ad] Using local video fallback (live composite):", FALLBACK_VIDEO_PATH);
+    try {
+      const frameBuf = await extractVideoFrame(FALLBACK_VIDEO_PATH, 1);
+      if (frameBuf) {
+        const probeImg = await loadImage(frameBuf);
+        actualAdH      = computeAdHeight(probeImg);
+        console.log(`[Ad] Local fallback probed: ${probeImg.width}x${probeImg.height}px, strip: ${actualAdH}px`);
+      } else {
+        console.warn("[Ad] Local fallback probe returned null — using default height");
+        actualAdH = DEFAULT_AD_H;
+      }
+      liveAdVideoUrl = FALLBACK_VIDEO_PATH;
+    } catch (err) {
+      console.error("[Ad] Local fallback error:", err.message);
+      actualAdH      = DEFAULT_AD_H;
+    }
   }
 
-  return news;
+  const canvasH = liveAdVideoUrl ? H : H + actualAdH;
+  console.log(`[Canvas] poster=${H}px  adStrip=${actualAdH}px  liveVideoAd=${!!liveAdVideoUrl}  canvasH=${canvasH}px`);
+
+  const canvas = createCanvas(W, canvasH);
+  const ctx    = canvas.getContext("2d");
+
+  let img1 = null;
+  try { img1 = await loadImage(newsItem.image); }
+  catch (e) { console.warn("[Poster] photo failed:", e.message); }
+
+  // ═════════════════════════════════════════════════════════
+  // 1. PHOTO — full-width, sharp (no blur/dim), across the top of
+  //    the poster, matching the reference template.
+  // ═════════════════════════════════════════════════════════
+  const PHOTO_H = Math.round(H * 0.58);
+
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, 0, W, PHOTO_H);
+  if (img1) drawCover(ctx, img1, 0, 0, W, PHOTO_H);
+
+  // ═════════════════════════════════════════════════════════
+  // 2. DATE — plain white text in the top-left corner over the
+  //    photo.
+  // ═════════════════════════════════════════════════════════
+  const dateText = newsItem.date
+    || newsItem.dateText
+    || newsItem.publishDate
+    || newsItem.publishedAt
+    || newsItem.newsDate
+    || formatPosterDate();
+  if (dateText) {
+    ctx.save();
+    ctx.font         = "700 30px English";
+    ctx.fillStyle    = "#ffffff";
+    ctx.textAlign    = "left";
+    ctx.textBaseline = "top";
+    ctx.shadowColor  = "rgba(0,0,0,0.85)";
+    ctx.shadowBlur   = 8;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+    ctx.fillText(dateText, 28, 24);
+    ctx.restore();
+  }
+
+  // Soft fade at the bottom of the photo so it blends into the black
+  // panel below rather than cutting sharply.
+  const PHOTO_FADE_H = Math.round(PHOTO_H * 0.16);
+  const photoFade = ctx.createLinearGradient(0, PHOTO_H - PHOTO_FADE_H, 0, PHOTO_H);
+  photoFade.addColorStop(0, "rgba(0,0,0,0)");
+  photoFade.addColorStop(1, "rgba(0,0,0,0.92)");
+  ctx.fillStyle = photoFade;
+  ctx.fillRect(0, PHOTO_H - PHOTO_FADE_H, W, PHOTO_FADE_H);
+
+  // ═════════════════════════════════════════════════════════
+  // 3. QUOTE PANEL — solid black background holding the bold
+  //    yellow quote text and, below it, a smaller white
+  //    attribution line ("- ദേവൻ").
+  // ═════════════════════════════════════════════════════════
+  const PANEL_TOP = PHOTO_H;
+  const PANEL_H   = H - PANEL_TOP;
+
+  ctx.fillStyle = "#000000";
+  ctx.fillRect(0, PANEL_TOP, W, PANEL_H);
+
+  const attributionText = newsItem.attribution || newsItem.attributionText || newsItem.author || "";
+  const ATTRIB_FONT_SIZE = 40;
+  const ATTRIB_GAP_TOP   = 18;
+  const ATTRIB_H = attributionText ? (ATTRIB_GAP_TOP + ATTRIB_FONT_SIZE + 10) : 0;
+
+  const PAD      = 44;
+  const TEXT_TOP = PANEL_TOP + 34;
+  const TEXT_BOT = PANEL_TOP + PANEL_H - ATTRIB_H - 24;
+  const TEXT_H   = Math.max(20, TEXT_BOT - TEXT_TOP);
+  const TEXT_W   = W - PAD * 2;
+  const CX       = W / 2;
+
+  // Accept both the new field names (quoteLines/quote) AND the field
+  // names your existing calling code actually sends (titleLines/title)
+  // — this was the bug: the caller sends `title`/`titleLines`, but this
+  // function was only looking for `quoteLines`/`quote`, so it read
+  // undefined and silently drew nothing.
+  const quoteLinesInput = (Array.isArray(newsItem.quoteLines) && newsItem.quoteLines.length)
+    ? newsItem.quoteLines
+    : (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length)
+      ? newsItem.titleLines
+      : null;
+  const quoteTextInput = newsItem.quote || newsItem.title || "";
+
+  let rawLines;
+  if (quoteLinesInput) {
+    const total = quoteLinesInput.length;
+    rawLines = quoteLinesInput.map((entry, i) => normalizeQuoteLine(entry, i, total));
+  } else if (quoteTextInput) {
+    rawLines = [normalizeQuoteLine(quoteTextInput, 0, 1)];
+  } else {
+    rawLines = [];
+  }
+
+  console.log(`[Poster] date="${dateText}" attribution="${attributionText}" quoteLineCount=${rawLines.length}`);
+  if (!rawLines.length) {
+    console.warn("[Poster] No quote text found on newsItem (checked quoteLines/quote/titleLines/title) — the yellow quote panel will render empty.");
+  }
+
+  const LINE_H_RATIO         = 1.08;
+  const FIT_MARGIN           = 0.98;
+  const MIN_BASE             = 20;
+  const MAX_BASE             = 120;
+  const LETTER_SPACING_RATIO = 0.015;
+
+  // Search upward for the largest BASE size such that every line
+  // (base * that line's own sizeMult, wrapped independently) still
+  // fits inside TEXT_H — this produces the "last line bigger" look
+  // while keeping the whole block sized to fill the available space.
+  let fittedLines = []; // [{ text, size, color }]
+
+  const wrapAtBase = (base) => {
+    const wrapped = [];
+    for (const line of rawLines) {
+      const size = Math.round(base * line.sizeMult);
+      ctx.font = `900 ${size}px Malayalam`;
+      setLetterSpacing(ctx, size * LETTER_SPACING_RATIO);
+      const segs = line.text ? wrapText(ctx, line.text, TEXT_W) : [];
+      for (const seg of segs) {
+        wrapped.push({ text: seg, size, color: line.color });
+      }
+    }
+    return wrapped;
+  };
+
+  // Seed with the minimum size FIRST so that even if nothing fits
+  // within TEXT_H, we still render something (clipped/overflowing)
+  // rather than silently drawing no text at all.
+  fittedLines = wrapAtBase(MIN_BASE);
+
+  for (let base = MIN_BASE + 1; base <= MAX_BASE; base += 1) {
+    const wrapped = wrapAtBase(base);
+    const totalH  = wrapped.reduce((sum, l) => sum + l.size * LINE_H_RATIO, 0);
+    if (totalH > TEXT_H * FIT_MARGIN) break;
+    fittedLines = wrapped;
+  }
+
+  const totalTextH = fittedLines.reduce((sum, l) => sum + l.size * LINE_H_RATIO, 0);
+  let drawY = TEXT_TOP + Math.round((TEXT_H - totalTextH) / 2);
+
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "top";
+
+  for (const line of fittedLines) {
+    const lineH = Math.round(line.size * LINE_H_RATIO);
+    ctx.save();
+    ctx.font = `900 ${line.size}px Malayalam`;
+    setLetterSpacing(ctx, line.size * LETTER_SPACING_RATIO);
+
+    ctx.fillStyle      = line.color || "#fff200";
+    ctx.shadowColor     = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur       = 6;
+    ctx.shadowOffsetX   = 2;
+    ctx.shadowOffsetY   = 2;
+
+    // thin dark outline to punch the yellow text off busy photo
+    // backdrops and give it a bolder, more solid look.
+    ctx.lineJoin    = "round";
+    ctx.strokeStyle = "rgba(15,15,15,0.9)";
+    ctx.lineWidth   = Math.max(2, Math.round(line.size * 0.05));
+    ctx.strokeText(line.text, CX, drawY + (lineH - line.size) / 2);
+    ctx.fillText(line.text, CX, drawY + (lineH - line.size) / 2);
+    ctx.restore();
+
+    drawY += lineH;
+  }
+
+  // ═════════════════════════════════════════════════════════
+  // 4. ATTRIBUTION — smaller white line under the quote, e.g.
+  //    "- ദേവൻ".
+  // ═════════════════════════════════════════════════════════
+  if (attributionText) {
+    const attribY = PANEL_TOP + PANEL_H - ATTRIB_H + ATTRIB_GAP_TOP;
+    ctx.save();
+    ctx.font         = `700 ${ATTRIB_FONT_SIZE}px Malayalam`;
+    ctx.fillStyle    = "#ffffff";
+    ctx.textAlign    = "center";
+    ctx.textBaseline = "top";
+    ctx.shadowColor  = "rgba(0,0,0,0.7)";
+    ctx.shadowBlur   = 4;
+    ctx.fillText(attributionText, CX, attribY);
+    ctx.restore();
+  }
+
+  // ── Reset ────────────────────────────────────────────────
+  ctx.textAlign    = "left";
+  ctx.textBaseline = "alphabetic";
+  setLetterSpacing(ctx, 0);
+
+  // ── Ad strip ─────────────────────────────────────────────
+  if (!liveAdVideoUrl) {
+    drawAdStrip(ctx, adImg, H, actualAdH);
+  }
+
+  const buffer = await canvasToBuffer(canvas, "image/png");
+  return { type: "image", buffer, liveAdVideoUrl, adH: actualAdH };
 }
 
-// ─────────────────────────────────────────────
-// EXPORTS
-// ─────────────────────────────────────────────
-
-exports.fetchManoramaLatestNews = () =>
-  scrapeManorama(
-    `${SOURCES.manorama.baseUrl}/news/latest-news.html`,
-    "#Just_in_Slot > div > ul > li"
-  );
-
-exports.fetchAsianetLatestNews = () =>
-  scrapeAsianet(`${SOURCES.asianet.baseUrl}/rss`);
-
-exports.fetchMediaOneLatestNews = () => scrapeMediaOne();
-
-exports.fetchKeralaKaumudiLatestNews = () => scrapeKeralaKaumudi();
-
-exports.fetchNews18LatestNews = () => scrapeNews18();
-
-exports.fetchOneindiaLatestNews = () => scrapeOneindia(SOURCES.oneindia.rssUrl);
-
-exports.fetchMathrubhumiLatestNews = () => scrapeMathrubhumi();
-
-exports.fetchTwentyFourLatestNews = () => scrapeTwentyFour();
-
-// ─────────────────────────────────────────────
-// AGGREGATE
-// ─────────────────────────────────────────────
-
-exports.fetchAllLatestNews = async () => {
-  const results = await Promise.allSettled([
-    exports.fetchManoramaLatestNews(),
-    exports.fetchAsianetLatestNews(),
-    exports.fetchMediaOneLatestNews(),
-    exports.fetchKeralaKaumudiLatestNews(),
-    exports.fetchNews18LatestNews(),
-    exports.fetchOneindiaLatestNews(),
-    exports.fetchMathrubhumiLatestNews(),
-    exports.fetchTwentyFourLatestNews(),
-  ]);
-
-  return results
-    .filter((r) => r.status === "fulfilled")
-    .flatMap((r) => r.value);
-};
-
-exports.fetchAllNews = async () => {
-  const latest = await exports.fetchAllLatestNews();
-  return { latest, sports: [] };
-};
+module.exports = { createNewsPoster, toNodeBuffer };
