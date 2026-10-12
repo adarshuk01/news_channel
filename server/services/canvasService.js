@@ -407,6 +407,13 @@ function drawCaptionPill(ctx, label) {
 //   Every line is centred, with a black drop-shadow. Each line is
 //   either YELLOW (gold gradient) or WHITE, and either BIG or normal.
 //
+//   GOLD UP TO THE FIRST "," OR ";"
+//     When the headline comes from newsItem.title (or titleLines made
+//     only of plain strings), the text is split at the FIRST "," or ";".
+//     Everything up to and including that symbol is GOLD, the rest is
+//     WHITE. If there is no "," / ";" the old behaviour is used.
+//     Set newsItem.autoSplit = false to switch this off.
+//
 //   Inputs:
 //     newsItem.titleLines  []   strings OR { text, yellow, big }
 //     newsItem.title       ""   single string (auto-wrapped)
@@ -432,12 +439,34 @@ function drawCaptionPill(ctx, label) {
 //     ]
 // ═══════════════════════════════════════════════════════════════
 
+// Splits at the first "," or ";" (also full-width / Arabic variants).
+// Returns [head, tail] — head keeps the symbol. tail may be "".
+function splitAtFirstBreak(text) {
+  const m = /[,;，；،]/.exec(text);
+  if (!m) return null;
+  const cut  = m.index + 1;
+  const head = text.slice(0, cut).trim();
+  const tail = text.slice(cut).trim();
+  return head ? [head, tail] : null;
+}
+
 function resolveHeadline(newsItem) {
   let src = [];
   if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
     src = [...newsItem.titleLines];
   } else if (newsItem.title) {
     src = [newsItem.title];
+  }
+
+  // ── Gold up to the first "," or ";" ─────────────────────────
+  const allPlain = src.length > 0 && src.every((s) => typeof s === "string");
+  if (newsItem.autoSplit !== false && allPlain) {
+    const full  = src.join(" ").replace(/\s+/g, " ").trim();
+    const parts = splitAtFirstBreak(full);
+    if (parts) {
+      src = [{ text: parts[0], yellow: true }];
+      if (parts[1]) src.push({ text: parts[1], yellow: false });
+    }
   }
 
   if (Array.isArray(newsItem.highlightLines)) {
