@@ -49,13 +49,10 @@ const H            = 1380;
 const DEFAULT_AD_H = 180;
 const MAX_AD_H     = 320;
 
-// ── Brand palette (new design: dark / black + gold-yellow) ─────
-const BG_TOP     = "#1c0a07";
-const BG_MID     = "#0c0504";
-const BG_DEEP    = "#060202";
+// ── Brand palette (full black background + gold-yellow) ────────
+const BG_BLACK   = "#000000";          // full black behind the headline
 const GOLD_LIGHT = "#ffe033";
 const GOLD_DARK  = "#ffb400";
-const FADE_RGB   = "8,4,3";            // colour the photo fades into
 
 // ── Synthetic bold ────────────────────────────────────────────
 // The Malayalam font has no real heavier cut, so we stroke the glyph
@@ -309,58 +306,12 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BACKGROUND — near-black with warm orange sun-flare, top right
+// BACKGROUND — full black
 // ═══════════════════════════════════════════════════════════════
 
 function drawBackground(ctx) {
-  // Base: dark red-brown at the top fading to near-black
-  const base = ctx.createLinearGradient(0, 0, 0, H);
-  base.addColorStop(0,    BG_TOP);
-  base.addColorStop(0.38, BG_MID);
-  base.addColorStop(1,    BG_DEEP);
-  ctx.fillStyle = base;
+  ctx.fillStyle = BG_BLACK;
   ctx.fillRect(0, 0, W, H);
-
-  // Big warm glow from the top-right corner
-  const glow = ctx.createRadialGradient(W * 0.97, -10, 10, W * 0.97, -10, W * 0.85);
-  glow.addColorStop(0,    "rgba(255,150,40,0.80)");
-  glow.addColorStop(0.35, "rgba(220,100,25,0.38)");
-  glow.addColorStop(1,    "rgba(120,40,10,0)");
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, W, H);
-
-  // Light rays fanning out from the corner
-  ctx.save();
-  ctx.globalAlpha = 0.07;
-  ctx.fillStyle   = "#ffcf80";
-  const ox = W * 0.97, oy = -10;
-  const rays = [
-    [-2.55, -2.45], [-2.30, -2.22], [-2.05, -1.97], [-1.82, -1.76],
-  ];
-  for (const [a1, a2] of rays) {
-    ctx.beginPath();
-    ctx.moveTo(ox, oy);
-    ctx.lineTo(ox + Math.cos(a1) * 1500, oy - Math.sin(a1) * 1500);
-    ctx.lineTo(ox + Math.cos(a2) * 1500, oy - Math.sin(a2) * 1500);
-    ctx.closePath();
-    ctx.fill();
-  }
-  ctx.restore();
-
-  // Hot white core of the flare
-  const core = ctx.createRadialGradient(W * 0.97, 0, 0, W * 0.97, 0, 150);
-  core.addColorStop(0,   "rgba(255,240,200,0.95)");
-  core.addColorStop(0.4, "rgba(255,190,90,0.40)");
-  core.addColorStop(1,   "rgba(255,150,40,0)");
-  ctx.fillStyle = core;
-  ctx.fillRect(W - 320, 0, 320, 320);
-
-  // Soft ember glow behind the lower headline / photo seam
-  const ember = ctx.createRadialGradient(W * 0.5, H * 0.46, 20, W * 0.5, H * 0.46, W * 0.65);
-  ember.addColorStop(0, "rgba(200,85,20,0.30)");
-  ember.addColorStop(1, "rgba(200,85,20,0)");
-  ctx.fillStyle = ember;
-  ctx.fillRect(0, H * 0.25, W, H * 0.45);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -486,9 +437,9 @@ function resolveHeadline(newsItem) {
 // MAIN POSTER DRAW
 //
 // LAYOUT (top → bottom):
-//   1. Dark background with orange sun-flare, top right
+//   1. Full black background
 //   2. Headline — alternating yellow / white lines, key lines larger
-//   3. News photo, lower ~53%, fading into the dark at its top edge
+//   3. News photo, lower ~53%, fading into the black at its top edge
 //   4. "READ CAPTION" white pill, bottom centre
 //   5. Ad strip (unchanged pipeline), appended below the poster
 // ═══════════════════════════════════════════════════════════════
@@ -566,10 +517,10 @@ async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, canvasH);
   const ctx    = canvas.getContext("2d");
 
-  // ── 1. Background ───────────────────────────────────────────
+  // ── 1. Background (full black) ───────────────────────────────
   drawBackground(ctx);
 
-  // ── 2. News photo — lower ~53%, top edge dissolves into the dark ──
+  // ── 2. News photo — lower ~53%, top edge dissolves into the black ──
   const IMG_TOP = Math.round(H * 0.47);
   const IMG_H   = H - IMG_TOP;
 
@@ -582,14 +533,10 @@ async function createNewsPoster(newsItem) {
     const dy    = (IMG_H - dh) / 2;
 
     // Draw the photo on its own layer, then mask the top with a gradient
-    // so it fades cleanly into the background glow underneath.
+    // so it fades cleanly into the background underneath.
     const layer = createCanvas(W, IMG_H);
     const lctx  = layer.getContext("2d");
     lctx.drawImage(img, dx, dy, dw, dh);
-
-    // Slight warm grade to sit with the orange glow
-    lctx.fillStyle = "rgba(40,12,0,0.12)";
-    lctx.fillRect(0, 0, W, IMG_H);
 
     lctx.globalCompositeOperation = "destination-in";
     const mask = lctx.createLinearGradient(0, 0, 0, IMG_H);
