@@ -45,14 +45,34 @@ const FALLBACK_VIDEO_PATH =
   path.join(__dirname, "../assets/ad_fallback.mp4");
 
 const W            = 1080;
-const H            = 1380;
+const H            = 1350;          // 4:5 poster, same ratio as the reference
 const DEFAULT_AD_H = 180;
 const MAX_AD_H     = 320;
 
-// ── Brand palette (full black background + gold-yellow) ────────
-const BG_BLACK   = "#000000";          // full black behind the headline
-const GOLD_LIGHT = "#ffe033";
-const GOLD_DARK  = "#ffb400";
+// ── Brand palette: dark teal + yellow + cyan ─────────────────
+const GOLD_LIGHT    = "#ffe033";    // headline gradient (from your code)
+const GOLD_DARK     = "#ffb400";
+const FRAME_YELLOW  = "#ffe21a";    // frame border
+const CYAN          = "#22dcee";    // separator line
+const BG_TOP        = "#0f524f";
+const BG_BOTTOM     = "#083a39";
+const INNER_TOP     = "#0b4846";
+const INNER_BOTTOM  = "#094040";
+
+// Default brand text shown top-right (used when no logo image is given)
+const DEFAULT_CHANNEL = "flash keralam";
+
+// ── Layout (all measured from the reference poster) ──────────
+const FRAME_X  = 30;
+const FRAME_Y  = 90;
+const FRAME_W  = W - FRAME_X * 2;
+const FRAME_H  = 1311 - FRAME_Y;          // frame bottom ≈ y 1311
+const FRAME_R  = 84;                      // corner radius
+const BORDER   = 10;                      // yellow border thickness
+
+const SEP_Y    = Math.round(H * 0.533);   // cyan line, photo fades out here
+const SEP_X1   = Math.round(W * 0.315);
+const SEP_X2   = Math.round(W * 0.685);
 
 // ── Synthetic bold ────────────────────────────────────────────
 // The Malayalam font has no real heavier cut, so we stroke the glyph
@@ -74,23 +94,6 @@ function fillTextBold(ctx, text, x, y, fontSize, extraWidth = 0) {
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
-
-function wrapText(ctx, text, maxWidth) {
-  const words = text.split(" ");
-  const lines = [];
-  let cur = "";
-  for (const word of words) {
-    const test = cur ? cur + " " + word : word;
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = word;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -306,93 +309,98 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BACKGROUND — full black
+// BACKGROUND — dark teal, slightly darker towards the corners
 // ═══════════════════════════════════════════════════════════════
 
 function drawBackground(ctx) {
-  ctx.fillStyle = BG_BLACK;
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, BG_TOP);
+  bg.addColorStop(1, BG_BOTTOM);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // soft vignette
+  const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.85);
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = vg;
   ctx.fillRect(0, 0, W, H);
 }
 
 // ═══════════════════════════════════════════════════════════════
-// "READ CAPTION" PILL (bottom centre)
+// BRAND MARK (top-right, above the frame)
+//   - newsItem.logoUrl  → image, drawn right-aligned
+//   - otherwise         → italic text (newsItem.channelName)
 // ═══════════════════════════════════════════════════════════════
 
-function drawCaptionPill(ctx, label) {
-  const PILL_H   = 72;
-  const PAD_X    = 32;
-  const cy       = Math.round(H * 0.9335);
-  const maxTextW = W * 0.36 - PAD_X * 2;
+const BRAND_RIGHT = W - 62;
+const BRAND_CY    = 38;
 
-  ctx.font = "bold 100px English";
-  const natW  = ctx.measureText(label).width;
-  const size  = Math.min(36, Math.floor((100 * maxTextW) / natW));
-  ctx.font    = `bold ${size}px English`;
-  const textW = ctx.measureText(label).width;
+function drawBrandLogo(ctx, logoImg) {
+  const targetH = 62;
+  const scale   = targetH / logoImg.height;
+  const w       = logoImg.width * scale;
+  ctx.drawImage(logoImg, BRAND_RIGHT - w, BRAND_CY - targetH / 2, w, targetH);
+}
 
-  const pw = Math.round(textW + PAD_X * 2);
-  const px = Math.round((W - pw) / 2);
-  const py = cy - PILL_H / 2;
-
-  ctx.save();
-  ctx.shadowColor   = "rgba(0,0,0,0.55)";
-  ctx.shadowBlur    = 18;
-  ctx.shadowOffsetY = 5;
-  ctx.fillStyle     = "#ffffff";
-  roundRect(ctx, px, py, pw, PILL_H, PILL_H / 2);
-  ctx.fill();
-  ctx.restore();
+function drawBrandText(ctx, name) {
+  const MAX_W = 340;
+  let size = 46;
+  ctx.font = `bold ${size}px English`;
+  while (ctx.measureText(name).width > MAX_W && size > 20) {
+    size -= 2;
+    ctx.font = `bold ${size}px English`;
+  }
 
   ctx.save();
+  ctx.translate(BRAND_RIGHT, BRAND_CY);
+  ctx.transform(1, 0, -0.22, 1, 0, 0);       // italic slant
   ctx.font         = `bold ${size}px English`;
-  ctx.fillStyle    = "#111111";
-  ctx.textAlign    = "center";
+  ctx.textAlign    = "right";
   ctx.textBaseline = "middle";
-  ctx.fillText(label, W / 2, cy + 1);
+  ctx.shadowColor  = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur   = 6;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle    = "#ffffff";
+  ctx.fillText(name, 0, 0);
   ctx.restore();
 }
 
 // ═══════════════════════════════════════════════════════════════
 // HEADLINE MODEL
 //
-//   Every line is centred, with a black drop-shadow. Each line is
-//   either YELLOW (gold gradient) or WHITE, and either BIG or normal.
+//   Every line is centred, flat colour (no shadow), as in the reference:
+//     YELLOW lines  → scale 1.00
+//     WHITE  lines  → scale 1.12 (slightly larger than the yellow)
 //
-//   GOLD UP TO THE FIRST "," OR ";"
-//     When the headline comes from newsItem.title (or titleLines made
-//     only of plain strings), the text is split at the FIRST "," or ";".
-//     Everything up to and including that symbol is GOLD, the rest is
-//     WHITE. If there is no "," / ";" the old behaviour is used.
-//     Set newsItem.autoSplit = false to switch this off.
+//   AUTO MODE (default) — newsItem.title (or titleLines of plain strings)
+//     Split into a yellow part and a white part at the first:
+//         "|"      (symbol is dropped), or
+//         "," / ";" (symbol stays with the yellow part)
+//     No split symbol → the whole headline is yellow.
+//     newsItem.autoSplit = false → whole headline yellow.
 //
-//   Inputs:
-//     newsItem.titleLines  []   strings OR { text, yellow, big }
-//     newsItem.title       ""   single string (auto-wrapped)
-//     newsItem.yellowLines []   line indexes drawn in yellow
-//                               (strings only, default [0, 1])
-//     newsItem.bigLines    []   line indexes drawn larger
-//                               (strings only, default [1])
-//     newsItem.quoted      bool wrap headline in ' … ' (default false)
-//     newsItem.captionLabel ""  pill text (default "READ CAPTION")
-//     newsItem.showCaption bool show the pill (default true)
+//   MANUAL MODE — newsItem.titleLines as objects, one per block:
+//       { text: "കല്ലുകൾക്കിടയിൽ വീണ ഇയർബഡ് എത്ര നോക്കിയിട്ടും കിട്ടിയില്ല", yellow: true  },
+//       { text: "ഫോട്ടോ അപ്‌ലോഡ് ചെയ്ത് 5 മിനിറ്റിനുള്ളിൽ കണ്ടെത്തി ചാറ്റ്ജിപിടി", yellow: false }
+//     yellow defaults to true; scale optional (default 1.0 / 1.12).
+//     Each block is auto-wrapped and balanced.
 //
-//   Legacy keys highlightLines / lastLine are appended as yellow lines.
-//
-//   Poster in the reference, as data:
-//     titleLines: [
-//       { text: "കേരളത്തിൽ ഇന്ന്",                         yellow: true,  big: false },
-//       { text: "SFI പഠിപ്പുമുടക്ക്;",                     yellow: true,  big: true  },
-//       { text: "മുഴുവൻ വിദ്യാഭ്യാസ",                       yellow: false, big: false },
-//       { text: "സ്ഥാപനങ്ങളിലും",                           yellow: false, big: false },
-//       { text: "വിദ്യാർഥികൾ",                              yellow: true,  big: true  },
-//       { text: "പ്രതിഷേധിക്കണമെന്ന്",                     yellow: false, big: false },
-//       { text: "നിർദേശം !",                                yellow: false, big: false },
-//     ]
+//   Other options:
+//     newsItem.channelName  ""    brand text top-right (default "flash keralam")
+//     newsItem.logoUrl      ""    brand logo image (overrides the text)
+//     newsItem.showChannel  bool  show brand (default true)
+//     newsItem.quoted       bool  wrap headline in ' … ' (default false)
 // ═══════════════════════════════════════════════════════════════
 
-// Splits at the first "," or ";" (also full-width / Arabic variants).
-// Returns [head, tail] — head keeps the symbol. tail may be "".
-function splitAtFirstBreak(text) {
+const YELLOW_SCALE = 1.0;
+const WHITE_SCALE  = 1.12;
+
+function splitHeadline(text) {
+  const bar = text.indexOf("|");
+  if (bar > 0) {
+    return [text.slice(0, bar).trim(), text.slice(bar + 1).trim()];
+  }
   const m = /[,;，；،]/.exec(text);
   if (!m) return null;
   const cut  = m.index + 1;
@@ -401,6 +409,7 @@ function splitAtFirstBreak(text) {
   return head ? [head, tail] : null;
 }
 
+// Returns blocks: { text, yellow, scale }
 function resolveHeadline(newsItem) {
   let src = [];
   if (Array.isArray(newsItem.titleLines) && newsItem.titleLines.length) {
@@ -408,40 +417,90 @@ function resolveHeadline(newsItem) {
   } else if (newsItem.title) {
     src = [newsItem.title];
   }
+  src = src.filter(Boolean);
 
-  // ── Gold up to the first "," or ";" ─────────────────────────
+  let segs = [];
   const allPlain = src.length > 0 && src.every((s) => typeof s === "string");
-  if (newsItem.autoSplit !== false && allPlain) {
+
+  if (allPlain) {
     const full  = src.join(" ").replace(/\s+/g, " ").trim();
-    const parts = splitAtFirstBreak(full);
+    const parts = newsItem.autoSplit !== false ? splitHeadline(full) : null;
     if (parts) {
-      src = [{ text: parts[0], yellow: true }];
-      if (parts[1]) src.push({ text: parts[1], yellow: false });
+      segs.push({ text: parts[0], yellow: true, scale: YELLOW_SCALE });
+      if (parts[1]) segs.push({ text: parts[1], yellow: false, scale: WHITE_SCALE });
+    } else {
+      segs.push({ text: full, yellow: true, scale: YELLOW_SCALE });
+    }
+  } else {
+    segs = src.map((s) => {
+      if (typeof s === "string") return { text: s, yellow: true, scale: YELLOW_SCALE };
+      const yellow = s.yellow !== false;
+      return {
+        text:   s.text,
+        yellow,
+        scale:  typeof s.scale === "number" ? s.scale : (yellow ? YELLOW_SCALE : WHITE_SCALE),
+      };
+    });
+  }
+
+  // Legacy keys: extra yellow lines
+  if (Array.isArray(newsItem.highlightLines)) {
+    for (const t of newsItem.highlightLines) {
+      if (t) segs.push({ text: t, yellow: true, scale: YELLOW_SCALE });
     }
   }
-
-  if (Array.isArray(newsItem.highlightLines)) {
-    for (const t of newsItem.highlightLines) if (t) src.push({ text: t, yellow: true, big: false });
+  if (newsItem.lastLine) {
+    segs.push({ text: newsItem.lastLine, yellow: true, scale: YELLOW_SCALE });
   }
-  if (newsItem.lastLine) src.push({ text: newsItem.lastLine, yellow: true, big: false });
 
-  return src
-    .filter(Boolean)
-    .map((s) => (typeof s === "string"
-      ? { text: s }
-      : { text: s.text, yellow: s.yellow, big: s.big }))
-    .filter((s) => s.text);
+  return segs.filter((s) => s.text);
+}
+
+// ── Word wrapping ────────────────────────────────────────────
+function wrapWords(ctx, words, maxW) {
+  const lines = [];
+  let cur = "";
+  for (const word of words) {
+    const test = cur ? cur + " " + word : word;
+    if (cur && ctx.measureText(test).width > maxW) {
+      lines.push(cur);
+      cur = word;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// Same number of lines as greedy wrapping, but with the lines evened out
+// (ctx.font must already be set).
+function wrapBalanced(ctx, text, maxW) {
+  const words  = text.split(" ").filter(Boolean);
+  const greedy = wrapWords(ctx, words, maxW);
+  const n      = greedy.length;
+  if (n <= 1) return greedy;
+
+  let lo = 0;
+  let hi = maxW;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (wrapWords(ctx, words, mid).length <= n) hi = mid;
+    else lo = mid;
+  }
+  return wrapWords(ctx, words, hi);
 }
 
 // ═══════════════════════════════════════════════════════════════
 // MAIN POSTER DRAW
 //
 // LAYOUT (top → bottom):
-//   1. Full black background
-//   2. Headline — alternating yellow / white lines, key lines larger
-//   3. News photo, lower ~53%, fading into the black at its top edge
-//   4. "READ CAPTION" white pill, bottom centre
-//   5. Ad strip (unchanged pipeline), appended below the poster
+//   1. Dark teal background, brand mark top-right
+//   2. Rounded frame with yellow border
+//        - news photo at the top, fading into the teal
+//        - short cyan separator line
+//        - headline: yellow lines, then (larger) white lines
+//   3. Ad strip (unchanged pipeline), appended below the poster
 // ═══════════════════════════════════════════════════════════════
 
 async function createNewsPoster(newsItem) {
@@ -517,108 +576,128 @@ async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, canvasH);
   const ctx    = canvas.getContext("2d");
 
-  // ── 1. Background (full black) ───────────────────────────────
+  // ── 1. Background ───────────────────────────────────────────
   drawBackground(ctx);
 
-  // ── 2. News photo — lower ~53%, top edge dissolves into the black ──
-  const IMG_TOP = Math.round(H * 0.47);
-  const IMG_H   = H - IMG_TOP;
+  // ── 2. Frame interior: teal fill + news photo (clipped to the frame) ──
+  const PHOTO_H = SEP_Y - FRAME_Y;
+
+  ctx.save();
+  roundRect(ctx, FRAME_X, FRAME_Y, FRAME_W, FRAME_H, FRAME_R);
+  ctx.clip();
+
+  const inner = ctx.createLinearGradient(0, FRAME_Y, 0, FRAME_Y + FRAME_H);
+  inner.addColorStop(0, INNER_TOP);
+  inner.addColorStop(1, INNER_BOTTOM);
+  ctx.fillStyle = inner;
+  ctx.fillRect(FRAME_X, FRAME_Y, FRAME_W, FRAME_H);
 
   try {
     const img   = await loadImage(newsItem.image);
-    const scale = Math.max(W / img.width, IMG_H / img.height);
+    const scale = Math.max(FRAME_W / img.width, PHOTO_H / img.height);
     const dw    = img.width  * scale;
     const dh    = img.height * scale;
-    const dx    = (W - dw) / 2;
-    const dy    = (IMG_H - dh) / 2;
+    const dx    = (FRAME_W - dw) / 2;
+    const dy    = (PHOTO_H - dh) / 2;
 
-    // Draw the photo on its own layer, then mask the top with a gradient
-    // so it fades cleanly into the background underneath.
-    const layer = createCanvas(W, IMG_H);
+    const layer = createCanvas(FRAME_W, PHOTO_H);
     const lctx  = layer.getContext("2d");
     lctx.drawImage(img, dx, dy, dw, dh);
 
+    // Bottom of the photo melts into the teal
     lctx.globalCompositeOperation = "destination-in";
-    const mask = lctx.createLinearGradient(0, 0, 0, IMG_H);
-    mask.addColorStop(0,    "rgba(0,0,0,0)");
-    mask.addColorStop(0.14, "rgba(0,0,0,0.30)");
-    mask.addColorStop(0.36, "rgba(0,0,0,1)");
-    mask.addColorStop(1,    "rgba(0,0,0,1)");
+    const mask = lctx.createLinearGradient(0, 0, 0, PHOTO_H);
+    mask.addColorStop(0,    "rgba(0,0,0,1)");
+    mask.addColorStop(0.66, "rgba(0,0,0,1)");
+    mask.addColorStop(0.90, "rgba(0,0,0,0.25)");
+    mask.addColorStop(1,    "rgba(0,0,0,0)");
     lctx.fillStyle = mask;
-    lctx.fillRect(0, 0, W, IMG_H);
+    lctx.fillRect(0, 0, FRAME_W, PHOTO_H);
 
-    ctx.drawImage(layer, 0, IMG_TOP);
-
+    ctx.drawImage(layer, FRAME_X, FRAME_Y);
   } catch (e) {
     console.warn("[Poster] main photo failed:", e.message);
   }
+  ctx.restore();
 
-  // Soft vignette at the bottom so the caption pill stays legible
-  const vig = ctx.createLinearGradient(0, H - 260, 0, H);
-  vig.addColorStop(0, "rgba(0,0,0,0)");
-  vig.addColorStop(1, "rgba(0,0,0,0.45)");
-  ctx.fillStyle = vig;
-  ctx.fillRect(0, H - 260, W, 260);
+  // ── 3. Cyan separator line ──────────────────────────────────
+  ctx.save();
+  ctx.shadowColor = "rgba(34,220,238,0.7)";
+  ctx.shadowBlur  = 8;
+  ctx.fillStyle   = CYAN;
+  ctx.fillRect(SEP_X1, SEP_Y - 1.5, SEP_X2 - SEP_X1, 3);
+  ctx.restore();
 
-  // ── 3. Headline ─────────────────────────────────────────────
-  const PAD    = 46;
-  const TEXT_W = W - PAD * 2;
-  const CX     = W / 2;
+  // ── 4. Yellow frame border ──────────────────────────────────
+  ctx.save();
+  roundRect(
+    ctx,
+    FRAME_X + BORDER / 2,
+    FRAME_Y + BORDER / 2,
+    FRAME_W - BORDER,
+    FRAME_H - BORDER,
+    FRAME_R
+  );
+  ctx.lineWidth   = BORDER;
+  ctx.strokeStyle = FRAME_YELLOW;
+  ctx.lineJoin    = "round";
+  ctx.stroke();
+  ctx.restore();
 
-  const TEXT_TOP = 90;
-  const TEXT_BOT = Math.round(H * 0.555);
+  // ── 5. Brand mark (top-right) ───────────────────────────────
+  if (newsItem.showChannel !== false) {
+    let logoImg = null;
+    if (newsItem.logoUrl) {
+      try {
+        logoImg = await loadImage(await fetchBuffer(newsItem.logoUrl));
+      } catch (e) {
+        console.warn("[Poster] logo failed:", e.message);
+      }
+    }
+    if (logoImg) drawBrandLogo(ctx, logoImg);
+    else         drawBrandText(ctx, newsItem.channelName || DEFAULT_CHANNEL);
+  }
+
+  // ── 6. Headline ─────────────────────────────────────────────
+  const PAD      = 64;                 // kept clear of the frame border
+  const TEXT_W   = W - PAD * 2;
+  const TEXT_TOP = SEP_Y + 32;
+  const TEXT_BOT = FRAME_Y + FRAME_H - 34;
   const TEXT_H   = TEXT_BOT - TEXT_TOP;
+  const CX       = W / 2;
+
+  const HEAD_LH   = 1.10;   // line-height multiplier (same as your code)
+  const GROUP_GAP = 8;      // extra space between yellow and white blocks
 
   const segs = resolveHeadline(newsItem);
 
-  const yellowSet = new Set(Array.isArray(newsItem.yellowLines) ? newsItem.yellowLines : [0, 1]);
-  const bigSet    = new Set(Array.isArray(newsItem.bigLines)    ? newsItem.bigLines    : [1]);
-
-  const HEAD_LH   = 1.10;
-  const BIG_RATIO = 1.22;
-
-  let headSize  = 80;
-  let headLines = [];
-
-  const layout = () => {
-    const bigSize = Math.round(headSize * BIG_RATIO);
-
-    // Pass 1: wrap every segment at base size → "units", so flags can be
-    // assigned by final line index (works for one long string too).
-    const units = [];
-    let idx = 0;
-    ctx.font = `${headSize}px ${HEAD_FONT}`;
+  const layout = (base) => {
+    const lines = [];
     for (const seg of segs) {
-      for (const part of wrapText(ctx, seg.text, TEXT_W)) {
-        units.push({
-          text:   part,
-          yellow: typeof seg.yellow === "boolean" ? seg.yellow : yellowSet.has(idx),
-          big:    typeof seg.big    === "boolean" ? seg.big    : bigSet.has(idx),
-        });
-        idx++;
+      const size = Math.round(base * seg.scale);
+      ctx.font   = `${size}px ${HEAD_FONT}`;
+      const wrapped = wrapBalanced(ctx, seg.text, TEXT_W);
+      for (const t of wrapped) {
+        lines.push({ text: t, yellow: seg.yellow, size });
       }
     }
-
-    // Pass 2: big units are re-wrapped at the larger size.
-    headLines = [];
-    for (const u of units) {
-      const size = u.big ? bigSize : headSize;
-      ctx.font = `${size}px ${HEAD_FONT}`;
-      for (const t of wrapText(ctx, u.text, TEXT_W)) {
-        headLines.push({ text: t, size, big: u.big, yellow: u.yellow });
-      }
-    }
-
-    return headLines.reduce((a, l) => a + Math.round(l.size * HEAD_LH), 0);
+    let h = 0;
+    lines.forEach((l, i) => {
+      h += Math.round(l.size * HEAD_LH);
+      if (i > 0 && lines[i - 1].yellow !== l.yellow) h += GROUP_GAP;
+    });
+    return { lines, h };
   };
 
-  let totalH = layout();
-  while (totalH > TEXT_H && headSize > 34) {
-    headSize -= 2;
-    totalH = layout();
+  let base = 80;                       // headSize from your code
+  let res  = layout(base);
+  while (res.h > TEXT_H && base > 34) {
+    base -= 2;
+    res = layout(base);
   }
 
-  let drawY = TEXT_TOP + Math.max(0, Math.round((TEXT_H - totalH) / 2));
+  const headLines = res.lines;
+  let drawY = TEXT_TOP + Math.max(0, Math.round((TEXT_H - res.h) / 2)) - 8;
 
   const quoted      = newsItem.quoted === true;
   const lastHeadIdx = headLines.length - 1;
@@ -627,9 +706,13 @@ async function createNewsPoster(newsItem) {
   ctx.textBaseline = "top";
 
   headLines.forEach((line, i) => {
+    if (i > 0 && headLines[i - 1].yellow !== line.yellow) drawY += GROUP_GAP;
+
     let text = line.text;
     if (quoted && i === 0)           text = "'" + text;
     if (quoted && i === lastHeadIdx) text = text + "'";
+
+    const lineH = Math.round(line.size * HEAD_LH);
 
     ctx.save();
     ctx.font = `${line.size}px ${HEAD_FONT}`;
@@ -644,25 +727,20 @@ async function createNewsPoster(newsItem) {
     }
 
     ctx.shadowColor   = "rgba(0,0,0,0.90)";
-    ctx.shadowBlur    = line.big ? 18 : 12;
+    ctx.shadowBlur    = 12;
     ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = line.big ? 4 : 3;
+    ctx.shadowOffsetY = 3;
     fillTextBold(ctx, text, CX, drawY, line.size);
     ctx.restore();
 
-    drawY += Math.round(line.size * HEAD_LH);
+    drawY += lineH;
   });
 
-  // ── 4. READ CAPTION pill ────────────────────────────────────
-  if (newsItem.showCaption !== false) {
-    drawCaptionPill(ctx, newsItem.captionLabel || "READ CAPTION");
-  }
-
-  // ── 5. Reset ────────────────────────────────────────────────
+  // ── 7. Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
 
-  // ── 6. Ad strip ─────────────────────────────────────────────
+  // ── 8. Ad strip ─────────────────────────────────────────────
   if (!liveAdVideoUrl) {
     drawAdStrip(ctx, adImg, H, actualAdH);
   }
