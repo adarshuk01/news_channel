@@ -1,30 +1,31 @@
 // ═══════════════════════════════════════════════════════════════
-// GEMINI ART DIRECTOR
+// GEMINI ART DIRECTOR + VIRAL SUB-EDITOR  (geminiDirectorService.js)
 //
-// The canvas poster stays exactly as it is. Gemini (free-tier text
-// model) only makes three *design decisions* for each story:
+// Gemini (free-tier text/vision model) does two jobs for each story:
 //
-//   1. HEADLINE SPLIT   which words are emphasised (gold / accent) and
-//                       where the lines break
-//   2. ACCENT COLOUR    gold (default) | red (breaking, crime, accident,
-//                       disaster) | green (sports)
-//   3. PHOTO FOCUS      where the main subject sits in the photo, so the
-//                       wide crop at the bottom keeps it in frame
+//   A. REWRITES the title into a short, viral Malayalam poster text:
+//        headLines  the BIG headline, 2-4 short lines, 3-8 words in total
+//        subLines   the sub-headline, 0-3 short lines, up to ~14 words
+//      The text is VALIDATED against your original story before it is used:
+//        - every number must exist in the original (1,000 stays 1,000)
+//        - enough words must share a root with your original words
+//        - word / line limits, and no line may end on a number's comma
+//      If anything fails, the poster falls back to a safe local split of
+//      your original title. The AI text is never trusted blindly.
 //
-// The model never writes or edits the headline. It only returns word
-// NUMBERS; the text is rebuilt from your original words, so the
-// Malayalam is always character-for-character correct.
+//   B. DESIGN decisions: quote (‘ ’), accent colour, photo focus.
 //
 // getDirection() returns null on ANY problem (no key, rate limit, quota,
-// timeout, bad JSON, safety block…) and the poster is then drawn with the
-// normal design. It never throws.
+// timeout, bad JSON, safety block…). It never throws.
 //
-// ENV (all optional except a key):
-//   GEMINI_API_KEY          one key, or several separated by commas
-//                           (the next key is tried when one hits its limit)
-//   GEMINI_DIRECTOR_ENABLED "false" switches the art director off
-//   GEMINI_DIRECTOR_MODELS  comma list tried in order
-//                           default "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash"
+// When newsItem.subtitle / subTitleLines is given, or newsItem.aiRewrite is
+// false, or GEMINI_DIRECTOR_REWRITE=false, Gemini does NOT write text.
+//
+// ENV:
+//   GEMINI_API_KEY            one key, or several separated by commas
+//   GEMINI_DIRECTOR_ENABLED   "false" switches the art director off
+//   GEMINI_DIRECTOR_REWRITE   "false" = never let the AI write text
+//   GEMINI_DIRECTOR_MODELS    default "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash"
 //   GEMINI_DIRECTOR_TIMEOUT_MS  per request, default 15000
 //   GEMINI_DIRECTOR_SEND_IMAGE  "false" = text only (no photo focus)
 // ═══════════════════════════════════════════════════════════════
@@ -40,6 +41,10 @@ const CATEGORIES = [
   "breaking", "crime", "accident", "disaster", "sports",
   "politics", "entertainment", "business", "weather", "other",
 ];
+
+// Limits for the AI-written text
+const HEAD_LIMITS = { minWords: 2, maxWords: 9,  maxLines: 4, maxLineWords: 5, allowEmpty: false };
+const SUB_LIMITS  = { minWords: 0, maxWords: 18, maxLines: 3, maxLineWords: 7, allowEmpty: true  };
 
 // ── Config helpers ───────────────────────────────────────────
 function getKeys() {
@@ -111,8 +116,16 @@ function getTitleText(newsItem) {
   return String(newsItem.title || "").replace(/\s+/g, " ").trim();
 }
 
-function splitWords(text) {
-  return text.split(" ").filter(Boolean);
+// True when the caller supplies the sub-headline themselves
+function hasExplicitSub(newsItem) {
+  const s = newsItem.subtitle || newsItem.subTitleLines;
+  return Array.isArray(s) ? s.some(Boolean) : Boolean(s && String(s).trim());
+}
+
+function rewriteAllowed(newsItem) {
+  return process.env.GEMINI_DIRECTOR_REWRITE !== "false" &&
+         newsItem.aiRewrite !== false &&
+         !hasExplicitSub(newsItem);
 }
 
 async function loadImageBuffer(image) {
@@ -129,63 +142,88 @@ async function loadImageBuffer(image) {
   return fs.readFileSync(image);
 }
 
-// Small JPEG for the model (cheap + fast). Also returns the image size.
+// Small JPEG for the model (cheap + fast)
 async function prepareImage(image) {
   const sharp = require("sharp");
   const raw = await loadImageBuffer(image);
-  const jpeg = await sharp(raw)
+  return sharp(raw)
     .rotate()
     .resize({ width: 640, height: 640, fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: 78 })
     .toBuffer();
-  return jpeg;
 }
 
 // ── Prompt + schema ──────────────────────────────────────────
-function buildPrompt({ words, summary, hasImage, photoRatio }) {
-  const numbered = words.map((w, i) => `${i + 1}: ${w}`).join("\n");
-  return [
-    "You are the art director of a Malayalam (Kerala) news channel's social-media posters.",
-    "A poster has a big headline on a black background and a news photo below it.",
-    "You do NOT write or change any text. You only make design decisions about the headline words listed below, by their numbers.",
+function buildPrompt({ title, summary, hasImage, photoRatio, rewrite }) {
+  const lines = [
+    "You are the art director and viral sub-editor of a Malayalam (Kerala) news channel's social-media posters.",
+    "Poster layout: a news photo on top, then a BIG white headline, then a smaller sub-headline in coloured strips.",
     "",
-    "HEADLINE WORDS (numbered, 1-based):",
-    numbered,
-    summary ? `\nSTORY SUMMARY (context only, may be empty):\n${summary}` : "",
+    "STORY TITLE:",
+    title,
+    summary ? `\nSTORY SUMMARY (context only):\n${summary}` : "",
     "",
     "Decide:",
     "1. category: the main kind of story.",
-    "2. accent: the poster accent colour.",
+    "2. accent: the colour of the sub-headline strips.",
     '   - "red"   for breaking/urgent news, crime, accidents, deaths, disasters, violence.',
     '   - "green" for sports (cricket, football, athletics, games, tournaments).',
-    '   - "gold"  for everything else (politics, entertainment, business, general news). When unsure, use "gold".',
-    "3. emphasisStart / emphasisEnd: the word numbers (inclusive) of the part that carries the key news (who / what happened). It is drawn big in the accent colour; all other words are drawn smaller in white.",
-    "   Usually it starts at word 1. Cover the strongest 1-5 words, not the whole headline unless the headline is very short.",
-    "4. breakAfter: word numbers after which a new line starts, at natural phrase boundaries. Aim for lines of about 1-3 words in the emphasised part and 3-5 words in the white part, at most 6 lines overall. Do not list the boundary between emphasised and white words; that break is automatic.",
+    '   - "gold"  for everything else. When unsure, use "gold".',
+  ];
+
+  if (rewrite) {
+    lines.push(
+      "3. headLines: REARRANGE the story into a VIRAL poster headline in MALAYALAM, 2 to 4 short lines (1-3 words per line, 3-8 words in total).",
+      "   How to make it viral:",
+      "   - Start with the hook: the most shocking, surprising or emotional fact, or the strongest number. Put the twist or outcome last.",
+      "   - Short, punchy, spoken-style Malayalam. Cut filler words, long connectors and formal endings.",
+      "   - Contrast works well: small number vs big number, promise vs result, before vs after.",
+      "   - One idea per line. Each line must be a natural phrase that reads well on its own.",
+      "   - An exclamation mark or a question is allowed at the end of ONE line, never more.",
+      "   - For a statement by a person, write it as a short quote.",
+      "4. subLines: 1 to 3 short lines in MALAYALAM (3-6 words per line, at most 14 words in total) with the remaining context: who / where / what happened. Do not repeat the headline.",
+      "SAME-MEANING RULES (very important):",
+      "   - Keep exactly the same meaning and facts as the story. You may reorder, shorten and rephrase. You may NOT add, guess, exaggerate or change anything.",
+      "   - Keep every important name, place and number from the story. Write numbers exactly as in the story (1,000 or 75,000). Never split a number across lines. A line must never end with a number's comma.",
+      "   - No clickbait that hides the subject, such as \"you won't believe\". The poster must still say what happened.",
+      "   - For deaths, accidents, crimes and abuse: stay factual and respectful. No dramatic wording, no jokes, no blame that is not in the story.",
+      "   - Style example only (do not copy its content): a story about a tourist cheated abroad → headLines [\"1,000 രൂപയുടെ ഔഷധം!\", \"ഈടാക്കിയത് 75,000\"], subLines [\"തായ്‌ലൻഡിൽ ഇന്ത്യൻ വിനോദസഞ്ചാരിക്ക്\", \"കാർഡിൽ നിന്ന് പണം നഷ്ടമായെന്ന് പരാതി\"]."
+    );
+  }
+
+  const n = rewrite ? 5 : 3;
+  lines.push(
+    `${n}. quote: true when the big headline is a quotation or a statement attributed to someone (the kind of line written inside quotation marks on a news poster), otherwise false.`,
     hasImage
-      ? `5. focusX / focusY: where the main subject of the attached photo is (face, person, vehicle, key object), as fractions of the photo from the top-left corner (0 to 1). The photo will be cropped to a wide band (about ${photoRatio}:1, width:height), so pick the point that must stay visible. If the subject is centred, use 0.5 and 0.5. Faces should be kept, so favour the upper part of a person.`
-      : "5. focusX / focusY: use 0.5 and 0.5 (no photo is attached).",
+      ? `${n + 1}. focusX / focusY: where the main subject of the attached photo is (face, person, vehicle, key object), as fractions of the photo from the top-left corner (0 to 1). The photo fills the top of the poster as a band of about ${photoRatio}:1 (width:height) and its lower part fades out, so pick the point that must stay clearly visible. If the subject is centred, use 0.5 and 0.5. Faces should be kept, so favour the upper part of a person.`
+      : `${n + 1}. focusX / focusY: use 0.5 and 0.5 (no photo is attached).`,
     "",
-    "Return only the JSON object.",
-  ].filter((l) => l !== undefined).join("\n");
+    "Return only the JSON object."
+  );
+
+  return lines.filter((l) => l !== undefined).join("\n");
 }
 
-const RESPONSE_SCHEMA = {
-  type: "object",
-  properties: {
-    category:      { type: "string", enum: CATEGORIES },
-    accent:        { type: "string", enum: ACCENTS },
-    emphasisStart: { type: "integer" },
-    emphasisEnd:   { type: "integer" },
-    breakAfter:    { type: "array", items: { type: "integer" } },
-    focusX:        { type: "number" },
-    focusY:        { type: "number" },
-  },
-  required: ["category", "accent", "emphasisStart", "emphasisEnd", "breakAfter", "focusX", "focusY"],
-};
+function buildSchema(rewrite) {
+  const properties = {
+    category: { type: "string", enum: CATEGORIES },
+    accent:   { type: "string", enum: ACCENTS },
+    quote:    { type: "boolean" },
+    focusX:   { type: "number" },
+    focusY:   { type: "number" },
+  };
+  const required = ["category", "accent", "quote", "focusX", "focusY"];
+
+  if (rewrite) {
+    properties.headLines = { type: "array", items: { type: "string" } };
+    properties.subLines  = { type: "array", items: { type: "string" } };
+    required.push("headLines", "subLines");
+  }
+  return { type: "object", properties, required };
+}
 
 // ── One request ──────────────────────────────────────────────
-async function callGemini(key, model, prompt, imgBuf) {
+async function callGemini(key, model, prompt, imgBuf, schema) {
   const timeoutMs = Number(process.env.GEMINI_DIRECTOR_TIMEOUT_MS) || 15000;
 
   const parts = [{ text: prompt }];
@@ -194,12 +232,12 @@ async function callGemini(key, model, prompt, imgBuf) {
   }
 
   const generationConfig = {
-    temperature: 0.4,
-    maxOutputTokens: 400,
+    temperature: 0.6,
+    maxOutputTokens: 700,
     responseMimeType: "application/json",
-    responseSchema: RESPONSE_SCHEMA,
+    responseSchema: schema,
   };
-  // 2.5 models "think" by default; this is a tiny task, so switch it off (faster, fewer free-tier tokens)
+  // 2.5 models "think" by default; this is a small task, so switch it off
   if (/gemini-2\.5/.test(model)) generationConfig.thinkingConfig = { thinkingBudget: 0 };
 
   const res = await fetch(`${API_BASE}/${model}:generateContent`, {
@@ -229,11 +267,68 @@ async function callGemini(key, model, prompt, imgBuf) {
   return text;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// TEXT VALIDATION  (the AI's words are checked against the story)
+// ═══════════════════════════════════════════════════════════════
+
+const INVISIBLE   = /[\u200b\u200c\u200d]/g;
+const PUNCT       = /[‘’'"“”.,;:!?()\[\]|\-–—]/g;
+const normWord    = (w) => String(w).replace(INVISIBLE, "").replace(PUNCT, "").trim();
+const rootOf      = (w) => Array.from(normWord(w)).slice(0, 3).join("");
+const isNumericW  = (w) => /^\d+$/.test(normWord(w));
+
+// "1,000" -> "1000"; returns every number found in the text
+function numbersIn(text) {
+  const t = String(text).replace(/(\d),(?=\d)/g, "$1");
+  return t.match(/\d+/g) || [];
+}
+
+function buildSource(sourceText) {
+  const words = String(sourceText).split(/\s+/).map(normWord).filter((w) => w.length >= 2 && !isNumericW(w));
+  return {
+    numbers: new Set(numbersIn(sourceText)),
+    roots:   new Set(words.map(rootOf).filter(Boolean)),
+  };
+}
+
+// Returns the cleaned lines, or null when they fail any check.
+function validateLines(lines, source, limits) {
+  if (!Array.isArray(lines)) return null;
+
+  const out = lines
+    .map((l) => String(l == null ? "" : l).replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  if (!out.length) return limits.allowEmpty ? [] : null;
+  if (out.length > limits.maxLines) return null;
+
+  const words = out.join(" ").split(" ").filter(Boolean);
+  if (words.length < limits.minWords || words.length > limits.maxWords) return null;
+  if (out.some((l) => l.split(" ").filter(Boolean).length > limits.maxLineWords)) return null;
+
+  // A number must never be cut by a line break
+  if (out.some((l) => /\d,$/.test(l) || /^,\d/.test(l))) return null;
+
+  // Every number must exist in the original story
+  for (const num of numbersIn(out.join(" "))) {
+    if (!source.numbers.has(num)) return null;
+  }
+
+  // Enough words must come from the original story (blocks invented facts)
+  const textWords = words.map(normWord).filter((w) => w.length >= 2 && !isNumericW(w));
+  if (textWords.length) {
+    const matched = textWords.filter((w) => source.roots.has(rootOf(w))).length;
+    if (matched / textWords.length < 0.4) return null;
+  }
+
+  return out;
+}
+
 // ── Validate the model's answer. Every field is checked on its own,
 //    so one bad field never spoils the others. ───────────────────
 const clamp01 = (n) => Math.min(1, Math.max(0, n));
 
-function sanitize(raw, wordCount) {
+function sanitize(raw, sourceText, rewrite) {
   let obj;
   try {
     obj = JSON.parse(String(raw).replace(/```json|```/gi, "").trim());
@@ -246,82 +341,50 @@ function sanitize(raw, wordCount) {
 
   if (CATEGORIES.includes(obj.category)) out.category = obj.category;
   if (ACCENTS.includes(obj.accent))      out.accent   = obj.accent;
-
-  // Emphasis range (1-based, inclusive)
-  const s = Math.round(Number(obj.emphasisStart));
-  const e = Math.round(Number(obj.emphasisEnd));
-  if (Number.isFinite(s) && Number.isFinite(e) && s >= 1 && e >= s && e <= wordCount) {
-    out.emphasisStart = s;
-    out.emphasisEnd   = e;
-  }
-
-  // Line breaks after word N (only between words, no duplicates, max 6 lines)
-  if (Array.isArray(obj.breakAfter)) {
-    const br = [...new Set(
-      obj.breakAfter.map((n) => Math.round(Number(n))).filter((n) => Number.isFinite(n) && n >= 1 && n < wordCount)
-    )].sort((a, b) => a - b);
-    if (br.length) out.breakAfter = br.slice(0, 5);
-  }
+  if (typeof obj.quote === "boolean")    out.quote    = obj.quote;
 
   const fx = Number(obj.focusX), fy = Number(obj.focusY);
   if (Number.isFinite(fx) && Number.isFinite(fy)) {
     out.focus = { x: clamp01(fx), y: clamp01(fy) };
   }
 
+  if (rewrite) {
+    const source = buildSource(sourceText);
+    const head   = validateLines(obj.headLines, source, HEAD_LIMITS);
+    const sub    = validateLines(obj.subLines,  source, SUB_LIMITS);
+    if (head && sub) {
+      out.headLines = head;
+      out.subLines  = sub;
+    }
+  }
+
   return Object.keys(out).length ? out : null;
 }
 
 /**
- * Turn the word numbers into headline lines, using ONLY the original words.
- * Lines are { text, yellow } — yellow = emphasised (accent colour).
- * Returns null when the plan has no usable emphasis range.
- */
-function buildLines(words, plan) {
-  if (!plan || !plan.emphasisStart) return null;
-
-  const n = words.length;
-  const breaks = new Set(plan.breakAfter || []);
-  // Emphasis boundaries always start a new line
-  if (plan.emphasisStart > 1) breaks.add(plan.emphasisStart - 1);
-  if (plan.emphasisEnd < n)   breaks.add(plan.emphasisEnd);
-
-  const lines = [];
-  let cur = [];
-  words.forEach((w, i) => {
-    cur.push(w);
-    if (breaks.has(i + 1) || i === n - 1) {
-      const idxFirst = i + 1 - cur.length + 1; // 1-based number of first word on this line
-      lines.push({
-        text:   cur.join(" "),
-        yellow: idxFirst >= plan.emphasisStart && idxFirst <= plan.emphasisEnd,
-      });
-      cur = [];
-    }
-  });
-
-  // Safety net: the lines must contain exactly the original words, in order
-  if (lines.map((l) => l.text).join(" ") !== words.join(" ")) return null;
-  return lines;
-}
-
-/**
- * Ask Gemini for the design direction of one poster.
+ * Ask Gemini for the viral text + design direction of one poster.
  *
  * @param {object} newsItem  same object that goes to createNewsPoster
  * @returns {Promise<null | {
  *   accent?: "gold"|"red"|"green",
  *   category?: string,
+ *   quote?: boolean,
  *   focus?: {x:number, y:number},
- *   lines?: {text:string, yellow:boolean}[],
+ *   rewritten?: boolean,
+ *   headText?: string, subText?: string,
+ *   headLines?: string[]|null, subLines?: string[]|null,
  * }>}
  */
-async function getDirection(newsItem, { photoRatio = "1.6" } = {}) {
+async function getDirection(newsItem, { photoRatio = "1.74" } = {}) {
   try {
     if (!isEnabled() || newsItem.aiDirector === false) return null;
 
     const title = getTitleText(newsItem);
-    const words = splitWords(title);
-    if (!words.length) return null;
+    if (!title) return null;
+
+    const rewrite = rewriteAllowed(newsItem);
+    const summary = String(newsItem.summary || "").replace(/\s+/g, " ").trim().slice(0, 400);
+    const sourceText = `${title} ${summary}`;
 
     // Photo (optional, used for the crop focus)
     let imgBuf = null;
@@ -333,32 +396,38 @@ async function getDirection(newsItem, { photoRatio = "1.6" } = {}) {
       }
     }
 
-    const summary = String(newsItem.summary || "").replace(/\s+/g, " ").trim().slice(0, 400);
-
+    // "v2" = viral prompt. Change it to get fresh titles for cached stories.
     const cacheKey = crypto.createHash("sha1")
-      .update(title).update("|").update(summary)
+      .update("v2|").update(title).update("|").update(summary).update("|").update(rewrite ? "rewrite" : "hints")
       .update("|").update(imgBuf ? crypto.createHash("sha1").update(imgBuf).digest("hex") : "no-img")
       .digest("hex");
 
     let plan = cacheGet(cacheKey);
     if (!plan) {
-      const prompt = buildPrompt({ words, summary, hasImage: !!imgBuf, photoRatio });
+      const prompt = buildPrompt({ title, summary, hasImage: !!imgBuf, photoRatio, rewrite });
+      const schema = buildSchema(rewrite);
       const keys   = getKeys();
       const models = getModels();
+
+      let best = null; // usable design hints, but without valid text
 
       outer:
       for (const model of models) {
         for (const key of keys) {
           if (!pairAvailable(key, model)) continue;
           try {
-            const text = await callGemini(key, model, prompt, imgBuf);
-            plan = sanitize(text, words.length);
-            if (plan) {
-              console.log(`[Director] ✅ ${model}: accent=${plan.accent || "-"} category=${plan.category || "-"}`);
+            const text = await callGemini(key, model, prompt, imgBuf, schema);
+            const p    = sanitize(text, sourceText, rewrite);
+
+            if (p && (!rewrite || p.headLines)) {
+              plan = p;
+              console.log(`[Director] ✅ ${model}: accent=${p.accent || "-"} category=${p.category || "-"} text=${p.headLines ? "ai" : "original"}`);
               cacheSet(cacheKey, plan);
               break outer;
             }
-            console.warn(`[Director] ${model}: unusable answer`);
+
+            if (p && !best) best = p;
+            console.warn(`[Director] ${model}: ${p ? "text failed validation" : "unusable answer"} — trying next`);
           } catch (e) {
             if (e.rateLimited) {
               // Short per-minute limit → wait what Google says; otherwise assume daily quota
@@ -366,18 +435,20 @@ async function getDirection(newsItem, { photoRatio = "1.6" } = {}) {
               cooldownUntil.set(`${key}|${model}`, Date.now() + wait);
               console.warn(`[Director] Rate limit on ${model} — paused ${Math.round(wait / 1000)}s`);
             } else if (e.status === 404 || e.status === 400) {
-              // Model name not available / request shape not supported → skip this model for a while
+              // Model not available / request shape not supported → skip this model for a while
               deadModels.set(model, Date.now() + 10 * 60 * 1000);
               console.warn(`[Director] ${model} unavailable: ${e.message}`);
               continue outer;
             } else {
-              // timeout / network / server error: do not stack more waits, go straight to the default design
+              // timeout / network / server error: go straight to the default design
               console.warn(`[Director] ${model} failed: ${e.message}`);
               break outer;
             }
           }
         }
       }
+
+      if (!plan && best) plan = best; // design hints only; the poster splits the original title itself
     }
 
     if (!plan) {
@@ -389,8 +460,15 @@ async function getDirection(newsItem, { photoRatio = "1.6" } = {}) {
     if (plan.accent)   result.accent   = plan.accent;
     if (plan.category) result.category = plan.category;
     if (plan.focus)    result.focus    = plan.focus;
-    const lines = buildLines(words, plan);
-    if (lines) result.lines = lines;
+    if (typeof plan.quote === "boolean") result.quote = plan.quote;
+
+    if (plan.headLines) {
+      result.rewritten = true;
+      result.headLines = plan.headLines;
+      result.headText  = plan.headLines.join(" ");
+      result.subLines  = plan.subLines && plan.subLines.length ? plan.subLines : null;
+      result.subText   = (plan.subLines || []).join(" ");
+    }
 
     return Object.keys(result).length ? result : null;
   } catch (e) {
@@ -403,5 +481,5 @@ module.exports = {
   getDirection,
   isEnabled,
   // exported for tests
-  _internal: { sanitize, buildLines, splitWords },
+  _internal: { sanitize, validateLines, buildSource, numbersIn },
 };
