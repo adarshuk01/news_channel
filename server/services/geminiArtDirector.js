@@ -1,32 +1,36 @@
 // ═══════════════════════════════════════════════════════════════
-// GEMINI ART DIRECTOR + VIRAL SUB-EDITOR  (geminiDirectorService.js)
+// GEMINI TYPESETTER  (geminiArtDirector.js)
 //
-// Gemini (free-tier text/vision model) does two jobs for each story:
+// The TITLE IS NEVER REWRITTEN. Every word, spelling, number and
+// punctuation mark stays exactly as you wrote it.
 //
-//   A. REWRITES the title into a short, viral Malayalam poster text:
-//        headLines  the BIG headline, 2-4 short lines, 3-8 words in total
-//        subLines   the sub-headline, 0-3 short lines, up to ~14 words
-//      The text is VALIDATED against your original story before it is used:
-//        - every number must exist in the original (1,000 stays 1,000)
-//        - enough words must share a root with your original words
-//        - word / line limits, and no line may end on a number's comma
-//      If anything fails, the poster falls back to a safe local split of
-//      your original title. The AI text is never trusted blindly.
+// Gemini only decides HOW the title is set on the poster:
 //
-//   B. DESIGN decisions: quote (‘ ’), accent colour, photo focus.
+//   UPPER part  (big YELLOW)  = a complete sentence / clause
+//   LOWER part  (big WHITE)   = the rest, also a complete sentence / clause
 //
-// getDirection() returns null on ANY problem (no key, rate limit, quota,
-// timeout, bad JSON, safety block…). It never throws.
+// and where each part breaks into lines. Every line is later stretched to the
+// full poster width, so the lines must be FEW and LONG (2-3 words each),
+// never one word per line. It also gives the photo crop focus.
+//
+// SAFETY: the answer is accepted only when the words are IDENTICAL to your
+// title (same words, same order). The output text is then rebuilt from your
+// own title, so nothing Gemini types can ever reach the poster. If the check
+// fails (or Gemini is unavailable) the poster uses its own safe local split
+// of the original title.
+//
+// getDirection() returns null on ANY problem. It never throws.
 //
 // When newsItem.subtitle / subTitleLines is given, or newsItem.aiRewrite is
-// false, or GEMINI_DIRECTOR_REWRITE=false, Gemini does NOT write text.
+// false, or GEMINI_DIRECTOR_LAYOUT=false, Gemini only gives the photo focus.
 //
 // ENV:
 //   GEMINI_API_KEY            one key, or several separated by commas
-//   GEMINI_DIRECTOR_ENABLED   "false" switches the art director off
-//   GEMINI_DIRECTOR_REWRITE   "false" = never let the AI write text
-//   GEMINI_DIRECTOR_MODELS    default "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash"
-//   GEMINI_DIRECTOR_TIMEOUT_MS  per request, default 15000
+//   GEMINI_DIRECTOR_ENABLED   "false" switches Gemini off completely
+//   GEMINI_DIRECTOR_LAYOUT    "false" = Gemini may not choose the split (focus only)
+//   GEMINI_DIRECTOR_MODELS    default "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash,gemini-3.8-flash"
+//   GEMINI_DIRECTOR_TIMEOUT_MS  per request, default 30000
+//   GEMINI_DIRECTOR_TOTAL_MS    all models together, default 75000
 //   GEMINI_DIRECTOR_SEND_IMAGE  "false" = text only (no photo focus)
 // ═══════════════════════════════════════════════════════════════
 
@@ -36,15 +40,14 @@ try { require("dotenv").config(); } catch { /* dotenv optional here */ }
 
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
-const ACCENTS = ["gold", "red", "green"];
-const CATEGORIES = [
-  "breaking", "crime", "accident", "disaster", "sports",
-  "politics", "entertainment", "business", "weather", "other",
-];
-
-// Limits for the AI-written text
-const HEAD_LIMITS = { minWords: 2, maxWords: 9,  maxLines: 4, maxLineWords: 5, allowEmpty: false };
-const SUB_LIMITS  = { minWords: 0, maxWords: 18, maxLines: 3, maxLineWords: 7, allowEmpty: true  };
+// Layout limits (they only shape line breaks; the words never change).
+// The poster can merge lines on its own, so these are the outer limits that
+// we still ACCEPT; the prompt asks for fewer (3-4 yellow, 2 white).
+const HEAD_MAX_LINES = 5;   // upper yellow part
+const SUB_MAX_LINES  = 3;   // lower white part
+const LINE_MAX_WORDS = 4;
+const LINE_MAX_CHARS = 34;  // a multi-word line longer than this is rejected
+const TOTAL_BUDGET_MS = Number(process.env.GEMINI_DIRECTOR_TOTAL_MS) || 75000; // all models together
 
 // ── Config helpers ───────────────────────────────────────────
 function getKeys() {
@@ -56,9 +59,9 @@ function getKeys() {
 
 function getModels() {
   const list = (process.env.GEMINI_DIRECTOR_MODELS ||
-    "gemini-2.5-flash,gemini-2.5-flash-lite,gemini-2.0-flash")
+    "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-2.5-flash,gemini-3.8-flash")
     .split(",").map((m) => m.trim()).filter(Boolean);
-  return list.length ? list : ["gemini-2.5-flash"];
+  return list.length ? list : ["gemini-3.5-flash-lite"];
 }
 
 function isEnabled() {
@@ -96,7 +99,7 @@ function isRateLimit(status, body) {
          msg.includes("quota") || msg.includes("rate limit");
 }
 
-// ── Small result cache (same story + photo = same direction) ──
+// ── Small result cache (same title + photo = same direction) ──
 const CACHE_MAX = 300;
 const cache = new Map();
 
@@ -116,14 +119,15 @@ function getTitleText(newsItem) {
   return String(newsItem.title || "").replace(/\s+/g, " ").trim();
 }
 
-// True when the caller supplies the sub-headline themselves
+// True when the caller supplies the lower (white) text themselves
 function hasExplicitSub(newsItem) {
   const s = newsItem.subtitle || newsItem.subTitleLines;
   return Array.isArray(s) ? s.some(Boolean) : Boolean(s && String(s).trim());
 }
 
-function rewriteAllowed(newsItem) {
-  return process.env.GEMINI_DIRECTOR_REWRITE !== "false" &&
+// May Gemini choose the sentence split + line breaks?
+function layoutAllowed(newsItem) {
+  return process.env.GEMINI_DIRECTOR_LAYOUT !== "false" &&
          newsItem.aiRewrite !== false &&
          !hasExplicitSub(newsItem);
 }
@@ -154,67 +158,61 @@ async function prepareImage(image) {
 }
 
 // ── Prompt + schema ──────────────────────────────────────────
-function buildPrompt({ title, summary, hasImage, photoRatio, rewrite }) {
+function buildPrompt({ title, hasImage, photoRatio, layout }) {
   const lines = [
-    "You are the art director and viral sub-editor of a Malayalam (Kerala) news channel's social-media posters.",
-    "Poster layout: a news photo on top, then a BIG white headline, then a smaller sub-headline in coloured strips.",
+    "You are the TYPESETTER of a Malayalam (Kerala) news channel's social-media posters.",
+    "You do NOT write or edit news. You only decide how the given title is split and broken into lines.",
+    "Poster layout: a dark top half with a BIG YELLOW upper text, and under it a BIG WHITE lower text. The news photo fills the bottom half of the poster.",
+    "IMPORTANT: every line is stretched to fill the FULL width of the poster. A line with one short word becomes gigantic and wastes the space, so the text must be set in FEW, LONG lines (2 to 3 words each) that look like a block of equal-width lines.",
     "",
     "STORY TITLE:",
     title,
-    summary ? `\nSTORY SUMMARY (context only):\n${summary}` : "",
     "",
-    "Decide:",
-    "1. category: the main kind of story.",
-    "2. accent: the colour of the sub-headline strips.",
-    '   - "red"   for breaking/urgent news, crime, accidents, deaths, disasters, violence.',
-    '   - "green" for sports (cricket, football, athletics, games, tournaments).',
-    '   - "gold"  for everything else. When unsure, use "gold".',
+    "Do:",
   ];
 
-  if (rewrite) {
+  if (layout) {
     lines.push(
-      "3. headLines: REARRANGE the story into a VIRAL poster headline in MALAYALAM, 2 to 4 short lines (1-3 words per line, 3-8 words in total).",
-      "   How to make it viral:",
-      "   - Start with the hook: the most shocking, surprising or emotional fact, or the strongest number. Put the twist or outcome last.",
-      "   - Short, punchy, spoken-style Malayalam. Cut filler words, long connectors and formal endings.",
-      "   - Contrast works well: small number vs big number, promise vs result, before vs after.",
-      "   - One idea per line. Each line must be a natural phrase that reads well on its own.",
-      "   - An exclamation mark or a question is allowed at the end of ONE line, never more.",
-      "   - For a statement by a person, write it as a short quote.",
-      "4. subLines: 1 to 3 short lines in MALAYALAM (3-6 words per line, at most 14 words in total) with the remaining context: who / where / what happened. Do not repeat the headline.",
-      "SAME-MEANING RULES (very important):",
-      "   - Keep exactly the same meaning and facts as the story. You may reorder, shorten and rephrase. You may NOT add, guess, exaggerate or change anything.",
-      "   - Keep every important name, place and number from the story. Write numbers exactly as in the story (1,000 or 75,000). Never split a number across lines. A line must never end with a number's comma.",
-      "   - No clickbait that hides the subject, such as \"you won't believe\". The poster must still say what happened.",
-      "   - For deaths, accidents, crimes and abuse: stay factual and respectful. No dramatic wording, no jokes, no blame that is not in the story.",
-      "   - Style example only (do not copy its content): a story about a tourist cheated abroad → headLines [\"1,000 രൂപയുടെ ഔഷധം!\", \"ഈടാക്കിയത് 75,000\"], subLines [\"തായ്‌ലൻഡിൽ ഇന്ത്യൻ വിനോദസഞ്ചാരിക്ക്\", \"കാർഡിൽ നിന്ന് പണം നഷ്ടമായെന്ന് പരാതി\"]."
+      "1. SPLIT THE TITLE BY MEANING into two consecutive parts. The two parts are painted in DIFFERENT COLOURS, so the colour change must mark where one complete thought ends and the next begins:",
+      "   - UPPER part (YELLOW) = the first complete sentence / main statement (who did what).",
+      "   - LOWER part (WHITE) = the second complete sentence / clause: the follow-up, the reason, the question, the result or the reaction.",
+      "   - Read the whole title first and find the point where the first thought is FINISHED and a new thought STARTS. Typical boundaries: a ; or : or . or ? or !, a comma that closes a full clause, the end of a quotation, or a finished verb followed by a new subject.",
+      "   - Decide by MEANING only. Do NOT cut by length, do NOT count words, do NOT aim for a fixed percentage. The upper part may be longer or shorter than the lower part.",
+      "   - BOTH parts must make complete sense when read alone (no dangling fragment, no part that starts in the middle of a thought).",
+      "   - Never cut inside a name, a number, a quotation, or between a noun and the word that describes it.",
+      "   - Only if the whole title is truly ONE single thought with no second clause, put ALL words in the UPPER part and leave the LOWER part empty.",
+      "2. BREAK each part into LINES (the most important layout rule):",
+      "   - UPPER part: exactly 3 or 4 lines (2 only if the title is very short). LOWER part: 1 or 2 lines (never more than 2 unless the title is very long). The WHOLE poster must have 6 lines or fewer.",
+      `   - 2 to 3 words per line (at most ${LINE_MAX_WORDS}). NEVER put just one short word on a line when a neighbouring word could join it. Single-word lines are allowed only for one very long word.`,
+      "   - Aim for lines of 16 to 26 characters, and make all lines of a part about EQUAL in length (the last line must not be much shorter than the others).",
+      "   - Break at natural phrase boundaries, but equal line length is more important than perfect phrasing. Never end a line on a lone connector word. Never split a number across lines. A line must never end with a number's comma. Keep a number with the word it counts (for example \"1000 പോയിന്റ്\" stays together).",
+      "   - Example of a GOOD result: 4 yellow lines of 2 words each + 2 white lines of 2-3 words each. Example of a BAD result: 5 yellow lines with one word each.",
+      "THE WORDS MUST NOT CHANGE (the most important rule):",
+      "   - Copy the title EXACTLY: the same words, the same spelling, the same order, the same numbers, the same punctuation.",
+      "   - Do NOT add, remove, replace, reorder, translate, shorten, correct or merge any word. If you put the upper lines and the lower lines together, you must get the original title back, word for word.",
+      "   - Do not add quotation marks or any new punctuation."
     );
   }
 
-  const n = rewrite ? 5 : 3;
+  const n = layout ? 3 : 1;
   lines.push(
-    `${n}. quote: true when the big headline is a quotation or a statement attributed to someone (the kind of line written inside quotation marks on a news poster), otherwise false.`,
     hasImage
-      ? `${n + 1}. focusX / focusY: where the main subject of the attached photo is (face, person, vehicle, key object), as fractions of the photo from the top-left corner (0 to 1). The photo fills the top of the poster as a band of about ${photoRatio}:1 (width:height) and its lower part fades out, so pick the point that must stay clearly visible. If the subject is centred, use 0.5 and 0.5. Faces should be kept, so favour the upper part of a person.`
-      : `${n + 1}. focusX / focusY: use 0.5 and 0.5 (no photo is attached).`,
+      ? `${n}. focusX / focusY: where the main subject of the attached photo is (face, person, vehicle, key object), as fractions of the photo from the top-left corner (0 to 1). The photo fills the BOTTOM of the poster as a band of about ${photoRatio}:1 (width:height) and is cropped to that shape. Pick the point that must stay clearly visible; faces should be kept. If the subject is centred, use 0.5 and 0.5.`
+      : `${n}. focusX / focusY: use 0.5 and 0.5 (no photo is attached).`,
     "",
     "Return only the JSON object."
   );
-
-  return lines.filter((l) => l !== undefined).join("\n");
+  return lines.join("\n");
 }
 
-function buildSchema(rewrite) {
+function buildSchema(layout) {
   const properties = {
-    category: { type: "string", enum: CATEGORIES },
-    accent:   { type: "string", enum: ACCENTS },
-    quote:    { type: "boolean" },
-    focusX:   { type: "number" },
-    focusY:   { type: "number" },
+    focusX: { type: "number" },
+    focusY: { type: "number" },
   };
-  const required = ["category", "accent", "quote", "focusX", "focusY"];
+  const required = ["focusX", "focusY"];
 
-  if (rewrite) {
+  if (layout) {
     properties.headLines = { type: "array", items: { type: "string" } };
     properties.subLines  = { type: "array", items: { type: "string" } };
     required.push("headLines", "subLines");
@@ -224,7 +222,7 @@ function buildSchema(rewrite) {
 
 // ── One request ──────────────────────────────────────────────
 async function callGemini(key, model, prompt, imgBuf, schema) {
-  const timeoutMs = Number(process.env.GEMINI_DIRECTOR_TIMEOUT_MS) || 15000;
+  const timeoutMs = Number(process.env.GEMINI_DIRECTOR_TIMEOUT_MS) || 30000;
 
   const parts = [{ text: prompt }];
   if (imgBuf) {
@@ -232,8 +230,9 @@ async function callGemini(key, model, prompt, imgBuf, schema) {
   }
 
   const generationConfig = {
-    temperature: 0.6,
-    maxOutputTokens: 700,
+    temperature: 0.2, // typesetting needs accuracy, not creativity
+    // Gemini 3.x models always think and thinking counts as output, so give them room
+    maxOutputTokens: /gemini-2\.5/.test(model) ? 2000 : 4000,
     responseMimeType: "application/json",
     responseSchema: schema,
   };
@@ -268,67 +267,68 @@ async function callGemini(key, model, prompt, imgBuf, schema) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// TEXT VALIDATION  (the AI's words are checked against the story)
+// VALIDATION  (the title must come back word for word)
 // ═══════════════════════════════════════════════════════════════
 
-const INVISIBLE   = /[\u200b\u200c\u200d]/g;
-const PUNCT       = /[‘’'"“”.,;:!?()\[\]|\-–—]/g;
-const normWord    = (w) => String(w).replace(INVISIBLE, "").replace(PUNCT, "").trim();
-const rootOf      = (w) => Array.from(normWord(w)).slice(0, 3).join("");
-const isNumericW  = (w) => /^\d+$/.test(normWord(w));
+const INVISIBLE = /[\u200b\u200c\u200d]/g;
+const normTok   = (w) => String(w).replace(INVISIBLE, "").trim();
+const clamp01   = (n) => Math.min(1, Math.max(0, n));
 
-// "1,000" -> "1000"; returns every number found in the text
-function numbersIn(text) {
-  const t = String(text).replace(/(\d),(?=\d)/g, "$1");
-  return t.match(/\d+/g) || [];
-}
+const tokensOf = (text) => String(text).split(/\s+/).filter(Boolean);
 
-function buildSource(sourceText) {
-  const words = String(sourceText).split(/\s+/).map(normWord).filter((w) => w.length >= 2 && !isNumericW(w));
-  return {
-    numbers: new Set(numbersIn(sourceText)),
-    roots:   new Set(words.map(rootOf).filter(Boolean)),
-  };
-}
+// A number must never be cut by a line break
+const badNumberCut = (line) => /\d,$/.test(line) || /^,\d/.test(line);
 
-// Returns the cleaned lines, or null when they fail any check.
-function validateLines(lines, source, limits) {
-  if (!Array.isArray(lines)) return null;
+// Takes the model's lines, checks them against the ORIGINAL title tokens and
+// rebuilds both parts from the original words. Returns {headLines, subLines}
+// or null.
+function rebuildFromTitle(headRaw, subRaw, titleTokens) {
+  if (!Array.isArray(headRaw) || !Array.isArray(subRaw)) return null;
 
-  const out = lines
+  const clean = (arr) => arr
     .map((l) => String(l == null ? "" : l).replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
-  if (!out.length) return limits.allowEmpty ? [] : null;
-  if (out.length > limits.maxLines) return null;
+  const headL = clean(headRaw);
+  const subL  = clean(subRaw);
+  if (!headL.length) return null;
+  if (headL.length > HEAD_MAX_LINES || subL.length > SUB_MAX_LINES) return null;
 
-  const words = out.join(" ").split(" ").filter(Boolean);
-  if (words.length < limits.minWords || words.length > limits.maxWords) return null;
-  if (out.some((l) => l.split(" ").filter(Boolean).length > limits.maxLineWords)) return null;
+  const all = [...headL, ...subL];
+  const counts = all.map((l) => tokensOf(l).length);
+  if (counts.some((c) => c < 1 || c > LINE_MAX_WORDS)) return null;
+  if (all.some(badNumberCut)) return null;
+  // one line must stay short enough to be set big (a single long word is fine)
+  if (all.some((l) => tokensOf(l).length > 1 && Array.from(l).length > LINE_MAX_CHARS)) return null;
 
-  // A number must never be cut by a line break
-  if (out.some((l) => /\d,$/.test(l) || /^,\d/.test(l))) return null;
+  // The words must be IDENTICAL to the title (same words, same order)
+  const got = all.flatMap(tokensOf).map(normTok);
+  const exp = titleTokens.map(normTok);
+  if (got.length !== exp.length || got.some((t, i) => t !== exp[i])) return null;
 
-  // Every number must exist in the original story
-  for (const num of numbersIn(out.join(" "))) {
-    if (!source.numbers.has(num)) return null;
+  // Rebuild the lines from the ORIGINAL words, using the model's line breaks
+  let pos = 0;
+  const rebuilt = counts.map((c) => {
+    const line = titleTokens.slice(pos, pos + c).join(" ");
+    pos += c;
+    return line;
+  });
+
+  const headCount = headL.length;
+  const headLines = rebuilt.slice(0, headCount);
+  const subLines  = rebuilt.slice(headCount);
+
+  // When there is a lower part, both parts need enough words to be a sentence
+  if (subLines.length) {
+    const headWords = headLines.join(" ").split(" ").length;
+    const subWords  = subLines.join(" ").split(" ").length;
+    if (headWords < 3 || subWords < 2) return null;
   }
 
-  // Enough words must come from the original story (blocks invented facts)
-  const textWords = words.map(normWord).filter((w) => w.length >= 2 && !isNumericW(w));
-  if (textWords.length) {
-    const matched = textWords.filter((w) => source.roots.has(rootOf(w))).length;
-    if (matched / textWords.length < 0.4) return null;
-  }
-
-  return out;
+  return { headLines, subLines };
 }
 
-// ── Validate the model's answer. Every field is checked on its own,
-//    so one bad field never spoils the others. ───────────────────
-const clamp01 = (n) => Math.min(1, Math.max(0, n));
-
-function sanitize(raw, sourceText, rewrite) {
+function sanitize(raw, titleTokens, layout) {
   let obj;
   try {
     obj = JSON.parse(String(raw).replace(/```json|```/gi, "").trim());
@@ -339,22 +339,16 @@ function sanitize(raw, sourceText, rewrite) {
 
   const out = {};
 
-  if (CATEGORIES.includes(obj.category)) out.category = obj.category;
-  if (ACCENTS.includes(obj.accent))      out.accent   = obj.accent;
-  if (typeof obj.quote === "boolean")    out.quote    = obj.quote;
-
   const fx = Number(obj.focusX), fy = Number(obj.focusY);
   if (Number.isFinite(fx) && Number.isFinite(fy)) {
     out.focus = { x: clamp01(fx), y: clamp01(fy) };
   }
 
-  if (rewrite) {
-    const source = buildSource(sourceText);
-    const head   = validateLines(obj.headLines, source, HEAD_LIMITS);
-    const sub    = validateLines(obj.subLines,  source, SUB_LIMITS);
-    if (head && sub) {
-      out.headLines = head;
-      out.subLines  = sub;
+  if (layout) {
+    const r = rebuildFromTitle(obj.headLines, obj.subLines, titleTokens);
+    if (r) {
+      out.headLines = r.headLines;
+      out.subLines  = r.subLines;
     }
   }
 
@@ -362,29 +356,26 @@ function sanitize(raw, sourceText, rewrite) {
 }
 
 /**
- * Ask Gemini for the viral text + design direction of one poster.
+ * Ask Gemini how to typeset the title (and where to crop the photo).
+ * The title words are never changed.
  *
  * @param {object} newsItem  same object that goes to createNewsPoster
  * @returns {Promise<null | {
- *   accent?: "gold"|"red"|"green",
- *   category?: string,
- *   quote?: boolean,
  *   focus?: {x:number, y:number},
- *   rewritten?: boolean,
+ *   rewritten?: boolean,      // true = Gemini chose the split / line breaks
  *   headText?: string, subText?: string,
  *   headLines?: string[]|null, subLines?: string[]|null,
  * }>}
  */
-async function getDirection(newsItem, { photoRatio = "1.74" } = {}) {
+async function getDirection(newsItem, { photoRatio = "1.38" } = {}) {
   try {
     if (!isEnabled() || newsItem.aiDirector === false) return null;
 
     const title = getTitleText(newsItem);
     if (!title) return null;
 
-    const rewrite = rewriteAllowed(newsItem);
-    const summary = String(newsItem.summary || "").replace(/\s+/g, " ").trim().slice(0, 400);
-    const sourceText = `${title} ${summary}`;
+    const layout      = layoutAllowed(newsItem);
+    const titleTokens = tokensOf(title);
 
     // Photo (optional, used for the crop focus)
     let imgBuf = null;
@@ -396,38 +387,46 @@ async function getDirection(newsItem, { photoRatio = "1.74" } = {}) {
       }
     }
 
-    // "v2" = viral prompt. Change it to get fresh titles for cached stories.
+    // "v9-meaning" = few-long-lines prompt. Change it to redo cached titles.
     const cacheKey = crypto.createHash("sha1")
-      .update("v2|").update(title).update("|").update(summary).update("|").update(rewrite ? "rewrite" : "hints")
+      .update("v9-meaning|").update(title).update("|").update(layout ? "layout" : "focus")
       .update("|").update(imgBuf ? crypto.createHash("sha1").update(imgBuf).digest("hex") : "no-img")
       .digest("hex");
 
     let plan = cacheGet(cacheKey);
     if (!plan) {
-      const prompt = buildPrompt({ title, summary, hasImage: !!imgBuf, photoRatio, rewrite });
-      const schema = buildSchema(rewrite);
+      const prompt = buildPrompt({ title, hasImage: !!imgBuf, photoRatio, layout });
+      const schema = buildSchema(layout);
       const keys   = getKeys();
       const models = getModels();
 
-      let best = null; // usable design hints, but without valid text
+      let best = null; // usable photo focus, but without a valid split
+      const startedAt = Date.now();
 
       outer:
       for (const model of models) {
         for (const key of keys) {
           if (!pairAvailable(key, model)) continue;
+          if (Date.now() - startedAt > TOTAL_BUDGET_MS) break outer;
           try {
-            const text = await callGemini(key, model, prompt, imgBuf, schema);
-            const p    = sanitize(text, sourceText, rewrite);
+            // up to 2 tries per model: the 2nd try tells the model what went wrong
+            let p = null;
+            for (let attempt = 0; attempt < 2 && !(p && (!layout || p.headLines)); attempt++) {
+              const pr = attempt === 0 ? prompt
+                : prompt + "\n\nYour previous answer was rejected: the words did not match the title exactly, or a line had too many words. Copy EVERY word of the title exactly once, in the same order, split by meaning into the upper (yellow) and lower (white) sentence, then break into lines.";
+              const text = await callGemini(key, model, pr, imgBuf, schema);
+              p = sanitize(text, titleTokens, layout);
+            }
 
-            if (p && (!rewrite || p.headLines)) {
+            if (p && (!layout || p.headLines)) {
               plan = p;
-              console.log(`[Director] ✅ ${model}: accent=${p.accent || "-"} category=${p.category || "-"} text=${p.headLines ? "ai" : "original"}`);
+              console.log(`[Director] ✅ ${model}: split=${p.headLines ? "ai" : "local"}`);
               cacheSet(cacheKey, plan);
               break outer;
             }
 
             if (p && !best) best = p;
-            console.warn(`[Director] ${model}: ${p ? "text failed validation" : "unusable answer"} — trying next`);
+            console.warn(`[Director] ${model}: ${p ? "split failed the word-for-word check" : "unusable answer"} — trying next`);
           } catch (e) {
             if (e.rateLimited) {
               // Short per-minute limit → wait what Google says; otherwise assume daily quota
@@ -440,27 +439,24 @@ async function getDirection(newsItem, { photoRatio = "1.74" } = {}) {
               console.warn(`[Director] ${model} unavailable: ${e.message}`);
               continue outer;
             } else {
-              // timeout / network / server error: go straight to the default design
-              console.warn(`[Director] ${model} failed: ${e.message}`);
-              break outer;
+              // timeout / network / server error: try the NEXT model (not the local split yet)
+              console.warn(`[Director] ${model} failed: ${e.message} — trying next model`);
+              continue outer;
             }
           }
         }
       }
 
-      if (!plan && best) plan = best; // design hints only; the poster splits the original title itself
+      if (!plan && best) plan = best; // focus only; the poster splits the title itself
     }
 
     if (!plan) {
-      console.warn("[Director] No direction available — using the default design");
+      console.warn("[Director] No direction available — using the local split");
       return null;
     }
 
     const result = {};
-    if (plan.accent)   result.accent   = plan.accent;
-    if (plan.category) result.category = plan.category;
-    if (plan.focus)    result.focus    = plan.focus;
-    if (typeof plan.quote === "boolean") result.quote = plan.quote;
+    if (plan.focus) result.focus = plan.focus;
 
     if (plan.headLines) {
       result.rewritten = true;
@@ -472,7 +468,7 @@ async function getDirection(newsItem, { photoRatio = "1.74" } = {}) {
 
     return Object.keys(result).length ? result : null;
   } catch (e) {
-    console.warn("[Director] Crashed, using the default design:", e.message);
+    console.warn("[Director] Crashed, using the local split:", e.message);
     return null;
   }
 }
@@ -481,5 +477,5 @@ module.exports = {
   getDirection,
   isEnabled,
   // exported for tests
-  _internal: { sanitize, validateLines, buildSource, numbersIn },
+  _internal: { sanitize, rebuildFromTitle, tokensOf },
 };
