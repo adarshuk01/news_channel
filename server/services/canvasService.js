@@ -3,7 +3,7 @@ const path  = require("path");
 const sharp = require("sharp");
 const fs    = require("fs");
 const os    = require("os");
-// This is the Gemini art-director file (file 2 below). Keep the name you already use for it.
+// This is the Gemini art-director file. Keep the name you already use for it.
 const geminiDirector = require("./geminiArtDirector.js");
 
 // fluent-ffmpeg + ffmpeg-static for frame extraction
@@ -51,24 +51,13 @@ const H            = 1350;          // 4:5 poster
 const DEFAULT_AD_H = 180;
 const MAX_AD_H     = 320;
 
-// ── Brand defaults (override per item with footerUrl) ────────
-const DEFAULT_FOOTER = "flashkeralam.com";
+// ── Brand defaults (override per item) ───────────────────────
+const DEFAULT_BRAND = process.env.BRAND_NAME || "FLASH KERALAM";
 
-// ── Navy palette ─────────────────────────────────────────────
-const NAVY_TOP    = "#0c1a73";
-const NAVY_MID    = "#091259";
-const NAVY_BOTTOM = "#040833";
-const HEAD_EXTRUDE = "#0000";   // blue 3D shadow behind the white headline
-
-// Accent = colour of the sub-headline boxes
-const ACCENTS = {
-  gold:  { box: "#ffc21a", text: "#111111" },
-  red:   { box: "#e5192d", text: "#ffffff" },
-  green: { box: "#2ee06a", text: "#04210e" },
-};
-
-const ALERT_WORDS  = ["അപകട", "മരണ", "മരിച്ച", "ദുരന്ത", "അറസ്റ്റ്", "കൊല", "തീപിടിത്ത", "ഉരുൾ", "അലർട്ട്", "ജാഗ്രത", "പ്രളയ", "ഭൂചലന", "സ്ഫോടന", "ആത്മഹത്യ", "പിടിയിൽ", "ചുഴലിക്കാറ്റ്"];
-const SPORTS_WORDS = ["ക്രിക്കറ്റ്", "ഫുട്ബോൾ", "ഐഎസ്എൽ", "ഒളിമ്പിക്", "ഗോൾ", "ടീം", "ടെസ്റ്റ്", "ഐപിഎൽ", "ലോകകപ്പ്", "ഫൈനൽ", "ബാഡ്മിന്റൺ", "ചാമ്പ്യൻ"];
+// ── The ONE colour scheme: yellow headline + white text ──────
+// Same for every story, whatever the category.
+const YELLOW = { head: "#ffd60a", headLight: "#ffd60a" }; // flat, like the reference
+const WHITE  = "#ffffff";
 
 // ── Synthetic bold ────────────────────────────────────────────
 // The Malayalam font has no real heavier cut, so we stroke the glyph
@@ -304,80 +293,129 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// POSTER DESIGN  (Reporter-style, navy)
+// THE POSTER (one design only)
 //
-//   top    news photo, fading into deep navy
-//   below  BIG white headline (AI-written, short), blue 3D shadow
-//          + sub-headline in coloured boxes, kept together as one block
-//   bottom footer: url, social icons, year
+//   dark charcoal top half:
+//     YELLOW headline (3-5 lines, every line scaled to the same width)
+//     BIG WHITE lines (who is behind the news)
+//     small social icons + brand name row
+//   bottom half: the news photo
 //
-// The Gemini art director now WRITES a short headline + sub-headline from
-// the story (numbers and facts are validated against your original text).
-// If Gemini is unavailable or its text fails validation, a safe local split
-// of your original title is used instead.
+// Yellow + white for every story. No categories, no accent colours.
 //
 // newsItem fields
-//   title / titleLines   story headline text
-//   summary              optional context for the AI
-//   subtitle             optional: string or array of lines for the boxes.
-//                        When given, `title` stays the big headline untouched.
+//   title / titleLines   story headline text (used as it is, never rewritten)
 //   image                photo
-//   date                 anything `new Date()` understands
-//   footerUrl            default "flashkeralam.com"
-//   footerYear           default current year
-//   showFooter           false to hide
-//   accent               "gold" | "red" | "green"  (overrides the AI)
+//   subtitle             optional: string or array of lines for the white line.
+//                        When given, the AI does not rewrite; `title` stays the headline.
+//   brandName            default "FLASH KERALAM" (or env BRAND_NAME)
+//   showFooter           false hides the icons + brand row
 //   quoted               true / false  (overrides the AI)
 //   aiDirector           false = skip Gemini completely
-//   aiRewrite            false = Gemini may not write text (design hints only)
+//   aiRewrite            false = Gemini may not write text (focus / quote only)
 // ═══════════════════════════════════════════════════════════════
 
-const PHOTO_H = Math.round(H * 0.52);
+// ── Width the text is allowed to fill ────────────────────────
+// W is 1080. Text now runs almost edge to edge (about 30px free on each side),
+// so the title FILLS the poster like the reference instead of floating in the middle.
+const MAX_TEXT_W   = 1020;  // widest a yellow line may be
+const MIN_TEXT_W   = 640;   // narrowest we will shrink to when the title is very long
+const WHITE_RATIO  = 0.96;  // white lines are almost as wide as the yellow ones
 
-function drawBackground(ctx) {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0,    NAVY_TOP);
-  g.addColorStop(0.45, NAVY_MID);
-  g.addColorStop(1,    NAVY_BOTTOM);
+const SP = {
+  photoTop: 756,
+  zoneTop: 52, zoneBottom: 704, gap: 22,
+  // cap = biggest font a line may get, min = smallest.
+  // The old caps (135 / 175) stopped short lines from growing, which left empty sides.
+  yellow: { TW: MAX_TEXT_W, cap: 215, min: 40, lh: 1.08, maxLines: 5 },
+  white:  { TW: Math.round(MAX_TEXT_W * WHITE_RATIO), cap: 270, min: 50, lh: 1.06, maxLines: 3 },
+  brandY: 728,
+};
+
+async function drawBackground(ctx, newsItem) {
+  // dark charcoal base
+  const g = ctx.createLinearGradient(0, 0, 0, SP.photoTop);
+  g.addColorStop(0, "#2b2b2b");
+  g.addColorStop(1, "#222222");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
+
+  // faint blurred ghost of the news photo in the dark area (like the reference)
+  if (newsItem && newsItem.image) {
+    try {
+      const img = await loadImage(newsItem.image);
+      const sw = 48, sh = Math.max(1, Math.round(sw * SP.photoTop / W));
+      const small = createCanvas(sw, sh);
+      const sctx  = small.getContext("2d");
+      const sc = Math.max(sw / img.width, sh / img.height);
+      sctx.drawImage(img, (sw - img.width * sc) / 2, (sh - img.height * sc) / 2, img.width * sc, img.height * sc);
+
+      ctx.save();
+      ctx.globalAlpha = 0.16;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(small, 0, 0, W, SP.photoTop);
+      ctx.restore();
+    } catch (e) {
+      console.warn("[Poster] background texture skipped:", e.message);
+    }
+  }
+
+  // faint grain
+  let seed = 777;
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let i = 0; i < 4000; i++) {
+    const x = rnd() * W, y = rnd() * SP.photoTop, sz = 0.6 + rnd() * 1.3;
+    ctx.fillStyle = rnd() < 0.5
+      ? `rgba(255,255,255,${(0.02 + rnd() * 0.04).toFixed(3)})`
+      : `rgba(0,0,0,${(0.05 + rnd() * 0.08).toFixed(3)})`;
+    ctx.fillRect(x, y, sz, sz);
+  }
+}
+
+// Faint channel-name watermark behind the text (set watermark:false to hide)
+function drawWatermark(ctx, newsItem) {
+  if (newsItem.watermark === false) return;
+  const name = String(newsItem.watermark || newsItem.brandName || DEFAULT_BRAND);
+  ctx.save();
+  ctx.globalAlpha  = 0.16;
+  ctx.fillStyle    = "#ffffff";
+  ctx.font         = "46px English";
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(name, W / 2, 372);
+  ctx.restore();
 }
 
 async function drawPhoto(ctx, newsItem, focus) {
   try {
+    const PH    = H - SP.photoTop;
     const img   = await loadImage(newsItem.image);
-    const scale = Math.max(W / img.width, PHOTO_H / img.height);
+    const scale = Math.max(W / img.width, PH / img.height);
     const dw    = img.width  * scale;
     const dh    = img.height * scale;
 
-    // Put the AI focus point slightly above the middle of the visible band
     const fx = focus && Number.isFinite(focus.x) ? focus.x : 0.5;
     const fy = focus && Number.isFinite(focus.y) ? focus.y : 0.5;
     let dx = W / 2 - fx * dw;
-    let dy = PHOTO_H * 0.45 - fy * dh;
+    let dy = PH * 0.45 - fy * dh;
     dx = Math.min(0, Math.max(W - dw, dx));
-    dy = Math.min(0, Math.max(PHOTO_H - dh, dy));
+    dy = Math.min(0, Math.max(PH - dh, dy));
 
-    const layer = createCanvas(W, PHOTO_H);
+    const layer = createCanvas(W, PH);
     const lctx  = layer.getContext("2d");
     lctx.drawImage(img, dx, dy, dw, dh);
 
-    // Blue tint so the photo sits in the navy theme
-    lctx.globalCompositeOperation = "source-atop";
-    lctx.fillStyle = "rgba(12,24,120,0.30)";
-    lctx.fillRect(0, 0, W, PHOTO_H);
-
-    // Fade the bottom into the navy background
+    // short soft edge at the top of the photo
     lctx.globalCompositeOperation = "destination-in";
-    const mask = lctx.createLinearGradient(0, 0, 0, PHOTO_H);
-    mask.addColorStop(0,    "rgba(0,0,0,1)");
-    mask.addColorStop(0.50, "rgba(0,0,0,1)");
-    mask.addColorStop(0.80, "rgba(0,0,0,0.45)");
-    mask.addColorStop(1,    "rgba(0,0,0,0)");
-    lctx.fillStyle = mask;
-    lctx.fillRect(0, 0, W, PHOTO_H);
+    const m = lctx.createLinearGradient(0, 0, 0, PH);
+    m.addColorStop(0,    "rgba(0,0,0,0)");
+    m.addColorStop(0.07, "rgba(0,0,0,1)");
+    m.addColorStop(1,    "rgba(0,0,0,1)");
+    lctx.fillStyle = m;
+    lctx.fillRect(0, 0, W, PH);
 
-    ctx.drawImage(layer, 0, 0);
+    ctx.drawImage(layer, 0, SP.photoTop);
   } catch (e) {
     console.warn("[Poster] main photo failed:", e.message);
   }
@@ -401,138 +439,103 @@ function wrapWords(ctx, text, maxW) {
   return lines;
 }
 
-// Largest font size where the headline fits the width and height.
-// Tries the AI's line breaks first, then automatic wrapping.
-function fitHeadline(ctx, presetLines, text, maxW, maxH) {
-  const LH = 1.16;
-  const run = (getLines) => {
-    for (let size = 130; size >= 40; size -= 2) {
-      ctx.font = `${size}px ${HEAD_FONT}`;
-      const lines = getLines();
-      if (lines.length &&
-          lines.every((l) => ctx.measureText(l).width <= maxW) &&
-          lines.length * size * LH <= maxH) {
-        return { size, lines, lh: Math.round(size * LH) };
+// Width of a line at 100px (used to compare / merge lines)
+function measureLine(ctx, t) {
+  ctx.font = `100px ${HEAD_FONT}`;
+  return ctx.measureText(t).width;
+}
+
+// Split text into exactly n lines of about EQUAL width (never cuts a word).
+function balancedWrap(ctx, text, n) {
+  const words = String(text || "").split(" ").filter(Boolean);
+  if (n <= 1 || words.length <= 1) return [words.join(" ")];
+  n = Math.min(n, words.length);
+  const span = (a, b) => measureLine(ctx, words.slice(a, b).join(" "));
+  const total = span(0, words.length);
+  const avg = total / n;
+  const m = words.length;
+  const INF = 1e18;
+  const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(INF));
+  const cut = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+  dp[0][0] = 0;
+  for (let k = 1; k <= n; k++) {
+    for (let j = k; j <= m; j++) {
+      for (let i = k - 1; i < j; i++) {
+        if (dp[k - 1][i] >= INF) continue;
+        const d = span(i, j) - avg;
+        const v = dp[k - 1][i] + d * d;
+        if (v < dp[k][j]) { dp[k][j] = v; cut[k][j] = i; }
       }
     }
-    return null;
-  };
-
-  const joined = text || (presetLines || []).join(" ");
-  let res = presetLines && presetLines.length ? run(() => presetLines) : null;
-  if (!res) res = run(() => wrapWords(ctx, joined, maxW));
-  if (!res) {
-    const size = 40;
-    ctx.font = `${size}px ${HEAD_FONT}`;
-    res = { size, lines: wrapWords(ctx, joined, maxW), lh: Math.round(size * LH) };
   }
-  return res;
+  const lines = [];
+  let j = m;
+  for (let k = n; k >= 1; k--) {
+    const i = cut[k][j];
+    lines.unshift(words.slice(i, j).join(" "));
+    j = i;
+  }
+  return lines;
 }
 
-function fitSub(ctx, presetLines, text, maxW) {
-  const joined = text || (presetLines || []).join(" ");
-  if (!joined.trim()) return null;
+// Every line is scaled so that it fills the same width (like the reference
+// poster): short lines come out BIG, longer lines a little smaller.
+// The measured width includes the synthetic-bold stroke and the shadow
+// margin, so the finished line really ends up at cfg.TW wide and never
+// runs off the poster edge.
+function fitScaledLines(ctx, presetLines, text, cfg, maxH) {
+  const REF = 100;
+  ctx.font = `${REF}px ${HEAD_FONT}`;
 
-  const padX  = 34;
-  const avail = maxW - padX * 2;
-  const run = (getLines) => {
-    for (let size = 50; size >= 28; size -= 2) {
-      ctx.font = `${size}px ${HEAD_FONT}`;
-      const lines = getLines();
-      if (lines.length && lines.length <= 3 &&
-          lines.every((l) => ctx.measureText(l).width <= avail)) {
-        return { size, lines, padX, boxH: Math.round(size * 1.5), gap: 10 };
-      }
+  let lines = presetLines && presetLines.length ? presetLines.slice() : null;
+  if (!lines) {
+    for (const f of [1, 1.25, 1.5, 1.8, 2.2]) {
+      lines = wrapWords(ctx, text, cfg.TW * f);
+      if (lines.length <= cfg.maxLines) break;
     }
-    return null;
-  };
-
-  let res = presetLines && presetLines.length ? run(() => presetLines) : null;
-  if (!res) res = run(() => wrapWords(ctx, joined, avail));
-  if (!res) {
-    const size = 28;
-    ctx.font = `${size}px ${HEAD_FONT}`;
-    res = { size, lines: wrapWords(ctx, joined, avail), padX, boxH: Math.round(size * 1.5), gap: 10 };
   }
-  return res;
+
+  // stroke adds (MALAYALAM_BOLD_W + 0.02) * size to the width of a line
+  const strokeK = MALAYALAM_BOLD_W + 0.02;
+
+  let items = lines.map((t) => {
+    ctx.font = `${REF}px ${HEAD_FONT}`;
+    const w = Math.max(1, ctx.measureText(t).width) + REF * strokeK;
+    return { text: t, size: Math.min(cfg.cap, Math.max(cfg.min, Math.round(REF * cfg.TW / w))) };
+  });
+
+  let h = items.reduce((a, l) => a + l.size * cfg.lh, 0);
+  if (h > maxH) {
+    const k = maxH / h;
+    items = items.map((l) => ({ text: l.text, size: Math.round(l.size * k) }));
+    h = maxH;
+  }
+  return { items, lh: cfg.lh, h: Math.round(h) };
 }
 
-function subBlockHeight(sub) {
-  if (!sub) return 0;
-  return sub.lines.length * sub.boxH + (sub.lines.length - 1) * sub.gap;
+function scaleGroup(g, k) {
+  const items = g.items.map((l) => ({ text: l.text, size: Math.max(24, Math.round(l.size * k)) }));
+  return { items, lh: g.lh, h: Math.round(items.reduce((a, l) => a + l.size * g.lh, 0)) };
 }
 
-// ── Headline: white, blue 3D shadow ──────────────────────────
-function drawHeadline(ctx, head, top) {
-  const { size, lines, lh } = head;
+function drawScaledLines(ctx, group, top, paint) {
   let y = top;
-  const CX = W / 2;
-
   ctx.textAlign    = "center";
   ctx.textBaseline = "top";
-  ctx.font         = `${size}px ${HEAD_FONT}`;
-
-  for (const text of lines) {
-    // Blue extrusion (soft dark shadow on the first layer)
-    for (let i = 11; i >= 1; i--) {
-      ctx.save();
-      if (i === 11) {
-        ctx.shadowColor   = "rgba(0,0,40,0.75)";
-        ctx.shadowBlur    = 16;
-        ctx.shadowOffsetY = 6;
-      }
-      ctx.fillStyle = HEAD_EXTRUDE;
-      fillTextBold(ctx, text, CX - i * 0.55, y + i * 0.9, size);
-      ctx.restore();
-    }
-
-    // White face
+  for (const l of group.items) {
     ctx.save();
-    const wg = ctx.createLinearGradient(0, y, 0, y + size);
-    wg.addColorStop(0, "#ffffff");
-    wg.addColorStop(1, "#e9ecff");
-    ctx.fillStyle = wg;
-    fillTextBold(ctx, text, CX, y, size, size * 0.012);
+    ctx.font = `${l.size}px ${HEAD_FONT}`;
+    ctx.shadowColor   = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur    = 12;
+    ctx.shadowOffsetY = 4;
+    ctx.fillStyle = paint(y, l.size);
+    fillTextBold(ctx, l.text, W / 2, y, l.size, l.size * 0.02);
     ctx.restore();
-
-    y += lh;
+    y += Math.round(l.size * group.lh);
   }
 }
 
-// ── Sub-headline: one box per line ───────────────────────────
-function drawSubBoxes(ctx, sub, accent, bottomY) {
-  if (!sub) return;
-  const total = subBlockHeight(sub);
-  let y = bottomY - total;
-
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "middle";
-  ctx.font         = `${sub.size}px ${HEAD_FONT}`;
-
-  for (const text of sub.lines) {
-    const bw = Math.min(W - 60, Math.round(ctx.measureText(text).width + sub.padX * 2));
-    const bx = Math.round((W - bw) / 2);
-
-    ctx.save();
-    ctx.shadowColor   = "rgba(0,0,0,0.35)";
-    ctx.shadowBlur    = 10;
-    ctx.shadowOffsetY = 3;
-    ctx.fillStyle     = accent.box;
-    roundRect(ctx, bx, y, bw, sub.boxH, 6);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
-    ctx.fillStyle = accent.text;
-    ctx.font      = `${sub.size}px ${HEAD_FONT}`;
-    fillTextBold(ctx, text, W / 2, y + sub.boxH / 2 + Math.round(sub.size * 0.04), sub.size);
-    ctx.restore();
-
-    y += sub.boxH + sub.gap;
-  }
-}
-
-// ── Footer: url + social icons + year ────────────────────────
+// ── Brand row: social icons + brand name ─────────────────────
 function drawFacebookIcon(ctx, cx, cy, r) {
   ctx.save();
   ctx.fillStyle = "#ffffff";
@@ -569,37 +572,23 @@ function drawInstagramIcon(ctx, cx, cy, r) {
   ctx.restore();
 }
 
-function drawFooter(ctx, newsItem, cy) {
-  const url  = String(newsItem.footerUrl || DEFAULT_FOOTER);
-  const year = String(newsItem.footerYear || new Date().getFullYear());
-  const R    = 11;
-  const GAP  = 8;
-  const SEP  = 18;
-  const SIZE = 26;
-
+function drawBrand(ctx, newsItem) {
+  const name = String(newsItem.brandName || DEFAULT_BRAND);
+  const R = 17, GAP = 10, SEP = 16, SIZE = 32;
   ctx.save();
   ctx.font = `${SIZE}px English`;
-  const urlW  = ctx.measureText(url).width;
-  const yearW = ctx.measureText(year).width;
-  const iconsW = R * 4 + GAP;
-  const total  = urlW + SEP + iconsW + SEP + yearW;
+  const nameW = ctx.measureText(name).width;
+  const total = R * 4 + GAP + SEP + nameW;
   let x = (W - total) / 2;
 
-  ctx.fillStyle    = "rgba(255,255,255,0.80)";
+  drawFacebookIcon(ctx,  x + R,             SP.brandY, R);
+  drawInstagramIcon(ctx, x + R * 3 + GAP,   SP.brandY, R);
+  x += R * 4 + GAP + SEP;
+
+  ctx.fillStyle    = "rgba(255,255,255,0.92)";
   ctx.textAlign    = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(url, x, cy);
-  x += urlW + SEP;
-
-  drawFacebookIcon(ctx,  x + R,                 cy, R);
-  drawInstagramIcon(ctx, x + R * 3 + GAP,       cy, R);
-  x += iconsW + SEP;
-
-  ctx.fillStyle    = "rgba(255,255,255,0.80)";
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "middle";
-  ctx.font         = `${SIZE}px English`;
-  ctx.fillText(year, x, cy);
+  ctx.fillText(name, x, SP.brandY + 1);
   ctx.restore();
 }
 
@@ -631,23 +620,28 @@ function splitAtFirstBreak(text) {
   return null;
 }
 
+// Uses the ORIGINAL title word for word: no rewriting and no dropped words.
+// The end of the title goes to the big white line when it is short enough;
+// otherwise the whole title stays yellow.
 function localSplit(title) {
   const words = title.split(" ").filter(Boolean);
+  const MAX_WHITE = 6;
+  const count = (t) => t.split(" ").filter(Boolean).length;
 
+  // 1) split at the first natural break (comma, colon...) if both parts fit
   const parts = splitAtFirstBreak(title);
-  if (parts && parts[0].split(" ").filter(Boolean).length <= 9) {
+  if (parts && count(parts[0]) <= 8 && count(parts[1]) <= MAX_WHITE) {
     return { head: parts[0], sub: parts[1] };
   }
 
+  // 2) very short title: all yellow
   if (words.length < 5) return { head: title, sub: "" };
-  const k = Math.min(8, Math.max(3, Math.round(words.length * 0.4)));
-  return { head: words.slice(0, k).join(" "), sub: words.slice(k).join(" ") };
-}
 
-function detectAccent(title) {
-  if (ALERT_WORDS.some((w) => title.includes(w)))  return "red";
-  if (SPORTS_WORDS.some((w) => title.includes(w))) return "green";
-  return "gold";
+  // 3) otherwise the last words become the white line, if they are few enough
+  const k = Math.max(3, Math.round(words.length * 0.6));
+  const tail = words.slice(k);
+  if (!tail.length || tail.length > MAX_WHITE) return { head: title, sub: "" };
+  return { head: words.slice(0, k).join(" "), sub: tail.join(" ") };
 }
 
 function resolveContent(newsItem, direction) {
@@ -666,7 +660,7 @@ function resolveContent(newsItem, direction) {
     subText  = s.sub;
   }
 
-  // Explicit sub-headline from the caller always wins
+  // Explicit white line from the caller always wins
   const explicit = newsItem.subtitle || newsItem.subTitleLines;
   if (explicit) {
     if (Array.isArray(explicit)) {
@@ -683,7 +677,6 @@ function resolveContent(newsItem, direction) {
   const alreadyQuoted = /^['"‘“]/.test(headText) || /['"’”]$/.test(headText);
   let quoted = false;
   if (newsItem.quoted === true) quoted = true;
-  else if (newsItem.quoted !== false && direction && direction.quote) quoted = true;
   if (alreadyQuoted) quoted = false;
 
   if (quoted) {
@@ -695,39 +688,93 @@ function resolveContent(newsItem, direction) {
     headText = "‘" + headText + "’";
   }
 
-  // Accent colour
-  let accentKey = newsItem.accent;
-  if (!ACCENTS[accentKey]) accentKey = direction && ACCENTS[direction.accent] ? direction.accent : null;
-  if (!accentKey) accentKey = detectAccent(title);
-
-  return { headText, headLines, subText, subLines, accent: ACCENTS[accentKey] };
+  return { headText, headLines, subText, subLines };
 }
 
-function drawPosterText(ctx, newsItem, direction) {
+// ═══════════════════════════════════════════════════════════════
+// DRAW THE POSTER
+// ═══════════════════════════════════════════════════════════════
+
+async function drawPoster(ctx, newsItem, direction) {
   const c = resolveContent(newsItem, direction);
 
-  const FOOTER_Y   = H - 44;
-  const SUB_BOTTOM = newsItem.showFooter === false ? H - 50 : FOOTER_Y - 38;
-  const ZONE_TOP   = Math.round(H * 0.50);
-  const ZONE_H     = SUB_BOTTOM - ZONE_TOP;
-  const GAP        = 34;   // space between headline and sub-headline boxes
+  await drawBackground(ctx, newsItem);
+  drawWatermark(ctx, newsItem);
+  await drawPhoto(ctx, newsItem, direction && direction.focus);
 
-  // Sub-headline first (it decides how much room the headline has)
-  const sub  = fitSub(ctx, c.subLines, c.subText, W - 100);
-  const subH = subBlockHeight(sub);
-  const gap  = sub ? GAP : 0;
+  const zoneH    = SP.zoneBottom - SP.zoneTop;
+  const hasWhite = (c.subLines && c.subLines.length) || String(c.subText || "").trim();
 
-  const headAvail = Math.max(120, ZONE_H - subH - gap);
-  const head      = fitHeadline(ctx, c.headLines, c.headText, W - 110, headAvail);
-  const headH     = head.lines.length * head.lh;
+  // ── 1. Decide the lines ───────────────────────────────────
+  // Gemini's lines are used when present; otherwise the text is split into a
+  // few BALANCED lines (never one word per line).
+  const wc = (t) => String(t || "").split(" ").filter(Boolean).length;
+  const target = (t, max) => Math.min(max, Math.max(1, Math.round(wc(t) / 2.5)));
 
-  // Headline + sub-headline are one block, centred in the zone
-  const groupH = headH + gap + subH;
-  const startY = ZONE_TOP + Math.max(0, Math.round((ZONE_H - groupH) / 2));
+  let headLines = c.headLines && c.headLines.length
+    ? c.headLines.slice()
+    : balancedWrap(ctx, c.headText, target(c.headText, 4));
+  let subLines = hasWhite
+    ? (c.subLines && c.subLines.length ? c.subLines.slice() : balancedWrap(ctx, c.subText, target(c.subText, 2)))
+    : null;
 
-  drawHeadline(ctx, head, startY);
-  drawSubBoxes(ctx, sub, c.accent, startY + groupH);
-  if (newsItem.showFooter !== false) drawFooter(ctx, newsItem, FOOTER_Y);
+  const build = (tw) => ({
+    yellow: fitScaledLines(ctx, headLines, null, { ...SP.yellow, TW: tw }, 1e6),
+    white:  subLines ? fitScaledLines(ctx, subLines, null, { ...SP.white, TW: Math.round(tw * WHITE_RATIO) }, 1e6) : null,
+  });
+  const totalOf = (g) => g.yellow.h + (g.white ? g.white.h + SP.gap : 0);
+
+  // ── 2. Too tall at full width? MERGE short neighbouring lines ──
+  // (fewer, longer lines) instead of shrinking the text and leaving the
+  // sides empty. Words and their order never change.
+  let g = build(MAX_TEXT_W);
+  while (totalOf(g) > zoneH) {
+    let best = null;
+    const consider = (lines, min, which) => {
+      if (!lines || lines.length <= min) return;
+      for (let i = 0; i < lines.length - 1; i++) {
+        const w = measureLine(ctx, lines[i] + " " + lines[i + 1]);
+        if (!best || w < best.w) best = { w, i, which };
+      }
+    };
+    consider(headLines, 2, "h");
+    consider(subLines, 1, "s");
+    if (!best) break;
+    const arr = best.which === "h" ? headLines : subLines;
+    arr.splice(best.i, 2, arr[best.i] + " " + arr[best.i + 1]);
+    g = build(MAX_TEXT_W);
+  }
+
+  // ── 3. Still too tall (very long title)? narrow it step by step ──
+  for (let tw = MAX_TEXT_W - 8; totalOf(g) > zoneH && tw >= MIN_TEXT_W; tw -= 8) {
+    g = build(tw);
+  }
+  let yellow = g.yellow, white = g.white;
+  const total = totalOf(g);
+  if (total > zoneH) {
+    const k = zoneH / total;
+    yellow = scaleGroup(yellow, k);
+    if (white) white = scaleGroup(white, k);
+  }
+  const wH = white ? white.h + SP.gap : 0;
+
+  const groupH = yellow.h + wH;
+  let y = SP.zoneTop + Math.max(0, Math.round((zoneH - groupH) / 2));
+
+  // Yellow headline
+  drawScaledLines(ctx, yellow, y, (yy, size) => {
+    const g = ctx.createLinearGradient(0, yy, 0, yy + size);
+    g.addColorStop(0, YELLOW.headLight);
+    g.addColorStop(0.5, YELLOW.head);
+    g.addColorStop(1, YELLOW.head);
+    return g;
+  });
+  y += yellow.h + SP.gap;
+
+  // White line
+  if (white) drawScaledLines(ctx, white, y, () => WHITE);
+
+  if (newsItem.showFooter !== false) drawBrand(ctx, newsItem);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -807,21 +854,19 @@ async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, canvasH);
   const ctx    = canvas.getContext("2d");
 
-  // ── AI art direction (never throws; null = default design) ──
+  // ── AI text direction (never throws; null = safe local split) ──
   let direction = null;
   try {
     direction = await geminiDirector.getDirection(newsItem, {
-      photoRatio: (W / PHOTO_H).toFixed(2),
+      photoRatio: (W / (H - SP.photoTop)).toFixed(2),
     });
   } catch (e) {
-    console.warn("[Poster] Art director failed, using default design:", e.message);
+    console.warn("[Poster] Art director failed, using default text split:", e.message);
   }
 
   // ── Poster body ─────────────────────────────────────────────
-  drawBackground(ctx);
-  await drawPhoto(ctx, newsItem, direction && direction.focus);
-  drawPosterText(ctx, newsItem, direction);
-  console.log(`[Poster] ai=${direction ? "yes" : "no"} rewritten=${!!(direction && direction.rewritten)} accent=${(direction && direction.accent) || "auto"}`);
+  await drawPoster(ctx, newsItem, direction);
+  console.log(`[Poster] ai=${direction ? "yes" : "no"} rewritten=${!!(direction && direction.rewritten)}`);
 
   // ── Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
