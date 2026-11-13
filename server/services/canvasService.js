@@ -4,16 +4,6 @@ const sharp = require("sharp");
 const fs    = require("fs");
 const os    = require("os");
 
-// Gemini "art director" – used here ONLY to pick the important words to highlight.
-// It never changes the title text. If it is missing or fails, the local
-// auto-highlight below is used instead.
-let getDirection = null;
-try {
-  ({ getDirection } = require("./geminiArtDirector"));
-} catch (err) {
-  console.warn("[Poster] geminiArtDirector not available – local auto-highlight only:", err.message);
-}
-
 // fluent-ffmpeg + ffmpeg-static for frame extraction
 let ffmpeg;
 try {
@@ -47,19 +37,29 @@ GlobalFonts.registerFromPath(
   "English"
 );
 
-// Optional serif (used for the small "NEWSLINE" label)
-const SERIF_CANDIDATES = [
-  path.join(__dirname, "../fonts/Serif-Bold.ttf"),
-  path.join(__dirname, "../fonts/PlayfairDisplay-Bold.ttf"),
-  path.join(__dirname, "../fonts/DejaVuSerif-Bold.ttf"),
-  "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
-];
-let hasSerif = false;
-for (const p of SERIF_CANDIDATES) {
+// Optional HEAVY Malayalam font (the thick look of the reference poster).
+// Drop ONE of these into server/fonts/ (first one found is used):
+//   AnekMalayalam_SemiCondensed-ExtraBold.ttf
+//   AnekMalayalam-ExtraBold.ttf
+//   AnekMalayalam_Condensed-ExtraBold.ttf
+//   Manjari-Bold.ttf
+//   NotoSansMalayalam-Black.ttf
+// Without one, the normal Bold font is used with a light extra stroke.
+const HEAVY_CANDIDATES = [
+  "AnekMalayalam_SemiCondensed-ExtraBold.ttf",
+  "AnekMalayalam-ExtraBold.ttf",
+  "AnekMalayalam_Condensed-ExtraBold.ttf",
+  "Manjari-Bold.ttf",
+  "NotoSansMalayalam-Black.ttf",
+].map((f) => path.join(__dirname, "../fonts", f));
+
+let hasHeavy = false;
+for (const p of HEAVY_CANDIDATES) {
   try {
     if (fs.existsSync(p)) {
-      GlobalFonts.registerFromPath(p, "Headline");
-      hasSerif = true;
+      GlobalFonts.registerFromPath(p, "MalayalamHeavy");
+      hasHeavy = true;
+      console.log("[Fonts] heavy headline font:", path.basename(p));
       break;
     }
   } catch (e) {
@@ -67,31 +67,9 @@ for (const p of SERIF_CANDIDATES) {
   }
 }
 
-// Optional condensed bold sans for the headline (the look in your reference).
-// Drop ONE of these into server/fonts/ :  Anton-Regular.ttf  |  Oswald-Bold.ttf  |  BebasNeue-Regular.ttf
-const CONDENSED_CANDIDATES = [
-  path.join(__dirname, "../fonts/Anton-Regular.ttf"),
-  path.join(__dirname, "../fonts/Oswald-Bold.ttf"),
-  path.join(__dirname, "../fonts/BebasNeue-Regular.ttf"),
-];
-let hasCondensed = false;
-for (const p of CONDENSED_CANDIDATES) {
-  try {
-    if (fs.existsSync(p)) {
-      GlobalFonts.registerFromPath(p, "Condensed");
-      hasCondensed = true;
-      break;
-    }
-  } catch (e) {
-    console.warn("[Fonts] could not load", p, e.message);
-  }
-}
+const HEAD_FONT = hasHeavy ? "MalayalamHeavy, Malayalam, English" : "Malayalam, English";
 
-const SERIF_CHAIN = hasSerif ? "Headline, Malayalam, English" : "Malayalam, English";
-const HEAD_FONT   = hasCondensed ? "Condensed, Malayalam, English" : SERIF_CHAIN;
-const BRAND_FONT  = SERIF_CHAIN;
-
-// ── Asset video path ─────────────────────────────────────────
+// ── Asset paths ──────────────────────────────────────────────
 const FALLBACK_VIDEO_PATH =
   process.env.FALLBACK_VIDEO ||
   path.join(__dirname, "../assets/ad_fallback.mp4");
@@ -101,39 +79,75 @@ const H            = 1350;          // 4:5 poster
 const DEFAULT_AD_H = 180;
 const MAX_AD_H     = 320;
 
-const DEFAULT_CHANNEL = "Newsline";
+// ═══════════════════════════════════════════════════════════════
+// DESIGN CONSTANTS  (poster layout copied from the reference image)
+//
+//   0%  – 47%   news photo, fully visible to ~35%, melting into the dark
+//   44%         BIG YELLOW headline (3-5 centred lines, same size)
+//               glowing red/orange divider with a bright flare
+//               WHITE sub-lines with a black outline (1-2 lines)
+//   corners     red diagonal ribbon top-left and bottom-right
+//   background  near-black with crimson glow on the left / right edges
+// ═══════════════════════════════════════════════════════════════
 
-// Layout
-const PAD           = 54;
-const HEAD_BOTTOM   = 70;                    // gap under the last headline line
-const HEAD_MAX_H    = Math.round(H * 0.36);
-const HEAD_START    = 80;
-const HEAD_MIN      = 40;
-const HEAD_LH       = 1.24;                  // line pitch (leaves a small gap between bars)
-const BAR_PAD_X     = 14;                    // highlight bar side padding
-const BAR_COLOR     = "#ffe600";             // marker yellow
-const BAR_TEXT      = "#000000";
+const BG_BASE_RGB = [10, 2, 4];
+const BG_BASE     = "#0a0204";
+const GLOW_RGB    = [176, 8, 22];
+const YELLOW      = "#ffe000";
+const WHITE       = "#ffffff";
 
-const BRAND_SIZE    = 30;
-const BRAND_GAP     = 64;                    // distance from divider line up/down to headline
+// Photo
+// The photo height follows the text: the headline block is measured first, sits at the
+// bottom, and the photo fills everything above it (fading out behind the first line).
+const PHOTO_REF_END      = Math.round(H * 0.50);    // only tells Gemini the photo shape
+const PHOTO_OVERLAP      = Math.round(H * 0.032);   // photo runs this far behind the first line
+const PHOTO_FADE_LEN     = Math.round(H * 0.072);   // length of the fade into the dark
+const PHOTO_MAX_TEXT_TOP = Math.round(H * 0.600);   // a very short title never starts lower
+const PHOTO_FOCUS_Y    = 0.15;          // 0 = keep top of photo, 1 = keep bottom
 
-const BG_COLOR      = "#080c16";
-const PHOTO_FADE    = 70;
+// Text block  (numbers measured from the reference poster, 650 x 847 → 1080 x 1350)
+const TEXT_TOP      = Math.round(H * 0.400);   // top of the first yellow line
+const BOTTOM_MARGIN = 70;                      // space under the last white line
 
-// AI highlight: how long we are willing to wait for Gemini before using the local logic
-const AI_HL_TOTAL_MS   = 15000;
-const AI_HL_REQUEST_MS = 8000;
+// The font size is NOT fixed: every block is made as BIG as possible so that its
+// widest line reaches this width (the reference fills about 86% of the poster).
+const HEAD_TARGET_W = Math.round(W * 0.915);   // widest YELLOW line
+const SUB_TARGET_W  = Math.round(W * 0.905);   // widest WHITE line
 
-const MALAYALAM_BOLD_W = 0.055;
+const HEAD_MAX       = 240;                    // upper limit of the yellow font size
+const HEAD_MIN       = 44;
+const HEAD_MAX_LINES = 5;                      // 4 lines are tried first, then 5
+// Line pitch of the yellow block (x font size). The reference stacks the lines
+// tightly; if the block is too tall, the pitch is tightened step by step BEFORE
+// the font is made smaller.
+const HEAD_LH_TRY    = [1.22, 1.18, 1.14, 1.10, 1.06];
+
+const SUB_MAX_RATIO = 1.0;                     // white is never bigger than yellow
+const SUB_MIN       = 34;
+const SUB_LH        = 1.26;
+const SUB_MAX_LINES = 3;
+
+const DIV_BLOCK = 60;                          // vertical room taken by the divider
+
+function computeAdHeight(adImg) {
+  if (!adImg) return DEFAULT_AD_H;
+  const naturalH = Math.round((adImg.height / adImg.width) * W);
+  return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
+}
+
+// Stroke thickness (ad strip text only)
+const MALAYALAM_BOLD_W = 0.012;
 
 function fillTextBold(ctx, text, x, y, fontSize, extraWidth = 0) {
-  const lineWidth = fontSize * MALAYALAM_BOLD_W + extraWidth;
+  const lineWidth = Math.max(0, fontSize * MALAYALAM_BOLD_W + extraWidth);
   ctx.save();
-  ctx.lineJoin    = "round";
-  ctx.miterLimit  = 2;
-  ctx.lineWidth   = lineWidth;
-  ctx.strokeStyle = ctx.fillStyle;
-  ctx.strokeText(text, x, y);
+  if (lineWidth > 0.01) {
+    ctx.lineJoin    = "round";
+    ctx.miterLimit  = 2;
+    ctx.lineWidth   = lineWidth;
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.strokeText(text, x, y);
+  }
   ctx.fillText(text, x, y);
   ctx.restore();
 }
@@ -141,12 +155,6 @@ function fillTextBold(ctx, text, x, y, fontSize, extraWidth = 0) {
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
-
-function computeAdHeight(adImg) {
-  if (!adImg) return DEFAULT_AD_H;
-  const naturalH = Math.round((adImg.height / adImg.width) * W);
-  return Math.min(MAX_AD_H, Math.max(DEFAULT_AD_H, naturalH));
-}
 
 function toNodeBuffer(data) {
   if (Buffer.isBuffer(data))       return data;
@@ -169,6 +177,48 @@ async function fetchAsJpegBuffer(url) {
 async function canvasToBuffer(canvas, mime = "image/png") {
   const result = canvas.toBuffer(mime);
   return Buffer.isBuffer(result) ? result : toNodeBuffer(await result);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AI DIRECTOR (Gemini)
+//
+// Decides which words are the BIG YELLOW headline, which are the WHITE
+// sub-lines, where every line breaks, and which point of the photo must stay
+// visible. It answers with NUMBERS only; the text is always cut from the
+// original title, so no word can change.
+// If geminiArtDirector.js is missing, disabled or fails, the poster silently
+// uses its own local split.
+//   newsItem.aiDirector = false   → never ask the AI
+//   newsItem.direction            → pass an already fetched direction
+// ═══════════════════════════════════════════════════════════════
+
+let _director = null;
+function getDirector() {
+  if (_director !== null) return _director || null;
+  try {
+    _director = require("./geminiArtDirector");
+  } catch (e) {
+    console.warn("[Poster] geminiArtDirector not found next to this file – using the local split:", e.message);
+    _director = false;
+  }
+  return _director || null;
+}
+
+async function askDirector(newsItem) {
+  if (newsItem.direction) return newsItem.direction;
+  if (newsItem.aiDirector === false) return null;
+  const d = getDirector();
+  if (!d || !d.isEnabled()) return null;
+  try {
+    return await d.getDirection(newsItem, {
+      layout:     true,
+      focus:      newsItem.showPhoto !== false && Boolean(newsItem.image),
+      photoRatio: (W / PHOTO_REF_END).toFixed(2),
+    });
+  } catch (e) {
+    console.warn("[Poster] director failed:", e.message);
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -345,62 +395,92 @@ function drawAdStrip(ctx, adImg, yOffset, adH) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// BACKGROUND
+// BACKGROUND  –  near-black base, crimson glow on the left / right edges,
+// deep red towards the bottom
 // ═══════════════════════════════════════════════════════════════
 
-function drawBackground(ctx) {
-  ctx.fillStyle = BG_COLOR;
+function drawBase(ctx) {
+  ctx.fillStyle = BG_BASE;
   ctx.fillRect(0, 0, W, H);
 }
 
+// Soft elliptical glow (centre → edge fades to transparent)
+function radialGlow(ctx, cx, cy, rx, ry, rgb, alpha) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(rx, ry);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1);
+  const stops = [[0, 1], [0.3, 0.7], [0.6, 0.35], [0.85, 0.1], [1, 0]];
+  for (const [t, k] of stops) {
+    g.addColorStop(t, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(alpha * k).toFixed(3)})`);
+  }
+  ctx.fillStyle = g;
+  ctx.fillRect(-1, -1, 2, 2);
+  ctx.restore();
+}
+
+function drawGlow(ctx, glowY) {
+  // deepening red towards the bottom
+  const v = ctx.createLinearGradient(0, H * 0.52, 0, H);
+  v.addColorStop(0, "rgba(70,0,8,0)");
+  v.addColorStop(1, "rgba(70,0,8,0.60)");
+  ctx.fillStyle = v;
+  ctx.fillRect(0, H * 0.52, W, H * 0.48);
+
+  // crimson glow on both side edges, around the divider
+  radialGlow(ctx, 0, glowY, W * 0.50, H * 0.26, GLOW_RGB, 0.62);
+  radialGlow(ctx, W, glowY, W * 0.50, H * 0.26, GLOW_RGB, 0.62);
+
+  // soft red glow behind the text block itself
+  radialGlow(ctx, W / 2, glowY, W * 0.70, H * 0.20, [150, 8, 20], 0.28);
+
+  // bottom corners a little stronger
+  radialGlow(ctx, 0, H, W * 0.42, H * 0.14, [190, 10, 25], 0.50);
+  radialGlow(ctx, W, H, W * 0.42, H * 0.14, [190, 10, 25], 0.55);
+}
+
 // ═══════════════════════════════════════════════════════════════
-// PHOTO
-//   Portrait-ish photo  → full-bleed, top-aligned (like the reference);
-//                         only the part hidden under the headline is cut.
-//   Landscape photo     → shown in FULL (fit to width), centred in the free
-//                         space above the headline, edges faded into the
-//                         dark background. Never cropped, never blurred.
+// PHOTO  –  full width at the top, melting into the dark background
+//   newsItem.showPhoto = false  → no photo
 // ═══════════════════════════════════════════════════════════════
 
-async function drawPhoto(ctx, src, areaBottom) {
+async function drawPhoto(ctx, src, focus, photoEnd) {
   try {
     const img = await loadImage(src);
-    const portrait = img.width / img.height < 0.95;
+    const fadeStart = Math.max(0, photoEnd - PHOTO_FADE_LEN);
+
+    // cover-fit into W x photoEnd
+    const scale = Math.max(W / img.width, photoEnd / img.height);
+    const dw    = img.width  * scale;
+    const dh    = img.height * scale;
+    let dx      = (W - dw) / 2;
+    let dy      = -Math.max(0, dh - photoEnd) * PHOTO_FOCUS_Y;
+
+    // AI photo focus (0..1 from the top-left of the photo): keep that point
+    // visible, placed in the upper-middle of the visible area (above the fade)
+    if (focus && Number.isFinite(focus.x) && Number.isFinite(focus.y)) {
+      dx = Math.min(0, Math.max(W - dw,         W / 2 - focus.x * dw));
+      dy = Math.min(0, Math.max(photoEnd - dh, photoEnd * 0.36 - focus.y * dh));
+    }
 
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, W, H);
+    ctx.rect(0, 0, W, photoEnd);
     ctx.clip();
-
-    if (portrait) {
-      const scale = Math.max(W / img.width, (H * 0.72) / img.height);
-      const dw = img.width  * scale;
-      const dh = img.height * scale;
-      ctx.drawImage(img, (W - dw) / 2, 0, dw, dh);
-    } else {
-      const areaH = Math.max(100, areaBottom);
-      const scale = Math.min(W / img.width, areaH / img.height);
-      const dw = img.width  * scale;
-      const dh = img.height * scale;
-      const dx = (W - dw) / 2;
-      const dy = (areaH - dh) / 2;
-      ctx.drawImage(img, dx, dy, dw, dh);
-
-      const fade = Math.min(PHOTO_FADE, dh / 3);
-      const gTop = ctx.createLinearGradient(0, dy, 0, dy + fade);
-      gTop.addColorStop(0, BG_COLOR);
-      gTop.addColorStop(1, "rgba(8,12,22,0)");
-      ctx.fillStyle = gTop;
-      ctx.fillRect(dx, dy, dw, fade);
-
-      const gBot = ctx.createLinearGradient(0, dy + dh - fade, 0, dy + dh);
-      gBot.addColorStop(0, "rgba(8,12,22,0)");
-      gBot.addColorStop(1, BG_COLOR);
-      ctx.fillStyle = gBot;
-      ctx.fillRect(dx, dy + dh - fade, dw, fade);
-    }
-
+    ctx.drawImage(img, dx, dy, dw, dh);
     ctx.restore();
+
+    // fade: lay the background colour over the photo with growing opacity
+    const [r, g, b] = BG_BASE_RGB;
+    const fade = ctx.createLinearGradient(0, fadeStart, 0, photoEnd);
+    fade.addColorStop(0.00, `rgba(${r},${g},${b},0)`);
+    fade.addColorStop(0.25, `rgba(${r},${g},${b},0.20)`);
+    fade.addColorStop(0.50, `rgba(${r},${g},${b},0.58)`);
+    fade.addColorStop(0.75, `rgba(${r},${g},${b},0.90)`);
+    fade.addColorStop(1.00, `rgba(${r},${g},${b},1)`);
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, fadeStart, W, photoEnd - fadeStart + 1);
+
     return true;
   } catch (e) {
     console.warn("[Poster] main photo failed:", e.message);
@@ -408,182 +488,229 @@ async function drawPhoto(ctx, src, areaBottom) {
   }
 }
 
-function drawFallbackBackground(ctx) {
-  const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, "#14305f");
-  g.addColorStop(1, BG_COLOR);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, H);
-}
-
-// Dark gradient rising from the bottom so the headline is always readable
-function drawBottomFade(ctx, fromY) {
-  const g = ctx.createLinearGradient(0, fromY, 0, H);
-  g.addColorStop(0,    "rgba(0,0,0,0)");
-  g.addColorStop(0.35, "rgba(0,0,0,0.7)");
-  g.addColorStop(1,    "rgba(0,0,0,0.96)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, fromY, W, H - fromY);
-}
-
 // ═══════════════════════════════════════════════════════════════
-// DIVIDER + CHANNEL LABEL  (thin line, small spaced serif text in the middle)
+// CORNER RIBBONS  –  red diagonal band top-left, red band with a gold
+// edge bottom-right
 // ═══════════════════════════════════════════════════════════════
 
-function drawDividerLabel(ctx, label, y) {
-  const text = String(label || "").toUpperCase();
-
+function drawCornerRibbons(ctx) {
+  // ── top-left ──
+  const a = Math.round(W * 0.155);
   ctx.save();
-  ctx.font         = `${BRAND_SIZE}px ${BRAND_FONT}`;
-  ctx.textAlign    = "center";
-  ctx.textBaseline = "middle";
-  try { ctx.letterSpacing = "5px"; } catch { /* older canvas builds */ }
 
-  const tw   = ctx.measureText(text).width;
-  const gap  = 26;
-  const left = W / 2 - tw / 2 - gap;
-  const right = W / 2 + tw / 2 + gap;
-
-  ctx.strokeStyle = "rgba(255,255,255,0.55)";
-  ctx.lineWidth   = 2;
+  const g1 = ctx.createLinearGradient(0, 0, a * 0.8, a * 0.8);
+  g1.addColorStop(0.0, "#7a0008");
+  g1.addColorStop(0.6, "#e2101a");
+  g1.addColorStop(1.0, "#ff3a2a");
+  ctx.fillStyle = g1;
   ctx.beginPath();
-  ctx.moveTo(PAD, y);
-  ctx.lineTo(left, y);
-  ctx.moveTo(right, y);
-  ctx.lineTo(W - PAD, y);
-  ctx.stroke();
+  ctx.moveTo(0, 0); ctx.lineTo(a, 0); ctx.lineTo(0, a);
+  ctx.closePath();
+  ctx.fill();
 
-  ctx.fillStyle = "rgba(255,255,255,0.82)";
-  ctx.fillText(text, W / 2, y + 1);
+  // dark stripe across the band
+  const b = a * 0.70, bw = a * 0.075;
+  ctx.fillStyle = "rgba(30,0,4,0.85)";
+  ctx.beginPath();
+  ctx.moveTo(b, 0); ctx.lineTo(b + bw, 0); ctx.lineTo(0, b + bw); ctx.lineTo(0, b);
+  ctx.closePath();
+  ctx.fill();
+
+  // light edge
+  ctx.strokeStyle = "rgba(255,150,120,0.95)";
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(a, 0); ctx.lineTo(0, a);
+  ctx.stroke();
+  ctx.restore();
+
+  // ── bottom-right ──
+  const c = Math.round(W * 0.145);
+  ctx.save();
+
+  const g2 = ctx.createLinearGradient(W - c * 0.55, H - c * 0.55, W, H);
+  g2.addColorStop(0.0, "#ff2a1a");
+  g2.addColorStop(0.5, "#c80812");
+  g2.addColorStop(1.0, "#6a0008");
+  ctx.fillStyle = g2;
+  ctx.beginPath();
+  ctx.moveTo(W, H - c); ctx.lineTo(W, H); ctx.lineTo(W - c, H);
+  ctx.closePath();
+  ctx.fill();
+
+  // second, darker band inside
+  ctx.fillStyle = "rgba(40,0,6,0.55)";
+  ctx.beginPath();
+  ctx.moveTo(W, H - c * 0.60); ctx.lineTo(W, H - c * 0.46); ctx.lineTo(W - c * 0.46, H); ctx.lineTo(W - c * 0.60, H);
+  ctx.closePath();
+  ctx.fill();
+
+  // gold glowing edge
+  const gold = ctx.createLinearGradient(W, H - c, W - c, H);
+  gold.addColorStop(0.0, "rgba(255,200,90,0)");
+  gold.addColorStop(0.5, "rgba(255,214,120,1)");
+  gold.addColorStop(1.0, "rgba(255,200,90,0)");
+  ctx.shadowColor = "rgba(255,170,60,0.9)";
+  ctx.shadowBlur  = 14;
+  ctx.strokeStyle = gold;
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.moveTo(W, H - c); ctx.lineTo(W - c, H);
+  ctx.stroke();
   ctx.restore();
 }
 
 // ═══════════════════════════════════════════════════════════════
-// HEADLINE — centred, uppercase, with yellow "marker" bars on important words
-//
-//   Which words are marked (first match wins):
-//     1. In the title text:         "Better roads lead to **more accidents**"
-//     2. newsItem.highlight array:  ["more accidents", "BJP MP"]  (or one string)
-//     3. AI (Gemini) picks the important part of the title
-//     4. Local auto-highlight (used when the AI is off / fails)
-//
-//   Turn the AI part off per poster with   newsItem.aiHighlight = false
-//   Turn all automatic highlighting off with newsItem.autoHighlight = false
+// DIVIDER  –  glowing red / orange line with a bright flare in the middle
 // ═══════════════════════════════════════════════════════════════
 
-function normWord(w) {
-  return String(w).toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+function drawDivider(ctx, y) {
+  const cx = W / 2;
+  const half = W * 0.34;
+
+  radialGlow(ctx, cx, y, W * 0.42, 36, [255, 70, 20], 0.55);
+
+  ctx.save();
+  const lg = ctx.createLinearGradient(cx - half, 0, cx + half, 0);
+  lg.addColorStop(0.00, "rgba(255,60,20,0)");
+  lg.addColorStop(0.22, "rgba(255,90,30,0.85)");
+  lg.addColorStop(0.50, "rgba(255,238,205,1)");
+  lg.addColorStop(0.78, "rgba(255,90,30,0.85)");
+  lg.addColorStop(1.00, "rgba(255,60,20,0)");
+  ctx.shadowColor = "rgba(255,90,30,0.95)";
+  ctx.shadowBlur  = 16;
+  ctx.fillStyle   = lg;
+  ctx.fillRect(cx - half, y - 1.5, half * 2, 3);
+  ctx.restore();
+
+  radialGlow(ctx, cx, y, 120, 10, [255, 245, 220], 0.95);
 }
 
-// ── LOCAL AUTO HIGHLIGHT (fallback) ─────────────────────────────
-// Picks the most "important" stretch of the headline by itself.
-//   • Only the quoted statement is considered (the "...": SPEAKER NAME part is left plain)
-//   • Words are scored: numbers > long/rare words > normal words > filler words (0)
-//   • The best consecutive window (about 40% of the words) gets the yellow bar
-const STOP_WORDS = new Set((
-  "a an the and or but if of to in on at by for with from as is are was were be been being " +
-  "it its this that these those when while than then so such not no do does did has have had " +
-  "will would can could may might shall should into over under about after before more most"
-).split(" "));
+// ═══════════════════════════════════════════════════════════════
+// TEXT  –  what goes in the yellow block and what goes in the white block
+//
+//   Where the split comes from (first match wins):
+//
+//   1. newsItem.subtitle  (or subTitleLines)  → title = yellow, subtitle = white
+//      newsItem.titleLines = ["line", "line"] fixes the yellow line breaks
+//   2. title with "|" :  "yellow part | white part"
+//      (with more than 2 parts, the LAST one is white, the others are yellow)
+//   3. the AI director (Gemini): decides the split AND the line breaks
+//   4. local split: ~2/3 of the words yellow, the rest white
+//      (prefers to cut after  ’ ” . ! ? ; : ,  )
+//
+//   newsItem.uppercase = true  → upper-case everything (English posts)
+// ═══════════════════════════════════════════════════════════════
 
-function autoHighlight(words) {
-  if (words.length < 4) return;
-
-  // Eligible range: up to the closing quote mark (if the title is a quote), else everything
-  let end = words.length - 1;
-  for (let i = 1; i < words.length; i++) {
-    if (/[”"]$|[”"][:,;.]?$/.test(words[i].t)) { end = i; break; }
-  }
-  const n = end + 1;
-  if (n < 4) return;
-
-  const weight = words.slice(0, n).map((w) => {
-    const nw = normWord(w.t);
-    if (!nw) return 0;
-    if (/\d/.test(nw)) return 3;                     // numbers / figures
-    if (STOP_WORDS.has(nw.toLowerCase())) return 0;  // filler
-    if (nw.length >= 7) return 2;                    // long, meaningful words
-    return 1;
-  });
-
-  const len = Math.max(3, Math.min(8, Math.round(n * 0.4)));
-  if (len >= n) return;
-
-  let best = 0, bestScore = -1;
-  for (let i = 0; i + len <= n; i++) {
-    let s = 0;
-    for (let k = 0; k < len; k++) s += weight[i + k];
-    // never start or end the bar on a filler word
-    if (weight[i] === 0 || weight[i + len - 1] === 0) s -= 2;
-    if (s > bestScore) { bestScore = s; best = i; }
-  }
-  for (let k = 0; k < len; k++) words[best + k].hl = true;
+function cleanText(s, upper) {
+  const t = String(s ?? "").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  return upper ? t.toUpperCase() : t;
 }
 
-// Did the author already mark words by hand?
-function hasManualHighlight(title, highlight) {
-  if (String(title || "").includes("**")) return true;
-  if (Array.isArray(highlight)) return highlight.some((h) => String(h || "").trim());
-  return Boolean(highlight && String(highlight).trim());
+const wordsOf = (s) => String(s).split(" ").filter(Boolean);
+
+function joinLines(v) {
+  return Array.isArray(v)
+    ? v.map((l) => (typeof l === "string" ? l : l && l.text)).filter(Boolean).join(" ")
+    : String(v ?? "");
 }
 
-// Ask Gemini which part of the title is important.
-// Returns { start, end, total } (0-based word positions, inclusive) or null.
-// The title text itself is never touched – only the word positions are used.
-async function getAiHighlight(newsItem) {
-  if (!getDirection) return null;
-  try {
-    const dir = await getDirection(newsItem, {
-      layout:    false,              // we only need the highlight, not the line split
-      highlight: true,
-      focus:     false,              // no photo needed
-      sendImage: false,
-      totalMs:   AI_HL_TOTAL_MS,
-      timeoutMs: AI_HL_REQUEST_MS,
-    });
-    if (dir && dir.highlight) {
-      console.log(`[Poster] AI highlight: "${dir.highlight.text}"`);
-      return dir.highlight;
-    }
-  } catch (e) {
-    console.warn("[Poster] AI highlight failed, using local highlight:", e.message);
-  }
-  return null;
+function linesOf(v, c) {
+  if (!Array.isArray(v)) return null;
+  const out = v.map((l) => c(typeof l === "string" ? l : l && l.text)).filter(Boolean);
+  return out.length ? out : null;
 }
 
-function parseHeadline(title, highlight, auto = true, aiRange = null) {
-  const words = [];
-  const parts = String(title || "").replace(/\s+/g, " ").split("**");
-  parts.forEach((part, i) => {
-    const on = i % 2 === 1;
-    part.split(" ").filter(Boolean).forEach((w) => words.push({ t: w.toUpperCase(), hl: on }));
-  });
+// AI lines are only used when, joined, they are EXACTLY the title's words
+function sanitizeAiLayout(layout, rawTitle, c) {
+  if (!layout || !Array.isArray(layout.headLines) || !layout.headLines.length) return null;
+  const head = layout.headLines.map(c).filter(Boolean);
+  const sub  = (Array.isArray(layout.subLines) ? layout.subLines : []).map(c).filter(Boolean);
+  if (!head.length) return null;
 
-  const phrases = Array.isArray(highlight) ? highlight : highlight ? [highlight] : [];
-  for (const phrase of phrases) {
-    const pw = String(phrase).split(/\s+/).filter(Boolean).map(normWord);
-    if (!pw.length) continue;
-    for (let i = 0; i + pw.length <= words.length; i++) {
-      if (pw.every((p, k) => normWord(words[i + k].t) === p)) {
-        for (let k = 0; k < pw.length; k++) words[i + k].hl = true;
-      }
+  const got  = wordsOf([...head, ...sub].join(" "));
+  const want = wordsOf(c(rawTitle));
+  if (got.length !== want.length || got.some((w, i) => w !== want[i])) return null;
+  return { head, sub };
+}
+
+function localSplit(words) {
+  const N = words.length;
+  if (N < 4) return { head: words, sub: [] };
+
+  const target = Math.round(N * 0.66);
+  const lo = Math.max(2, Math.ceil(N * 0.5));
+  const hi = Math.min(N - 1, Math.ceil(N * 0.8));
+
+  let cut = Math.max(lo, Math.min(hi, target));
+  let bestDist = Infinity;
+  for (let n = lo; n <= hi; n++) {
+    if (/[’”"'.!?;:,।…]$/.test(words[n - 1])) {
+      const d = Math.abs(n - target);
+      if (d < bestDist) { bestDist = d; cut = n; }
     }
   }
+  return { head: words.slice(0, cut), sub: words.slice(cut) };
+}
 
-  // Nothing marked by hand (no **..** and no highlight[])
-  if (auto && !words.some((w) => w.hl)) {
-    // 1) the AI's choice – accepted only if it fits THIS word list exactly
-    if (aiRange &&
-        aiRange.total === words.length &&
-        aiRange.start >= 0 && aiRange.end >= aiRange.start && aiRange.end < words.length) {
-      for (let k = aiRange.start; k <= aiRange.end; k++) words[k].hl = true;
-    }
-    // 2) otherwise (or if nothing got marked) the local choice
-    if (!words.some((w) => w.hl)) autoHighlight(words);
+// → { head: {text, lines|null}, sub: {text, lines|null} | null }
+function buildCopy(newsItem) {
+  const up = newsItem.uppercase === true;
+  const c  = (s) => cleanText(s, up);
+
+  const mk = (text, lines) => {
+    const t = c(text);
+    return t ? { text: t, lines: lines && lines.length ? lines : null } : null;
+  };
+
+  const rawTitle = joinLines(newsItem.titleLines) || String(newsItem.title || "");
+
+  // 1) explicit subtitle
+  const subRaw = joinLines(newsItem.subTitleLines) || String(newsItem.subtitle || "");
+  if (c(subRaw)) {
+    const head = mk(rawTitle, linesOf(newsItem.titleLines, c));
+    if (!head) return { head: mk(subRaw, linesOf(newsItem.subTitleLines, c)), sub: null };
+    return { head, sub: mk(subRaw, linesOf(newsItem.subTitleLines, c)) };
   }
 
-  return words;
+  // 2) "yellow | white"
+  if (rawTitle.includes("|")) {
+    const parts = rawTitle.split("|").map(c).filter(Boolean);
+    if (parts.length === 1) return { head: mk(parts[0]), sub: null };
+    return {
+      head: mk(parts.slice(0, -1).join(" ")),
+      sub:  mk(parts[parts.length - 1]),
+    };
+  }
+
+  // 2b) explicit yellow line breaks, no subtitle
+  const fixed = linesOf(newsItem.titleLines, c);
+  if (fixed) return { head: mk(fixed.join(" "), fixed), sub: null };
+
+  // 3) lines chosen by the AI director (checked word for word against the title)
+  const ai = sanitizeAiLayout(newsItem.aiLayout, rawTitle, c);
+  if (ai) {
+    return {
+      head: mk(ai.head.join(" "), ai.head),
+      sub:  ai.sub.length ? mk(ai.sub.join(" "), ai.sub) : null,
+    };
+  }
+
+  // 4) local split
+  const words = wordsOf(c(rawTitle));
+  if (!words.length) return { head: null, sub: null };
+  if (newsItem.autoTiers === false) return { head: mk(words.join(" ")), sub: null };
+
+  const sp = localSplit(words);
+  return {
+    head: mk(sp.head.join(" ")),
+    sub:  sp.sub.length ? mk(sp.sub.join(" ")) : null,
+  };
 }
+
+// ═══════════════════════════════════════════════════════════════
+// LINE WRAPPING + FITTING
+// ═══════════════════════════════════════════════════════════════
 
 function wrapTokens(ctx, words, maxW) {
   const space = ctx.measureText(" ").width;
@@ -606,72 +733,190 @@ function wrapTokens(ctx, words, maxW) {
   return lines;
 }
 
-function layoutHeadline(ctx, words, maxW, maxH) {
-  for (let size = HEAD_START; size >= HEAD_MIN; size -= 2) {
-    ctx.font = `${size}px ${HEAD_FONT}`;
-    const lines = wrapTokens(ctx, words, maxW);
-    if (lines.length * Math.round(size * HEAD_LH) <= maxH) return { size, lines };
+// Same number of lines as greedy wrapping, but with even line lengths
+function balancedWrap(ctx, words, maxW) {
+  const first = wrapTokens(ctx, words, maxW);
+  const n = first.length;
+  if (n < 2) return first;
+
+  let lo = maxW * 0.45, hi = maxW;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (wrapTokens(ctx, words, mid).length <= n) hi = mid; else lo = mid;
   }
-  const size = HEAD_MIN;
-  ctx.font = `${size}px ${HEAD_FONT}`;
-  const maxLines = Math.max(1, Math.floor(maxH / Math.round(size * HEAD_LH)));
-  return { size, lines: wrapTokens(ctx, words, maxW).slice(0, maxLines) };
+  return wrapTokens(ctx, words, hi);
 }
 
-function drawHeadlineLines(ctx, layout, top) {
-  const { size, lines } = layout;
-  const lineH = Math.round(size * HEAD_LH);
+// Lays one block (yellow or white) out at one font size.
+// Fixed lines (from the AI / the caller) are kept; otherwise it wraps by itself.
+function layoutBlock(ctx, block, size, maxW, maxLines) {
+  ctx.font = `${size}px ${HEAD_FONT}`;
+  let lines;
+  if (block.lines) {
+    lines = block.lines.map((t) => ({ t, w: ctx.measureText(t).width }));
+  } else {
+    const toks = wordsOf(block.text).map((t) => ({ t }));
+    lines = balancedWrap(ctx, toks, maxW).map((l) => ({
+      t: l.words.map((w) => w.t).join(" "),
+      w: l.width,
+    }));
+  }
+  const ok = lines.length <= maxLines && lines.every((l) => l.w <= maxW + 1);
+  return { lines, ok };
+}
 
-  ctx.save();
-  ctx.font         = `${size}px ${HEAD_FONT}`;
-  ctx.textAlign    = "left";
-  ctx.textBaseline = "alphabetic";
-  const space = ctx.measureText(" ").width;
+// Finds the BIGGEST yellow size where the widest yellow line reaches HEAD_TARGET_W
+// and everything still fits the height. The white block is sized on its own so that
+// ITS widest line reaches SUB_TARGET_W (never bigger than the yellow size).
+function layoutPosterOnce(ctx, copy, availH) {
 
-  lines.forEach((ln, i) => {
-    const cy     = top + i * lineH + lineH / 2;   // visual centre of this line
-    const base   = cy + size * 0.33;              // baseline so caps sit centred
-    let x        = (W - ln.width) / 2;
+  const attempt = (maxLines) => {
+    for (let size = HEAD_MAX; size >= HEAD_MIN; size -= 2) {
+      const hb = layoutBlock(ctx, copy.head, size, HEAD_TARGET_W, maxLines);
+      if (!hb.ok) continue;
 
-    // 1) yellow bars behind runs of highlighted words
-    let k = 0;
-    let cx = x;
-    while (k < ln.words.length) {
-      if (ln.words[k].hl) {
-        const startX = cx;
-        let runW = 0;
-        let j = k;
-        while (j < ln.words.length && ln.words[j].hl) {
-          runW += ln.words[j].w + (j > k ? space : 0);
-          j++;
+      let sb = null;
+      let subSize = 0;
+      if (copy.sub) {
+        for (subSize = Math.round(size * SUB_MAX_RATIO); subSize >= SUB_MIN; subSize -= 2) {
+          sb = layoutBlock(ctx, copy.sub, subSize, SUB_TARGET_W, SUB_MAX_LINES);
+          if (sb.ok) break;
         }
-        ctx.fillStyle = BAR_COLOR;
-        ctx.fillRect(startX - BAR_PAD_X, cy - size * 0.56, runW + BAR_PAD_X * 2, size * 1.12);
-        // advance cursor over the run
-        for (let m = k; m < j; m++) cx += ln.words[m].w + space;
-        k = j;
-      } else {
-        cx += ln.words[k].w + space;
-        k++;
+        if (!sb || !sb.ok) continue;
+      }
+
+      // tighten the line pitch before giving up font size
+      for (const f of HEAD_LH_TRY) {
+        const headLH = Math.round(size * f);
+        // the white lines use the SAME line-height factor as the yellow lines
+        const subLH  = Math.round(subSize * f);
+        const total  = hb.lines.length * headLH + (sb ? DIV_BLOCK + sb.lines.length * subLH : 0);
+        if (total <= availH) {
+          return {
+            headSize: size, headLH, headLines: hb.lines,
+            subSize, subLH, subLines: sb ? sb.lines : null,
+            total,
+          };
+        }
       }
     }
+    return null;
+  };
 
-    // 2) the words themselves (black on yellow, white otherwise)
-    ln.words.forEach((w) => {
-      if (w.hl) {
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur  = 0;
-        ctx.fillStyle   = BAR_TEXT;
-      } else {
-        ctx.shadowColor   = "rgba(0,0,0,0.55)";
-        ctx.shadowBlur    = 8;
-        ctx.shadowOffsetY = 2;
-        ctx.fillStyle     = "#ffffff";
-      }
-      ctx.fillText(w.t, x, base);
-      x += w.w + space;
+  const best = attempt(4) || attempt(HEAD_MAX_LINES);
+  if (best) return best;
+
+  // nothing fits (a very long title): smallest sizes, tightest pitch
+  const hb = layoutBlock(ctx, copy.head, HEAD_MIN, HEAD_TARGET_W, 99);
+  const sb = copy.sub ? layoutBlock(ctx, copy.sub, SUB_MIN, SUB_TARGET_W, 99) : null;
+  const headLH = Math.round(HEAD_MIN * HEAD_LH_TRY[HEAD_LH_TRY.length - 1]);
+  const subLH  = Math.round(SUB_MIN * HEAD_LH_TRY[HEAD_LH_TRY.length - 1]);
+  return {
+    headSize: HEAD_MIN, headLH, headLines: hb.lines,
+    subSize: sb ? SUB_MIN : 0, subLH, subLines: sb ? sb.lines : null,
+    total: hb.lines.length * headLH + (sb ? DIV_BLOCK + sb.lines.length * subLH : 0),
+  };
+}
+
+// Tries the line breaks chosen by the AI / the caller AND the poster's own balanced
+// wrapping, and keeps whichever gives the BIGGER font. The AI breaks win unless the
+// own wrapping is clearly bigger (4%+). This is what stops a title whose AI lines
+// pair two long words from ending up with a small font.
+function layoutPoster(ctx, copy, availH) {
+  const hasHL = Boolean(copy.head && copy.head.lines);
+  const hasSL = Boolean(copy.sub && copy.sub.lines);
+
+  const base = layoutPosterOnce(ctx, copy, availH);
+  if (!hasHL && !hasSL) return base;
+
+  const variants = [];
+  if (hasHL) variants.push({ ...copy, head: { ...copy.head, lines: null } });
+  if (hasSL) variants.push({ ...copy, sub:  { ...copy.sub,  lines: null } });
+  if (hasHL && hasSL) {
+    variants.push({
+      head: { ...copy.head, lines: null },
+      sub:  { ...copy.sub,  lines: null },
     });
+  }
+
+  const score = (L) => L.headSize * 2 + L.subSize;
+  let best = base;
+  for (const v of variants) {
+    const L = layoutPosterOnce(ctx, v, availH);
+    if (score(L) > score(best)) best = L;
+  }
+  return score(best) >= score(base) * 1.04 ? best : base;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TEXT DRAWING
+// ═══════════════════════════════════════════════════════════════
+
+function strokeFill(ctx, text, x, y, fill, strokeColor, strokeW) {
+  ctx.save();
+  ctx.lineJoin   = "round";
+  ctx.miterLimit = 2;
+  if (strokeW > 0.01) {
+    ctx.lineWidth   = strokeW;
+    ctx.strokeStyle = strokeColor;
+    ctx.strokeText(text, x, y);
+  }
+  ctx.fillStyle = fill;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
+// Yellow: soft black shadow underneath, then the crisp yellow glyphs.
+function drawYellowLine(ctx, text, x, y, size) {
+  ctx.save();
+  ctx.shadowColor   = "rgba(0,0,0,0.70)";
+  ctx.shadowBlur    = Math.round(size * 0.12);
+  ctx.shadowOffsetY = Math.round(size * 0.05);
+  ctx.fillStyle     = YELLOW;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+
+  // heavy font: no extra stroke; normal Bold font: a light stroke to thicken it
+  strokeFill(ctx, text, x, y, YELLOW, YELLOW, hasHeavy ? 0 : size * 0.028);
+}
+
+// White: black outline + soft shadow, white glyphs on top.
+function drawWhiteLine(ctx, text, x, y, size) {
+  ctx.save();
+  ctx.shadowColor   = "rgba(0,0,0,0.75)";
+  ctx.shadowBlur    = Math.round(size * 0.14);
+  ctx.shadowOffsetY = Math.round(size * 0.05);
+  strokeFill(ctx, text, x, y, WHITE, "#000000", size * 0.07);
+  ctx.restore();
+
+  // crisp pass without shadow
+  strokeFill(ctx, text, x, y, WHITE, "#000000", size * 0.07);
+}
+
+function drawCopy(ctx, L, top) {
+  let y = top;
+
+  ctx.save();
+  ctx.textAlign    = "center";
+  ctx.textBaseline = "alphabetic";
+
+  ctx.font = `${L.headSize}px ${HEAD_FONT}`;
+  L.headLines.forEach((ln, i) => {
+    const base = y + i * L.headLH + L.headLH / 2 + L.headSize * 0.33;
+    drawYellowLine(ctx, ln.t, W / 2, base, L.headSize);
   });
+  y += L.headLines.length * L.headLH;
+
+  if (L.subLines) {
+    drawDivider(ctx, y + DIV_BLOCK * 0.46);
+    y += DIV_BLOCK;
+
+    ctx.font = `${L.subSize}px ${HEAD_FONT}`;
+    L.subLines.forEach((ln, i) => {
+      const base = y + i * L.subLH + L.subLH / 2 + L.subSize * 0.33;
+      drawWhiteLine(ctx, ln.t, W / 2, base, L.subSize);
+    });
+  }
 
   ctx.restore();
 }
@@ -679,24 +924,36 @@ function drawHeadlineLines(ctx, layout, top) {
 // ═══════════════════════════════════════════════════════════════
 // MAIN POSTER DRAW
 //
-// LAYOUT (4:5):
-//   1. Photo (full-bleed for portrait photos, fully shown for landscape)
-//   2. Dark gradient from the bottom
-//   3. Thin divider with small "NEWSLINE" label
-//   4. Centred uppercase headline, important words on yellow bars
-//   5. Ad strip (unchanged pipeline), appended below the poster
-//
 //   newsItem options:
-//     title         headline (use **word** to mark important words)
-//     highlight     string | string[]  phrases to mark as important (optional)
-//     aiHighlight   false = do not ask Gemini which words are important
-//     autoHighlight false = no automatic highlight at all (AI or local)
-//     aiDirector    false = switch Gemini off for this poster
-//     channelName   label on the divider (default "Newsline")
-//     showChannel   false to hide the divider + label
+//     title                 the headline (never rewritten)
+//     subtitle / subTitleLines   force the white lines
+//     titleLines            force the yellow line breaks
+//     "yellow | white"      split with a | inside the title
+//     autoTiers   false     everything yellow, no white block
+//     uppercase   true      upper-case all text
+//     showPhoto   false     no photo
+//     image                 photo url / path / buffer
+//     aiDirector  false     do not ask Gemini
+//     adBannerUrl, adResourceType   ad strip (unchanged)
 // ═══════════════════════════════════════════════════════════════
 
 async function createNewsPoster(newsItem) {
+
+  // ── AI director: yellow / white split, line breaks, photo focus ──
+  const direction = await askDirector(newsItem);
+
+  // title was too long for the design → use the short, meaning-preserving version
+  if (direction && direction.shortTitle) {
+    console.log("[Poster] long title shortened by AI:", direction.shortTitle);
+    newsItem = { ...newsItem, title: direction.shortTitle };
+  }
+
+  if (direction && direction.headLines) {
+    newsItem = {
+      ...newsItem,
+      aiLayout: { headLines: direction.headLines, subLines: direction.subLines || [] },
+    };
+  }
 
   // ── Ad pipeline (unchanged) ─────────────────────────────────
   const hasAdUrl  = Boolean(newsItem.adBannerUrl);
@@ -769,43 +1026,39 @@ async function createNewsPoster(newsItem) {
   const canvas = createCanvas(W, canvasH);
   const ctx    = canvas.getContext("2d");
 
-  // ── 1. Background ───────────────────────────────────────────
-  drawBackground(ctx);
+  // ── 1. Measure the headline first: its height decides the photo height ──
+  const copy    = buildCopy(newsItem);
+  const bottomY = H - BOTTOM_MARGIN;
+  let layout    = null;
+  let startY    = TEXT_TOP;
 
-  // ── 2. Headline layout first (we need its height) ───────────
-  const showChannel = newsItem.showChannel !== false;
-  const autoOn      = newsItem.autoHighlight !== false;
-
-  // Ask the AI which part of the title is important – only when the author
-  // has not already marked words by hand, and only if AI highlight is allowed.
-  let aiRange = null;
-  if (autoOn && newsItem.aiHighlight !== false &&
-      !hasManualHighlight(newsItem.title, newsItem.highlight)) {
-    aiRange = await getAiHighlight(newsItem);
+  if (copy.head) {
+    layout = layoutPoster(ctx, copy, bottomY - TEXT_TOP);
+    // the block sits at the bottom; short titles move it down so the photo grows,
+    // long titles move it up so the photo shrinks
+    startY = Math.round(Math.min(PHOTO_MAX_TEXT_TOP, Math.max(TEXT_TOP, bottomY - layout.total)));
   }
+  const photoEnd = startY + PHOTO_OVERLAP;
+  const glowY    = layout
+    ? startY + (layout.subLines ? layout.headLines.length * layout.headLH + DIV_BLOCK * 0.46 : layout.total * 0.6)
+    : H * 0.74;
 
-  const words       = parseHeadline(newsItem.title, newsItem.highlight, autoOn, aiRange);
-  const headLayout  = layoutHeadline(ctx, words, W - PAD * 2 - BAR_PAD_X * 2, HEAD_MAX_H);
-  const headLineH   = Math.round(headLayout.size * HEAD_LH);
-  const headTotalH  = headLayout.lines.length * headLineH;
-  const headTop     = H - HEAD_BOTTOM - headTotalH;
-  const dividerY    = headTop - BRAND_GAP;
+  // ── 2. Base, photo + fade, glow, corner ribbons ─────────────
+  drawBase(ctx);
+  if (newsItem.showPhoto !== false && newsItem.image) {
+    await drawPhoto(ctx, newsItem.image, direction && direction.focus, photoEnd);
+  }
+  drawGlow(ctx, glowY);
+  drawCornerRibbons(ctx);
 
-  // ── 3. Photo ────────────────────────────────────────────────
-  const photoBottom = (showChannel ? dividerY : headTop) - 24;
-  const hasPhoto    = await drawPhoto(ctx, newsItem.image, photoBottom);
-  if (!hasPhoto) drawFallbackBackground(ctx);
+  // ── 2b. Headline: yellow block, divider, white block ────────
+  if (layout) drawCopy(ctx, layout, startY);
 
-  // ── 4. Gradient, divider + label, headline ──────────────────
-  drawBottomFade(ctx, Math.max(H * 0.35, (showChannel ? dividerY : headTop) - 320));
-  if (showChannel) drawDividerLabel(ctx, newsItem.channelName || DEFAULT_CHANNEL, dividerY);
-  drawHeadlineLines(ctx, headLayout, headTop);
-
-  // ── 5. Reset ────────────────────────────────────────────────
+  // ── 3. Reset ────────────────────────────────────────────────
   ctx.textAlign    = "left";
   ctx.textBaseline = "alphabetic";
 
-  // ── 6. Ad strip ─────────────────────────────────────────────
+  // ── 4. Ad strip ─────────────────────────────────────────────
   if (!liveAdVideoUrl) {
     drawAdStrip(ctx, adImg, H, actualAdH);
   }
